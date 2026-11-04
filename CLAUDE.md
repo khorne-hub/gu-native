@@ -11,7 +11,8 @@ This file has two uses: helping someone set the game up, and continuing the proj
   console. The person brings their own `exefs` and `romfs`.
 - Never commit or publish `exefs`, `romfs`, `generated/`, `libmhgugame.so`, `libmhgugame.id`, saves or signing keys. Never put game
   code in an APK or a release: `libmhgugame.so` is made from the game, so each person makes their own with `tools/build_game.py`.
-- Keep `LICENSE` and `THIRD_PARTY_NOTICES`. The MIT license requires them.
+- Keep `LICENSE` (the project's own license from 0.1.7: no redistribution without the author's written permission) and
+  `THIRD_PARTY_NOTICES` (MHGURecomp's MIT license and the other libraries' licenses require it).
 - Don't lower someone's graphics or audio settings without asking.
 - Any new menu, notice or touch control must match the game's style: bronze, gold and wine-dark, with no default Android look.
 

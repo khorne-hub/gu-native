@@ -235,8 +235,15 @@ Titulares de derechos: abran un issue para ponerse en contacto.
 
 ## Créditos
 
-Basado en el proyecto de código abierto MHGURecomp, con [licencia MIT](LICENSE), y las bibliotecas listadas en
+Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliotecas listadas en
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias también están en la app: engranaje, **Opciones del menú**, **Licencias**.
+
+## Licencia
+
+Desde la versión 0.1.7, MHGU para Android tiene su propia [licencia](LICENSE) (en inglés): puedes descargar el APK de esta
+página, instalarlo en tus dispositivos, leer el código y compilarlo para ti, pero para redistribuir la app o su código en cualquier
+otro lugar, con cualquier nombre, hace falta mi permiso por escrito antes (abre un issue para pedirlo). Las versiones 0.1.6 y
+anteriores siguen con la licencia MIT con la que se publicaron, y las partes de terceros conservan sus propias licencias.
 
 ## Para desarrolladores
 

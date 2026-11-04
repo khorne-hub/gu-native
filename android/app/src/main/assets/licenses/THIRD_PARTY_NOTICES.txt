@@ -1,6 +1,8 @@
 MHGU Recomp includes or is derived from the following third-party software. Each keeps its own license, reproduced
 below.
 
+- MHGURecomp (github.com/morerokk/MHGURecomp), by Rokk: the recompiler, runtime and tools this Android port is
+  based on. MIT License, Copyright (c) 2026 Rokk, reproduced below.
 - LAS Recomp: the runtime's kernel, IPC, loader, dispatch and NVN object code and the Maxwell shader translator
   (runtime/kernel.c, ipc.c, loader.c, dispatch.c, runtime/nvn/objects.c, cmdbuf.c, maxwell/translate.c and others)
   were ported from it and adapted to 32-bit ARM. MIT License.
@@ -25,6 +27,31 @@ in into build/licenses (README.txt there lists each with its version and source)
 driver's and is not shipped. Likewise the optional FSR 4 mode loads amdvkffx64.dll from the user's own AMD
 graphics driver at run time; nothing of AMD's driver is included or shipped here.
 
+
+================================================================================
+MHGURecomp
+
+MIT License
+
+Copyright (c) 2026 Rokk
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ================================================================================
 LAS Recomp
