@@ -435,6 +435,12 @@ void overlay_notice(const char *title, const char *text) {
     g_notice_ns = std::max<uint64_t>(SDL_GetTicksNS(), 1);
 }
 
+// (the thank-you open: a notice waits under it, its seconds not counting - shown whole once it is closed)
+static void notice_hold(uint64_t now) {
+    std::lock_guard<std::mutex> l(g_notice_lock);
+    if (g_notice_ns) g_notice_ns = std::max<uint64_t>(now, 1);
+}
+
 static bool notice_due(uint64_t now) {
     std::lock_guard<std::mutex> l(g_notice_lock);
     if (g_notice_ns && now - g_notice_ns >= NOTICE_NS) g_notice_ns = 0;
@@ -533,6 +539,7 @@ void overlay_frame(void *cpu) {
     bool credits = settings_panel_credits_up();
     bool open = g_open, free_render = forge_plugins_have(FORGE_IMGUI_FREE_RENDER);
     uint64_t now = SDL_GetTicksNS();
+    if (g_modal_open) notice_hold(now);
     bool notice = notice_due(now);
     char line[256];
     bool chat = chat_composing(line, sizeof line);
@@ -606,8 +613,8 @@ void overlay_frame(void *cpu) {
         if (!keep) set_open(false);
     }
     forge_imgui_run(cpu, FORGE_IMGUI_FREE_RENDER);
-    if (notice) draw_notice(now, scale);
-    if (chat) draw_chat(line, now, scale);
+    if (notice && !g_modal_open) draw_notice(now, scale);  // (not over the thank-you: it waits, notice_hold)
+    if (chat && !g_modal_open) draw_chat(line, now, scale);
     if (stats) perfstats_draw((float)w, (float)h);  // (under the touch controls, on the same background list)
     if (touch) touch_draw((float)w, (float)h);  // (the touch controls: runtime/touch.cpp)
     ImGui::Render();

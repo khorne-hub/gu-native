@@ -3016,7 +3016,7 @@ void draw_credits() {
 // showing by itself (a test run's input would wait for it), =1 shows it at every start; with MHGU_HIDDEN (no window to
 // close it in) it doesn't show by itself.
 enum class Thanks { Unknown, Wait, Open, Done };
-Thanks g_thanks = Thanks::Unknown;
+std::atomic<Thanks> g_thanks{Thanks::Unknown};  // (read on the host event thread too: settings_panel_key)
 constexpr double THANKS_AFTER_S = .3, THANKS_IN_S = .35, THANKS_OUT_S = .15;
 constexpr ImGuiID THANKS_OWNER = 0x7468616e;  // (it holds every key for the rest of its frames: the menu under it gets none)
 double g_thanks_at = -1, g_thanks_shut = -1;  // (when it opened, when it closed: its fades)
@@ -3038,7 +3038,7 @@ void thanks_decide() {
 void thanks_open(double now, bool asked) {
     g_thanks = Thanks::Open;
     g_thanks_at = now, g_thanks_shut = -1;
-    g_thanks_arm = asked ? .5 : 1.0;  // (asked for in the menu: past the key that asked for it, and its repeat)
+    g_thanks_arm = 1.0;  // (asked for in the menu too: the key that asked for it, held, repeats at about .5 s and would answer)
     memset(g_thanks_armed, 0, sizeof g_thanks_armed);
     g_credits_asked = false;  // (credits asked for a moment before: not under it, nor back over the menu after it)
     fprintf(stderr, "[settings] the thank-you is open%s: every input goes to it until it is closed\n",
@@ -3261,20 +3261,21 @@ void settings_panel_request_back() { request_back.store(true); }
 bool settings_panel_dirty() { return is_dirty.load(); }
 int settings_panel_theme() { return s.editing ? s.draft.menu_theme : config_editable().menu_theme; }
 bool settings_panel_confirming() { return is_confirming.load() || request_exit.load(); }
+// (the thank-you over the menu choosing a key: the press is the thank-you's, not a key chosen)
 bool settings_panel_key(int scancode) {
-    if (!is_capturing.load())
+    if (!is_capturing.load() || g_thanks == Thanks::Open)
         return false;
     captured_key = scancode;
     return true;
 }
 bool settings_panel_mouse(int button) {
-    if (!capture_mouse.load() || button < 1 || button > SDL_BUTTON_X2)
+    if (!capture_mouse.load() || button < 1 || button > SDL_BUTTON_X2 || g_thanks == Thanks::Open)
         return false;
     captured_key = KEY_MOUSE + button;
     return true;
 }
 bool settings_panel_wheel(int notches) {
-    if (!capture_wheel.load() || !notches)
+    if (!capture_wheel.load() || !notches || g_thanks == Thanks::Open)
         return false;
     captured_key = notches > 0 ? KEY_WHEEL_UP : KEY_WHEEL_DOWN;
     return true;
