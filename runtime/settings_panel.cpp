@@ -2903,12 +2903,15 @@ void report(bool *open) {
 // official one is, so a copy passed around elsewhere still says so
 double g_credits_at = -1;
 bool g_credits_asked = false;  // (Show the credits: over the menu too)
+constexpr double kCreditsShown = 8;
 void credits_show() {
     g_credits_at = SDL_GetTicks() / 1000.0;
     g_credits_asked = true;
 }
+// (only inside the overlay's ImGui frame: before its first one there is no font, and a draw list taken before NewFrame
+// is the last frame's, cleared as the frame begins)
 void draw_credits() {
-    constexpr double kShown = 8, kIn = .4, kFade = .9;
+    constexpr double kShown = kCreditsShown, kIn = .4, kFade = .9;
     const double now = SDL_GetTicks() / 1000.0;
     if (g_credits_at < 0)
         g_credits_at = now;
@@ -3042,13 +3045,19 @@ void settings_panel_before_frame(bool open) {
         ImGui::SetKeyOwner(ImGuiKey_Space, 0x6d686775, ImGuiInputFlags_LockThisFrame);
     }
 }
+void settings_panel_idle(void) {
+    s.editing = false;
+    is_dirty = false;
+    is_confirming = false;
+    is_capturing = false;
+    capture_mouse = false;
+}
+bool settings_panel_credits_up(void) {
+    return g_credits_asked || g_credits_at < 0 || SDL_GetTicks() / 1000.0 - g_credits_at <= kCreditsShown;
+}
 void settings_panel(bool *open) {
     if (!*open) {
-        s.editing = false;
-        is_dirty = false;
-        is_confirming = false;
-        is_capturing = false;
-        capture_mouse = false;
+        settings_panel_idle();
         draw_credits();
         return;
     }

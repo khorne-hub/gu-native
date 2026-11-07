@@ -524,7 +524,11 @@ void overlay_frame(void *cpu) {
     // is in the background, its clock held: runtime/hle/vi.c)
     vi_pause_game();
     if (!g_ready) return;
-    if (!g_settings_open) { bool closed = false; settings_panel(&closed); }
+    // (the menu closed: its state let go here, drawn - the credits - only inside the frame below: before the first frame
+    // there is no font, the credits' text measured with none faulted at the first frame - "accessing 0" under
+    // frame_update - and later ones were drawn into the last frame's list, cleared as the frame began)
+    if (!g_settings_open) settings_panel_idle();
+    bool credits = settings_panel_credits_up();
     bool open = g_open, free_render = forge_plugins_have(FORGE_IMGUI_FREE_RENDER);
     uint64_t now = SDL_GetTicksNS();
     bool notice = notice_due(now);
@@ -533,7 +537,7 @@ void overlay_frame(void *cpu) {
     ImGuiIO &io = ImGui::GetIO();
     bool touch = touch_drawn();  // (hidden, the settings button still shows)
     bool stats = perfstats_visible();  // ([Performance] ShowStats: runtime/perfstats.cpp)
-    if (!open && !free_render && !notice && !chat && !touch && !stats) {  // (nothing to draw)
+    if (!open && !free_render && !notice && !chat && !touch && !stats && !credits) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear();
         apply_input(io);  // (keep the queue short)

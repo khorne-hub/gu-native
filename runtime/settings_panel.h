@@ -2,6 +2,10 @@
 #include <stdbool.h>
 // Called only by the overlay's game-thread frame builder.
 void settings_panel(bool *open);
+// (game thread) the menu is closed: its state let go, nothing drawn (the overlay, before its ImGui frame begins)
+void settings_panel_idle(void);
+// (game thread) the credits are on the screen now or about to be: the overlay draws a frame for them
+bool settings_panel_credits_up(void);
 
 void settings_panel_request_close(void); // Thread-safe request; consumed by the game frame.
 bool settings_panel_confirming(void);
