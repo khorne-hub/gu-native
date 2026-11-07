@@ -123,7 +123,9 @@ struct State {
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel;
 // (the key pressed while a key is being chosen, or KEY_MOUSE + a mouse button; -1: none yet)
 std::atomic<int> captured_key{-1};
-const char *tr(const char *text) { return settings_text(s.draft.language, text); }
+// (the draft's language while the menu edits it; before the menu first opens - the credits at the start - the saved one:
+// the draft is still empty then, and the credits came out in English on a Spanish system)
+const char *tr(const char *text) { return settings_text(s.editing ? s.draft.language : config_language(), text); }
 std::string fmt(const char *text, ...) {
     char buffer[512];
     va_list args;
