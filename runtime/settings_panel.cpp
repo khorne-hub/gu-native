@@ -12,6 +12,9 @@
 #include "net/net.h"
 #include "touch.h"
 #include "imgui_internal.h"
+#ifndef MHGU_VERSION
+#define MHGU_VERSION ""  // (the build gives it: native/CMakeLists.txt)
+#endif
 #include <SDL3/SDL.h>
 #include <algorithm>
 #include <array>
@@ -249,9 +252,11 @@ void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
     diamond(dl, knob.GetCenter(), side * .2f, on ? IM_COL32(28, 20, 15, 255) : IM_COL32(60, 48, 40, 255));
 }
 // The Mods tab: the mods folder's state (modorder.h), which is saved with the rest of the settings
-constexpr int PAGES = 8, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7;
+constexpr int PAGES = 9, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7, ABOUT_PAGE = 8;
 const char *const page_names[PAGES] = {"Display", "Graphics & Audio", "Controls", "Network",
-                                       "Misc",    "Mods",             "Cheats",   "Menu Options"};
+                                       "Misc",    "Mods",             "Cheats",   "Menu Options",
+                                       "Credits & Licenses"};
+void credits_show();  // (the credits shown when the app opens: draw_credits, further down)
 struct ScanResult {
     std::vector<std::string> names;  // (the order ModConflict's indexes are in)
     ModScan scan = {};
@@ -1508,7 +1513,6 @@ std::vector<Row> main_rows() {
         r.back().help = tr("Copies your save to a folder you choose, to take it to an emulator or another device.");
         action(r, "log.share", tr("Share log"), []() { ui_request_share_log(); });
         r.back().help = tr("Sends the game's log to the app you choose, for whoever is helping you with a problem.");
-        action(r, "licenses", tr("Licenses"), []() { ui_request_licenses(); });
 #endif
         if (!touch_ui()) {  // (the phone's menu fills the screen: nothing to move)
             action(r, "detach", tr(s.floating ? "Attach menu" : "Detach menu"), []() {
@@ -1530,10 +1534,20 @@ std::vector<Row> main_rows() {
         action(r, "restart", tr("Restart"), []() { push(View::Restart, "dialog.cancel"); });
         action(r, "exit", tr("Exit game"), []() { push(View::Exit, "dialog.cancel"); });
         break;
+    case ABOUT_PAGE: // (who made it, where the official one is, the licences and the legal notice)
+        header(r, "about.head", std::string("MHGU for Android ") + MHGU_VERSION);
+        action(r, "credits", tr("Show the credits"), []() { credits_show(); });
+        r.back().help = tr("Made by khorne-hub. Free. Only the links khorne-hub gives are official: if you got it anywhere else, paid for it, or it came with ads, it is not the official one. Official page: github.com/khorne-hub/gu-native. Based on MHGURecomp. Also by khorne-hub: MH4U for Android, github.com/khorne-hub/4u-native.");
+#ifdef __ANDROID__
+        action(r, "licenses", tr("Licenses"), []() { ui_request_licenses(); });
+        r.back().help = tr("The licenses of the software this app is made with, and the legal notice: this app includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
+#endif
+        break;
     }
     if (!touch_ui() || SDL_HasGamepad())  // (a finger has the header's Save; a controller can't reach that one)
         action(r, "save", tr("Save"), []() { s.command = Command::Save; }, dirty());
-    action(r, "reset", tr("Reset this tab"), []() { push(View::Reset, "dialog.cancel"); });
+    if (s.page != ABOUT_PAGE) // (Credits & Licenses: nothing to reset)
+        action(r, "reset", tr("Reset this tab"), []() { push(View::Reset, "dialog.cancel"); });
     return r;
 }
 bool save() {
@@ -2884,6 +2898,93 @@ void report(bool *open) {
     if (!*open)
         s.editing = false;
 }
+// ---------------------------------------------------------------- the credits
+// Shown over the game for a few seconds when the app opens (again from Credits & Licenses): who made it and where the
+// official one is, so a copy passed around elsewhere still says so
+double g_credits_at = -1;
+bool g_credits_asked = false;  // (Show the credits: over the menu too)
+void credits_show() {
+    g_credits_at = SDL_GetTicks() / 1000.0;
+    g_credits_asked = true;
+}
+void draw_credits() {
+    constexpr double kShown = 8, kIn = .4, kFade = .9;
+    const double now = SDL_GetTicks() / 1000.0;
+    if (g_credits_at < 0)
+        g_credits_at = now;
+    const double t = now - g_credits_at;
+    if (t > kShown)
+        return;
+    const float a = (float)std::clamp(std::min(t / kIn, (kShown - t) / kFade), 0.0, 1.0);
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    const Look k = touch_look();
+    const Theme &th = theme();
+    ImFont *font = ImGui::GetFont();
+    const char *title = "MHGU for Android";
+    const std::string lines[] = {
+        std::string(tr("Version")) + " " MHGU_VERSION "  \xC2\xB7  " + tr("by") + " khorne-hub",
+        tr("Free, made by fans"),
+        std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native",
+        tr("Based on MHGURecomp"),
+    };
+    const char *warns[] = {tr("Only the links khorne-hub gives are official."),
+                           tr("Got it elsewhere, paid for it or it has ads? It is not the official one.")};
+    // (sized to the screen's height, smaller when it doesn't fit its width)
+    float f = std::floor(std::clamp(vp->Size.y * .034f, 12.f, 44.f)), w = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        w = font->CalcTextSizeA(std::floor(f * 1.5f), FLT_MAX, 0, title).x;
+        for (const std::string &l : lines)
+            w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, l.c_str()).x);
+        for (const char *l : warns)
+            w = std::max(w, font->CalcTextSizeA(std::floor(f * .85f), FLT_MAX, 0, l).x);
+        const float room = vp->Size.x * .9f - f * 2.6f;
+        if (w <= room)
+            break;
+        f = std::floor(f * room / w);
+    }
+    const float tsz = std::floor(f * 1.5f), small = std::floor(f * .85f), gap = std::floor(f * .4f), pad = std::floor(f * 1.3f);
+    const float line = std::max(1.f, std::floor(f * .09f));
+    const float h = tsz + gap * 3 + 4 * (f + gap) + gap + small * 2 + gap * .5f;
+    const ImVec2 c(vp->Pos.x + vp->Size.x * .5f, vp->Pos.y + vp->Size.y * .5f);
+    const ImRect box(ImVec2(std::floor(c.x - w * .5f - pad), std::floor(c.y - h * .5f - pad)),
+                     ImVec2(std::floor(c.x + w * .5f + pad), std::floor(c.y + h * .5f + pad)));
+    // (the game's window: a wine-dark panel, a bronze edge, a gold rule inside and gold studs on its corners)
+    dl->AddRectFilled(ImVec2(box.Min.x + line * 2, box.Min.y + line * 2), ImVec2(box.Max.x + line * 2, box.Max.y + line * 2),
+                      fade(IM_COL32(0, 0, 0, 140), a));
+    dl->AddRectFilled(box.Min, box.Max, fade(IM_COL32(50, 25, 24, 246), a));
+    dl->AddRect(box.Min, box.Max, fade(IM_COL32(112, 76, 34, 255), a), 0, 0, line * 1.6f);
+    const float in = line * 3.2f;
+    const ImU32 gold = IM_COL32(222, 186, 96, 255);
+    dl->AddRect(ImVec2(box.Min.x + in, box.Min.y + in), ImVec2(box.Max.x - in, box.Max.y - in), fade(gold, a * .75f), 0, 0, line * .7f);
+    for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
+        diamond(dl, p, line * 2.6f, fade(gold, a));
+    float y = box.Min.y + pad;
+    ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    shadow_text(dl, tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    y += tsz + gap * 1.5f;
+    { // (a gold rule with a diamond in its middle)
+        const float half = std::min(w * .5f, f * 9);
+        dl->AddLine(ImVec2(c.x - half, y), ImVec2(c.x - f * .6f, y), fade(gold, a * .6f), line * .7f);
+        dl->AddLine(ImVec2(c.x + f * .6f, y), ImVec2(c.x + half, y), fade(gold, a * .6f), line * .7f);
+        diamond(dl, ImVec2(c.x, y), f * .3f, fade(gold, a * .9f));
+        diamond(dl, ImVec2(c.x, y), f * .13f, fade(k.band, a));
+    }
+    y += gap * 1.5f;
+    for (int i = 0; i < 4; i++) {
+        ImVec2 ls = font->CalcTextSizeA(f, FLT_MAX, 0, lines[i].c_str());
+        shadow_text(dl, f, ImVec2(std::floor(c.x - ls.x * .5f), y),
+                    fade(i == 2 ? IM_COL32(236, 212, 44, 255) : IM_COL32(242, 238, 232, 255), a), lines[i].c_str());
+        y += f + gap;
+    }
+    y += gap;
+    for (const char *l : warns) {
+        ImVec2 ws = font->CalcTextSizeA(small, FLT_MAX, 0, l);
+        shadow_text(dl, small, ImVec2(std::floor(c.x - ws.x * .5f), y), fade(IM_COL32(196, 176, 166, 255), a), l);
+        y += small + gap * .5f;
+    }
+    (void)th;
+}
 } // namespace
 void settings_panel_request_close() { request_exit.store(true); }
 void settings_panel_request_back() { request_back.store(true); }
@@ -2948,8 +3049,11 @@ void settings_panel(bool *open) {
         is_confirming = false;
         is_capturing = false;
         capture_mouse = false;
+        draw_credits();
         return;
     }
+    if (g_credits_asked)
+        draw_credits();
     if (!s.editing) {
         s.draft = s.saved = config_editable();
         s.editing = true;

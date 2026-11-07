@@ -236,7 +236,25 @@ Titulares de derechos: abran un issue para ponerse en contacto.
 ## Créditos
 
 Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliotecas listadas en
-[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias también están en la app: engranaje, **Opciones del menú**, **Licencias**.
+[THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias, con el aviso legal, también están en la app: engranaje, **Créditos y licencias**, **Licencias**.
+
+Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
+Android de la misma forma.
+
+## Descargas oficiales
+
+MHGU para Android es gratis. Las únicas descargas oficiales son los links que da khorne-hub, empezando por las
+[Releases](https://github.com/khorne-hub/gu-native/releases) de este repositorio. Si la bajaste de otro lado, pagaste por ella o
+tu copia vino con publicidad, no es la oficial.
+
+Todos los APK oficiales están firmados con la misma clave. La huella SHA-256 de su certificado es:
+
+```
+D7:2F:6F:F1:55:E0:31:2C:9C:74:86:C5:30:64:60:38:E4:24:94:C0:AD:7C:D6:5F:4B:19:FF:5D:0F:32:B2:97
+```
+
+Para revisar un APK: `apksigner verify --print-certs MHGU-<versión>.apk` (build-tools del SDK de Android). Una copia firmada
+con otra clave tampoco se puede instalar encima de la app oficial.
 
 ## Licencia
 
