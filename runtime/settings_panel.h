@@ -17,3 +17,6 @@ int settings_panel_theme(void); // THEME_*: the one picked in the menu while it 
 bool settings_panel_key(int scancode); // Choosing a key (keybind, chat): takes the key pressed (host event thread).
 bool settings_panel_mouse(int button); // Choosing a keybind: takes the mouse button pressed away from the menu's rows.
 bool settings_panel_wheel(int notches); // Choosing a keybind: takes the wheel turned (> 0 up) as Wheel Up / Down.
+// (game frame) The thank-you is open: the overlay counts it as a menu open, so every input goes to it, none to the game.
+// (settings_panel_credits_up covers it too: the overlay draws frames while it waits after the credits, shows or fades out)
+bool settings_panel_modal(void);

@@ -444,6 +444,13 @@ static inline const char *settings_text(int language, const char *english) {
         {"Only the links khorne-hub gives are official.", "Solo los links que da khorne-hub son oficiales."},
         {"Got it elsewhere, paid for it or it has ads? It is not the official one.",
          "¿La bajaste de otro lado, pagaste o tiene publicidad? No es la oficial."},
+        // The thank-you shown once after the credits of the first start, and on Credits & Licenses (settings_panel.cpp)
+        {"Thank you", "Gracias"},
+        {"To everyone who created this game, and to everyone who kept it alive over the years: thank you. This work is a love letter to the Monster Hunter series, with my deepest respect to the people who develop it.",
+         "A todas las personas que crearon este juego, y a quienes lo mantuvieron vivo a lo largo de los años: gracias. Este trabajo es una carta de amor a la saga Monster Hunter, con mi más profundo respeto a quienes la desarrollan."},
+        {"Show the thanks", "Mostrar el agradecimiento"},
+        {"Shows the thank-you again, as it showed the first time the game opened.",
+         "Muestra otra vez el agradecimiento, como apareció la primera vez que se abrió el juego."},
         {"The game code (libmhgugame.so) does not fit this version of the app.\n\nMake it again with this version's tool, then open the game to choose the folder.",
          "El código del juego (libmhgugame.so) no corresponde a esta versión de la app.\n\nCréalo de nuevo con la herramienta de esta versión y abre el juego para elegir la carpeta."},
         {"Heavy attack  A", "Ataque pesado  A"},

@@ -49,6 +49,7 @@ void vi_pause_game(void);
 
 static std::atomic<bool> g_enabled, g_ready, g_open;
 static std::atomic<bool> g_settings_open, g_forge_open;
+static std::atomic<bool> g_modal_open;  // (the thank-you, settings_panel.cpp: a menu as far as input goes, until it is closed)
 static int g_menu_key;
 static float g_font_size;
 static ImGuiStyle g_base_style;  // (unscaled; scaled copies follow the window's height)
@@ -137,14 +138,15 @@ static ImGuiKey key_of(SDL_Scancode sc, SDL_Keycode kc) {
 
 static void set_open(bool open) {
     g_forge_open = open;
-    g_open = open || g_settings_open;
+    g_open = open || g_settings_open || g_modal_open;
     SDL_Window *w = ui_window();
     if (g_open) SDL_ShowCursor();  // (full screen hides it: runtime/ui.c)
     else if (w && (SDL_GetWindowFlags(w) & SDL_WINDOW_FULLSCREEN)) SDL_HideCursor();
     Ev e = {};
     e.kind = Ev::CLEAR;  // (keys and buttons held as it opens or closes: released)
     queue(e);
-    LOG("[overlay] forge %s, settings %s\n", open ? "open" : "closed", g_settings_open ? "open" : "closed");
+    LOG("[overlay] forge %s, settings %s%s\n", open ? "open" : "closed", g_settings_open ? "open" : "closed",
+        g_modal_open ? ", thank-you open" : "");
 }
 
 static std::atomic<int> g_face_positions[4] = {1, 0, 3, 2};
@@ -159,7 +161,7 @@ void overlay_request_close(void) {
 }
 bool overlay_settings_dirty(void) { return settings_panel_dirty(); }
 void overlay_toggle_settings(void) {
-    if (!g_enabled) return;
+    if (!g_enabled || g_modal_open) return;  // (the thank-you first: closed, F1 and the chord work again)
     if (g_settings_open) { settings_panel_request_back(); return; }
     g_settings_open = true;
     set_open(g_forge_open);
@@ -180,7 +182,7 @@ bool overlay_event(const SDL_Event *e) {
         return true;
     }
     if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && (int)e->key.scancode == g_menu_key) {
-        set_open(!g_forge_open);
+        if (!g_modal_open) set_open(!g_forge_open);
         return true;
     }
     if (!g_open) return false;
@@ -571,6 +573,10 @@ void overlay_frame(void *cpu) {
     settings_panel(&settings);
     if (settings_panel_confirming()) settings = true;
     if (settings != g_settings_open) { g_settings_open = settings; set_open(g_forge_open); }
+    // The thank-you opened or closed this frame: while it is open every input is the overlay's (overlay_event, the
+    // controller in runtime/host_input.c, the fingers in runtime/touch.cpp), as with a menu
+    bool modal = settings_panel_modal();
+    if (modal != g_modal_open) { g_modal_open = modal; set_open(g_forge_open); }
     if (g_forge_open) {
         bool keep = true;
         ImGui::SetNextWindowPos(ImVec2(40 * scale, 40 * scale), ImGuiCond_FirstUseEver);

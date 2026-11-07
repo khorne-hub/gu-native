@@ -258,6 +258,13 @@ constexpr int PAGES = 9, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7, ABOUT_PAG
 const char *const page_names[PAGES] = {"Display", "Graphics & Audio", "Controls", "Network",
                                        "Misc",    "Mods",             "Cheats",   "Menu Options",
                                        "Credits & Licenses"};
+// The thank-you shown once, after the credits of the first start (draw_thanks, further down), and on Credits & Licenses
+constexpr const char *THANKS_TEXT =
+    "To everyone who created this game, and to everyone who kept it alive over the years: thank you. This work is a love "
+    "letter to the Monster Hunter series, with my deepest respect to the people who develop it.";
+void thanks_show();
+const char *thanks_signature();
+bool thanks_on(double now);
 void credits_show();  // (the credits shown when the app opens: draw_credits, further down)
 struct ScanResult {
     std::vector<std::string> names;  // (the order ModConflict's indexes are in)
@@ -1544,6 +1551,9 @@ std::vector<Row> main_rows() {
         action(r, "licenses", tr("Licenses"), []() { ui_request_licenses(); });
         r.back().help = tr("The licenses of the software this app is made with, and the legal notice: this app includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
 #endif
+        header(r, "about.thanks", tr("Thank you"));  // (its text: page_notes)
+        action(r, "thanks", tr("Show the thanks"), []() { thanks_show(); });
+        r.back().help = tr("Shows the thank-you again, as it showed the first time the game opened.");
         break;
     }
     if (!touch_ui() || SDL_HasGamepad())  // (a finger has the header's Save; a controller can't reach that one)
@@ -2461,6 +2471,10 @@ std::vector<std::pair<const char *, bool>> page_notes() {
         notes.push_back({tr("Online: only use cheats when everyone in the lobby agrees to it."), true});
         notes.push_back({tr("Cheats turn on and off when you press Save, no restart needed. Turning one off undoes its changes to the game's code; values it already changed (money, items) stay. New cheat files show up after a restart."), false});
     }
+    if (s.page == ABOUT_PAGE) {  // (the thank-you, as it showed after the credits of the first start: draw_thanks)
+        notes.push_back({tr(THANKS_TEXT), false});
+        notes.push_back({thanks_signature(), false});
+    }
     return notes;
 }
 const char *saved_text() {
@@ -2918,7 +2932,7 @@ void draw_credits() {
     if (g_credits_at < 0)
         g_credits_at = now;
     const double t = now - g_credits_at;
-    if (t > kShown)
+    if (t > kShown || thanks_on(now))  // (the thank-you on the screen: never one on the other)
         return;
     const float a = (float)std::clamp(std::min(t / kIn, (kShown - t) / kFade), 0.0, 1.0);
     ImGuiViewport *vp = ImGui::GetMainViewport();
@@ -2990,6 +3004,257 @@ void draw_credits() {
     }
     (void)th;
 }
+// ---------------------------------------------------------------- the thanks
+// Once, the first time the game opens ([Application] ThanksShown Off), after the credits: a thank-you to the people who
+// made the game and kept it alive, in the credits' look. It stays until the player closes it - Continue, a click or a tap
+// anywhere, A, B, Esc, Back (Android's too), Enter or Space - and meanwhile every input is its own: overlay.cpp counts it
+// as a menu open (settings_panel_modal), so the keyboard, the mouse, the fingers (touch.cpp) and the controller
+// (host_input.c) go to the overlay and none to the game, and here (thanks_frame, the first thing settings_panel does) it
+// takes the frame's input before the menu or a plugin reads it. The overlay draws frames for it as for the credits
+// (settings_panel_credits_up), also with nothing else on the screen. Closed, ThanksShown goes into the file at once.
+// Credits & Licenses shows its text and opens it again, over the menu, which it goes back to. MHGU_THANKS=0 keeps it from
+// showing by itself (a test run's input would wait for it), =1 shows it at every start; with MHGU_HIDDEN (no window to
+// close it in) it doesn't show by itself.
+enum class Thanks { Unknown, Wait, Open, Done };
+Thanks g_thanks = Thanks::Unknown;
+constexpr double THANKS_AFTER_S = .3, THANKS_IN_S = .35, THANKS_OUT_S = .15;
+constexpr ImGuiID THANKS_OWNER = 0x7468616e;  // (it holds every key for the rest of its frames: the menu under it gets none)
+double g_thanks_at = -1, g_thanks_shut = -1;  // (when it opened, when it closed: its fades)
+double g_thanks_arm = 1;  // (for this long after it opens it takes no answer: a press already under way, or buttons mashed
+                          // through the logos, is not one)
+// What closes it, as it lets go: a press made once it takes answers (so neither half of it reaches anything else)
+const ImGuiKey THANKS_KEYS[] = {ImGuiKey_MouseLeft, ImGuiKey_GamepadFaceDown, ImGuiKey_GamepadFaceRight, ImGuiKey_Escape,
+                                ImGuiKey_AppBack,   ImGuiKey_Enter,           ImGuiKey_KeypadEnter,       ImGuiKey_Space};
+bool g_thanks_armed[IM_COUNTOF(THANKS_KEYS)];
+void thanks_decide() {
+    if (g_thanks != Thanks::Unknown)
+        return;
+    const char *env = getenv("MHGU_THANKS");  // (once: getenv walks the whole environment)
+    const bool every = env && *env == '1', never = (env && *env == '0') || getenv("MHGU_HIDDEN");
+    g_thanks = every || (!never && !config_editable().thanks_shown) ? Thanks::Wait : Thanks::Done;
+    if (g_thanks == Thanks::Wait)
+        fprintf(stderr, "[settings] the thank-you shows after the credits (%s)\n", every ? "MHGU_THANKS=1" : "ThanksShown = Off");
+}
+void thanks_open(double now, bool asked) {
+    g_thanks = Thanks::Open;
+    g_thanks_at = now, g_thanks_shut = -1;
+    g_thanks_arm = asked ? .5 : 1.0;  // (asked for in the menu: past the key that asked for it, and its repeat)
+    memset(g_thanks_armed, 0, sizeof g_thanks_armed);
+    g_credits_asked = false;  // (credits asked for a moment before: not under it, nor back over the menu after it)
+    fprintf(stderr, "[settings] the thank-you is open%s: every input goes to it until it is closed\n",
+            asked ? " (Credits & Licenses)" : "");
+}
+void thanks_show() { thanks_open(SDL_GetTicks() / 1000.0, true); }
+bool thanks_fading(double now) { return g_thanks == Thanks::Done && g_thanks_shut >= 0 && now - g_thanks_shut < THANKS_OUT_S; }
+// [Application] ThanksShown into the file as it closes, with the settings as saved (those being edited in the menu are
+// saved or not later, as the player chooses): no Save needed, the rest of the file as it was
+void thanks_seen() {
+    Config c = config_editable();
+    if (c.thanks_shown)
+        return;
+    c.thanks_shown = 1;
+    char error[512];
+    if (!config_save(&c, error, sizeof error)) {
+        fprintf(stderr, "[settings] ThanksShown could not be saved: %s\n", error);
+        return;
+    }
+    s.draft.thanks_shown = s.saved.thanks_shown = 1;  // (a Save from the menu open under it keeps it)
+    fprintf(stderr, "[settings] ThanksShown = On: the thank-you does not show by itself again\n");
+}
+// "— khorne-hub". ImGui's own font (a desktop's, without Forge's font) has no em dash and would show '?': there the
+// banner draws the dash, and the menu's text has two hyphens
+bool has_em_dash() {
+    static ImFont *checked;
+    static bool has;
+    ImFont *font = ImGui::GetFont();
+    if (font != checked)
+        checked = font, has = font && font->IsGlyphInFont(0x2014);
+    return has;
+}
+const char *thanks_signature() { return has_em_dash() ? "\xE2\x80\x94 khorne-hub" : "-- khorne-hub"; }
+// Its answer this frame (t: since it opened); then every input of the frame is its own: each key held for whatever reads it
+// after (the menu under it, a plugin's window), nothing under it pointed at
+bool thanks_input(double t) {
+    // (a click or a tap lets go on the screen: a finger the system took, touch.cpp to_menu, lets go far outside it, and a
+    // desktop's mouse can let go outside the window)
+    const ImGuiViewport *vp = ImGui::GetMainViewport();
+    const bool on_screen = ImRect(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y)).Contains(ImGui::GetIO().MousePos);
+    bool done = false;
+    for (int i = 0; i < IM_COUNTOF(THANKS_KEYS); i++) {
+        if (ImGui::IsKeyPressed(THANKS_KEYS[i], false))
+            g_thanks_armed[i] = t >= g_thanks_arm;
+        if (ImGui::IsKeyReleased(THANKS_KEYS[i]) && g_thanks_armed[i] && (THANKS_KEYS[i] != ImGuiKey_MouseLeft || on_screen))
+            done = true;
+    }
+    for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; k++)
+        ImGui::SetKeyOwner((ImGuiKey)k, THANKS_OWNER, ImGuiInputFlags_LockThisFrame);
+    ImGuiContext &g = *ImGui::GetCurrentContext();
+    g.HoveredWindow = g.HoveredWindowUnderMovingWindow = nullptr;
+    g.IO.InputQueueCharacters.resize(0);  // (typed text too: Space would type into the menu's keyboard under it)
+    return done;
+}
+// The thank-you in the credits' look (draw_credits): a wine-dark panel, a bronze edge, a gold rule inside and gold studs
+// on its corners, over the screen dimmed; the title, a gold rule, the text centred line by line, the signature at its
+// right, Continue under it. Sized to the screen's height as the credits, smaller where it doesn't fit (a 1280x720 window,
+// a phone, upright too; a 3440x1440 screen gets the credits' largest text). a: its fade; live: open, not fading out;
+// armed: it takes answers (Continue lit, and under the mouse pointer or a finger)
+void draw_thanks(float a, bool live, bool armed) {
+    ImGuiViewport *vp = ImGui::GetMainViewport();
+    ImDrawList *dl = ImGui::GetForegroundDrawList();
+    ImFont *font = ImGui::GetFont();
+    const ImGuiIO &io = ImGui::GetIO();
+    const char *title = tr("Thank you"), *text = tr(THANKS_TEXT), *go = tr("Continue"), *name = "khorne-hub";
+    const bool glyph = has_em_dash();
+    // (the text broken into lines at a width that reads well; all of it smaller where it still doesn't fit)
+    float f = std::floor(std::clamp(vp->Size.y * .034f, 12.f, 44.f));
+    float tsz = 0, gap = 0, pad = 0, lead = 0, w = 0, h = 0, bw = 0, bh = 0, sw = 0, bar = 0, space = 0;
+    std::vector<std::pair<const char *, const char *>> rows;
+    auto lines = [&](float wrap, bool keep) {  // (how many lines at that width; keep: into rows)
+        int n = 0;
+        for (const char *p = text, *end = text + strlen(text); p < end; n++) {
+            const char *eol = font->CalcWordWrapPosition(f, p, end, wrap), *e = eol;
+            while (e > p && e[-1] == ' ')
+                --e;
+            if (keep)
+                rows.push_back({p, e});
+            for (p = eol; p < end && *p == ' ';)
+                ++p;
+        }
+        return n;
+    };
+    for (int pass = 0; pass < 3; pass++) {
+        tsz = std::floor(f * 1.5f), gap = std::floor(f * .4f), pad = std::floor(f * 1.3f), lead = std::floor(f * 1.32f);
+        // (balanced: the narrowest width that still takes as many lines, so the last one isn't a word on its own)
+        float wrap = std::max(f * 8, std::min(f * 24, vp->Size.x * .9f - pad * 2)), narrow = wrap * .5f;
+        const int count = lines(wrap, false);
+        for (int i = 0; i < 10; i++) {
+            const float mid = (narrow + wrap) * .5f;
+            (lines(mid, false) <= count ? wrap : narrow) = mid;
+        }
+        rows.clear();
+        lines(wrap, true);
+        w = font->CalcTextSizeA(tsz, FLT_MAX, 0, title).x;
+        for (const auto &r : rows)
+            w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, r.first, r.second).x);
+        bar = std::floor(f * .8f), space = font->CalcTextSizeA(f, FLT_MAX, 0, " ").x;
+        sw = glyph ? font->CalcTextSizeA(f, FLT_MAX, 0, thanks_signature()).x
+                   : bar + space + font->CalcTextSizeA(f, FLT_MAX, 0, name).x;
+        bh = std::floor(f * 2.3f);
+        bw = std::floor(std::max(f * 8, font->CalcTextSizeA(f, FLT_MAX, 0, go).x + f * 3));
+        w = std::max({w, sw, bw});
+        h = tsz + gap * 3 + rows.size() * lead + gap * .25f + f + gap * 2.5f + bh;
+        const float room_w = vp->Size.x * .96f - pad * 2, room_h = vp->Size.y * .94f - pad * 2;
+        if ((w <= room_w && h <= room_h) || f <= 10)
+            break;
+        f = std::max(10.f, std::floor(f * std::min(room_w / w, room_h / h)));
+    }
+    const float line = std::max(1.f, std::floor(f * .09f));
+    const ImVec2 c(vp->Pos.x + vp->Size.x * .5f, vp->Pos.y + vp->Size.y * .5f);
+    const ImRect box(ImVec2(std::floor(c.x - w * .5f - pad), std::floor(c.y - h * .5f - pad)),
+                     ImVec2(std::floor(c.x + w * .5f + pad), std::floor(c.y + h * .5f + pad)));
+    const ImU32 gold = IM_COL32(222, 186, 96, 255);
+    auto text_at = [&](float size, ImVec2 p, ImU32 col, const char *b, const char *e = nullptr) {  // (shadowed, as the credits')
+        const float o = std::max(1.f, size * .06f);
+        dl->AddText(font, size, ImVec2(p.x + o, p.y + o), fade(IM_COL32(0, 0, 0, 170), ((col >> 24) & 0xff) / 255.f), b, e);
+        dl->AddText(font, size, p, col, b, e);
+    };
+    // (whatever is under it dimmed: the one thing that takes input now)
+    dl->AddRectFilled(vp->Pos, ImVec2(vp->Pos.x + vp->Size.x, vp->Pos.y + vp->Size.y), fade(IM_COL32(0, 0, 0, 150), a));
+    dl->AddRectFilled(ImVec2(box.Min.x + line * 2, box.Min.y + line * 2), ImVec2(box.Max.x + line * 2, box.Max.y + line * 2),
+                      fade(IM_COL32(0, 0, 0, 140), a));
+    dl->AddRectFilled(box.Min, box.Max, fade(IM_COL32(50, 25, 24, 246), a));
+    dl->AddRect(box.Min, box.Max, fade(IM_COL32(112, 76, 34, 255), a), 0, 0, line * 1.6f);
+    const float in = line * 3.2f;
+    dl->AddRect(ImVec2(box.Min.x + in, box.Min.y + in), ImVec2(box.Max.x - in, box.Max.y - in), fade(gold, a * .75f), 0, 0,
+                line * .7f);
+    for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
+        diamond(dl, p, line * 2.6f, fade(gold, a));
+    float y = box.Min.y + pad;
+    const ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    text_at(tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    y += tsz + gap * 1.5f;
+    {  // (the credits' gold rule, a diamond in its middle)
+        const float half = std::min(w * .5f, f * 9);
+        dl->AddLine(ImVec2(c.x - half, y), ImVec2(c.x - f * .6f, y), fade(gold, a * .6f), line * .7f);
+        dl->AddLine(ImVec2(c.x + f * .6f, y), ImVec2(c.x + half, y), fade(gold, a * .6f), line * .7f);
+        diamond(dl, ImVec2(c.x, y), f * .3f, fade(gold, a * .9f));
+        diamond(dl, ImVec2(c.x, y), f * .13f, fade(IM_COL32(74, 34, 31, 255), a));
+    }
+    y += gap * 1.5f;
+    for (const auto &r : rows) {
+        const float lw = font->CalcTextSizeA(f, FLT_MAX, 0, r.first, r.second).x;
+        text_at(f, ImVec2(std::floor(c.x - lw * .5f), y), fade(IM_COL32(242, 238, 232, 255), a), r.first, r.second);
+        y += lead;
+    }
+    y += gap * .25f;
+    {  // (the signature at the text's right)
+        const float x = std::floor(c.x + w * .5f - sw);
+        if (glyph) {
+            text_at(f, ImVec2(x, y), fade(gold, a), thanks_signature());
+        } else {  // (the dash drawn at the height of the font's hyphen, as long as an em dash, a stroke thick)
+            ImFontBaked *baked = font->GetFontBaked(f);
+            const ImFontGlyph *hyphen = baked ? baked->FindGlyphNoFallback('-') : nullptr;
+            const float k = baked && baked->Size > 0 ? f / baked->Size : 1, o = std::max(1.f, f * .06f);
+            const float mid = hyphen ? y + (hyphen->Y0 + hyphen->Y1) * .5f * k : y + f * .55f;
+            const float stroke = std::max(1.f, std::floor(f * .08f + .5f));
+            const float y0 = std::floor(mid - stroke * .5f), y1 = y0 + stroke;
+            dl->AddRectFilled(ImVec2(x + o, y0 + o), ImVec2(x + bar + o, y1 + o), fade(IM_COL32(0, 0, 0, 170), a));
+            dl->AddRectFilled(ImVec2(x, y0), ImVec2(x + bar, y1), fade(gold, a));
+            text_at(f, ImVec2(x + bar + space, y), fade(gold, a), name);
+        }
+    }
+    y += f + gap * 2.5f;
+    // Continue: a plate as the menu's and the touch controls' buttons (dark, a bronze edge, a gold rule inside, gold
+    // studs), dim until it takes answers, lit under the mouse pointer or a finger
+    const ImRect btn(ImVec2(std::floor(c.x - bw * .5f), std::floor(y)), ImVec2(std::floor(c.x + bw * .5f), std::floor(y + bh)));
+    const bool over = live && armed && ImGui::IsMousePosValid(&io.MousePos) && btn.Contains(io.MousePos);
+    const bool lit = over && (io.MouseSource == ImGuiMouseSource_Mouse || io.MouseDown[0]);
+    const float on = armed ? a : a * .45f;
+    dl->AddRectFilled(ImVec2(btn.Min.x, btn.Min.y + line), ImVec2(btn.Max.x, btn.Max.y + line), fade(IM_COL32(0, 0, 0, 110), a));
+    dl->AddRectFilled(btn.Min, btn.Max, fade(lit ? IM_COL32(92, 62, 22, 255) : IM_COL32(28, 20, 15, 235), a));
+    dl->AddRect(btn.Min, btn.Max, fade(IM_COL32(112, 76, 34, 255), on), 0, 0, line);
+    const float bi = line * 1.8f;
+    dl->AddRect(ImVec2(btn.Min.x + bi, btn.Min.y + bi), ImVec2(btn.Max.x - bi, btn.Max.y - bi), fade(gold, on * .7f), 0, 0,
+                std::max(1.f, line * .45f));
+    for (ImVec2 p : {btn.Min, ImVec2(btn.Max.x, btn.Min.y), ImVec2(btn.Min.x, btn.Max.y), btn.Max})
+        diamond(dl, p, line * 1.5f, fade(gold, on));
+    if (lit)
+        dl->AddRect(ImVec2(btn.Min.x - line, btn.Min.y - line), ImVec2(btn.Max.x + line, btn.Max.y + line),
+                    fade(IM_COL32(255, 214, 92, 255), a * .7f), 0, 0, line);
+    const ImVec2 gs = font->CalcTextSizeA(f, FLT_MAX, 0, go);
+    text_at(f, ImVec2(std::floor(c.x - gs.x * .5f), std::floor(btn.GetCenter().y - gs.y * .5f)),
+            fade(lit ? IM_COL32(255, 214, 92, 255) : IM_COL32(244, 232, 200, 255), on), go);
+}
+// On the screen: open, or fading out (draw_credits waits for it: never one on the other)
+bool thanks_on(double now) { return g_thanks == Thanks::Open || thanks_fading(now); }
+// Waiting for the credits too: the overlay draws frames for it (settings_panel_credits_up), also with nothing else on the
+// screen
+bool thanks_up(double now) {
+    thanks_decide();
+    return g_thanks == Thanks::Wait || thanks_on(now);
+}
+// A frame of it, the first thing settings_panel does (only inside the overlay's frame): it opens once the credits of the
+// first start are done; while it is open, its answer and the frame's input before anything else reads them; then its
+// drawing, also as it fades out
+void thanks_frame() {
+    const double now = SDL_GetTicks() / 1000.0;
+    thanks_decide();
+    if (g_thanks == Thanks::Wait && g_credits_at >= 0 && now - g_credits_at > kCreditsShown + THANKS_AFTER_S)
+        thanks_open(now, false);
+    if (!thanks_on(now))
+        return;
+    bool live = g_thanks == Thanks::Open;
+    const double t = now - g_thanks_at;
+    if (live && thanks_input(t)) {  // (closed: input is the game's, or the menu's, from the next frame on)
+        g_thanks = Thanks::Done, g_thanks_shut = now, live = false;
+        fprintf(stderr, "[settings] the thank-you was closed after %.1f s\n", t);
+        thanks_seen();
+    }
+    const float a = live ? (float)std::clamp(t / THANKS_IN_S, 0.0, 1.0)
+                         : (float)std::clamp(1 - (now - g_thanks_shut) / THANKS_OUT_S, 0.0, 1.0);
+    if (a > 0)
+        draw_thanks(a, live, live && t >= g_thanks_arm);
+}
 } // namespace
 void settings_panel_request_close() { request_exit.store(true); }
 void settings_panel_request_back() { request_back.store(true); }
@@ -3014,8 +3279,17 @@ bool settings_panel_wheel(int notches) {
     captured_key = notches > 0 ? KEY_WHEEL_UP : KEY_WHEEL_DOWN;
     return true;
 }
+bool settings_panel_modal() { return g_thanks == Thanks::Open; }
 // Ownership has to precede NewFrame: native cancel/windowing runs there.
 void settings_panel_before_frame(bool open) {
+    // (the thank-you, the menu open under it or not: every key, so ImGui's own navigation neither moves nor activates the
+    // menu's row under it - that is decided in NewFrame - and the wheel scrolls nothing; thanks_input still reads them, and
+    // holds them for the rest of the frame)
+    if (g_thanks == Thanks::Open) {
+        for (int k = ImGuiKey_NamedKey_BEGIN; k < ImGuiKey_NamedKey_END; k++)
+            ImGui::SetKeyOwner((ImGuiKey)k, THANKS_OWNER);
+        return;
+    }
     if (!open && !request_exit.load())
         return;
     const ImGuiKey keys[] = {ImGuiKey_GamepadFaceRight,
@@ -3055,9 +3329,13 @@ void settings_panel_idle(void) {
     capture_mouse = false;
 }
 bool settings_panel_credits_up(void) {
-    return g_credits_asked || g_credits_at < 0 || SDL_GetTicks() / 1000.0 - g_credits_at <= kCreditsShown;
+    // (and the thank-you after them: it waits for them, shows and fades out over frames of its own. Asked for on Credits &
+    // Licenses they need no more than their time: g_credits_asked stays set once asked, and kept frames coming for good)
+    const double now = SDL_GetTicks() / 1000.0;
+    return g_credits_at < 0 || now - g_credits_at <= kCreditsShown || thanks_up(now);
 }
 void settings_panel(bool *open) {
+    thanks_frame();  // (first: while the thank-you is open, nothing after it gets the frame's input)
     if (!*open) {
         settings_panel_idle();
         draw_credits();

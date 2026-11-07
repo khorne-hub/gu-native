@@ -115,6 +115,8 @@ typedef struct {
     int bloom;                // [Performance] Bloom: 0 the bloom and depth of field chain is left out (nvn/vulkan/exec.c lowend_skipped)
     int reverb;               // [Audio] Reverb: 0 the game's reverb effects let the sound through dry (services/audio.c)
     int touch_show[TB_COUNT]; // [Touch] Show*: which of the game's buttons are on the screen in a hunt (runtime/touch.cpp)
+    int thanks_shown;         // [Application] ThanksShown: the thank-you shown once, after the credits of the first start,
+                              // was closed (settings_panel.cpp draw_thanks); from then on only Credits & Licenses shows it
     char touch_combo[TOUCH_COMBOS][32];  // [Touch] Combo1..: the game's buttons one screen button presses together
                                          // ("A+X"; config_combo_mask); "" none
     int touch_combo_pad[TOUCH_COMBOS];   // [Touch] Combo1Pad..: PADB_*, a controller's button that does the same

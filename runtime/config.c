@@ -33,9 +33,10 @@
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
-// touch_show: without them the touch buttons' defaults moved two places and most buttons were off)
+// touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
+// thank-you not shown yet, then the combined buttons, none)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -440,6 +441,11 @@ static const char DEFAULT_INI[] =
     "; Default: 100\n"
     "MenuScale = 100\n"
     "\n"
+    "; The thank-you shown once, after the credits, the first time the game opens (the settings menu's Credits & Licenses\n"
+    "; shows it again). On once it has been closed\n"
+    "; Default: Off\n"
+    "ThanksShown = Off\n"
+    "\n"
     "; What mhgurecomp-updater does when it is started: check GitHub for a newer release and ask before installing it,\n"
     "; install it without asking, or only start the game. Starting mhgurecomp itself never checks or updates.\n"
     "; Ask, Auto, Off\n"
@@ -645,6 +651,7 @@ const ConfigSetting g_settings[] = {
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},
     {"Application", "Theme", SET_CHOICE, F(menu_theme), 0, 0, 0, "Gold,Blue,Hunter", NULL, false, ERR_MISC},
     {"Application", "MenuScale", SET_INT, F(menu_scale), 0, 50, 200, NULL, NULL, false, ERR_SCALE},
+    ON_OFF("Application", "ThanksShown", thanks_shown, false),  // (written as the thank-you closes: settings_panel.cpp)
     {"Application", "Updates", SET_CHOICE, F(updates), 0, 0, 0, "Ask,Auto|automatic,Off|never", NULL, false, ERR_UPDATES},
 };
 #undef ON_OFF
