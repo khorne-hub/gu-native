@@ -872,10 +872,20 @@ std::atomic<bool> g_hud_pad;    // (a controller is read: its B, which cancels t
 const uint64_t LOCK_EVERY = 250 * MS, LOCK_PRESS = 50 * MS, LOCK_AFTER_DRAG = 400 * MS, MIN_PRESS = 70 * MS;
 const uint64_t BAR_HOLD = 400 * MS;  // (a finger kept this long on the item bar, unmoved, holds it open: as the MH4U port)
 
+// The Run button at its default place in a layout of the corner style (saved before the button was there): inside the
+// band's hollow, where next_style puts it, when the band would cover it (both are placed from the same corner: any
+// screen's shape tells)
+void run_clear_of_band(Layout &l) {
+    if (l.style != STYLE_CORNER || l.x[C_RUN] != DEFS[C_RUN].x || l.y[C_RUN] != DEFS[C_RUN].y) return;
+    Geo band = place(l, C_CORNER, 2.0f, 1.0f), o = place(l, C_RUN, 2.0f, 1.0f);
+    if (band_distance(band, o.c.x, o.c.y, nullptr) < band.r * BAND_T + o.r) l.x[C_RUN] = .325f, l.y[C_RUN] = .455f;
+}
+
 void ensure_loaded(State &s) {
     if (s.loaded) return;
     s.loaded = true, s.sel = -1;
     bool had = load_layout(&s.layout);
+    run_clear_of_band(s.layout);
     s.saved = s.layout;
     publish_hud(s.layout);
     g_style = s.layout.style;
