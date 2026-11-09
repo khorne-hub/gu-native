@@ -1,9 +1,10 @@
 // Touch controls for phones, in the Monster Hunter style: bronze-rimmed dark discs with cream glyphs and the game's
 // button letter on a small badge.
 //   - left thumb: a stick fixed at its place (the knob follows the thumb inside the rim); a light tilt walks, a full
-//     one walks fast; pushed far out, past a ring of gold dashes, it runs (R, the dash: [Touch] StickRun) and the run
-//     locks, going on by itself after the thumb lifts until the stick is touched again, the weapon comes out or a menu
-//     opens. With StickRun Off a Run button above the attacks runs while held
+//     one runs ([Touch] StickRun: the thumb well past the rim holds R, the dash, with the weapon sheathed); slid up into
+//     the small circle with a padlock that shows above the stick, the run locks (Call of Duty's sprint lock) and goes on
+//     forward after the thumb lifts until the stick is touched again, the weapon comes out or a menu opens. With StickRun
+//     Off a Run button above the attacks runs while held
 //   - right thumb: the attack pill (the heavy attack A on its upper half, the light one X on the lower, both on its
 //     seam), R guard / dash beside its lower end, B dodge below it, ZR, ZL target, L centre the camera (a long press:
 //     the lock-on); Plus (the game's menu), the map (the left stick's click: the minimap) and the port's settings at the
@@ -274,22 +275,17 @@ const float BAND_LEN = BAND_LEFT + PI * .5f + BAND_UP;
 // where its buttons end, in parts of its length: the guard, the light attack, the seam (both attacks), the heavy attack
 const float BAND_GUARD = .30f, BAND_SEAM0 = .63f, BAND_SEAM1 = .69f;
 const float KNOB = .45f;             // the stick's knob, in its base's radius
-// Running with the stick ([Touch] StickRun), in the stick base's radius r: the thumb pushed out to RUN_ON locks the run (R
-// held: the dash, with the weapon sheathed), which goes on after the thumb lifts, the stick held as it was; a thumb still
-// down that comes back under RUN_KEEP lets it go. The zone stays within RUN_REACH screen heights past the rim and RUN_EDGE
-// short of the screen's edge the thumb goes toward (a big stick, or one placed low, runs every way), never under RUN_MIN.
-// The same in the MH4U port's touch.cpp
-const float RUN_ON = 2.0f, RUN_KEEP = .80f, RUN_MIN = 1.25f, RUN_REACH = .11f, RUN_EDGE = .03f;
+// Running with the stick ([Touch] StickRun), in the stick base's radius r, as before: the thumb past RUN_ON runs (R held:
+// the dash, with the weapon sheathed) and lets go under RUN_OFF. And Call of Duty Mobile's sprint lock: a small circle
+// LOCK_AT above the stick (LOCK_EDGE below the screen's top at least), shown as the thumb pushes up past the rim; the thumb
+// slid into it (within LOCK_GRAB of its middle) locks the run, which goes on forward (the stick held full up: where the
+// camera looks, the right thumb steering) while the thumb stays out past the rim and after it lifts. The same in the
+// MH4U port's touch.cpp
+const float RUN_ON = 1.6f, RUN_OFF = 1.45f, LOCK_AT = 2.4f, LOCK_R = .42f, LOCK_GRAB = .55f, LOCK_EDGE = .02f;
+const float LOCK_UP = .7f;  // (the thumb's way within about 45 degrees of straight up: the circle shows)
 const uint64_t RUN_X_WAIT = 400 * 1000000ull;  // (X pressed: no run's R until this long after: touch_input)
-// The run zone's radius toward (ux, uy) (a unit vector, y down) from a stick at c of radius r, on a w x h screen
-float run_radius(ImVec2 c, float r, float ux, float uy, float w, float h) {
-    float edge = 1e30f;
-    if (ux > 1e-4f) edge = std::min(edge, (w - c.x) / ux);
-    if (ux < -1e-4f) edge = std::min(edge, c.x / -ux);
-    if (uy > 1e-4f) edge = std::min(edge, (h - c.y) / uy);
-    if (uy < -1e-4f) edge = std::min(edge, c.y / -uy);
-    return std::max(RUN_MIN * r, std::min(std::min(RUN_ON * r, r + RUN_REACH * h), edge - RUN_EDGE * h));
-}
+// The lock circle's middle, for a stick at (bx, by) of radius r on a screen h high
+ImVec2 lock_spot(float bx, float by, float r, float h) { return ImVec2(bx, std::max(by - LOCK_AT * r, LOCK_R * r + LOCK_EDGE * h)); }
 const float CAMERA_COUNTS = 1150.0f; // mouse counts for a drag the screen's height (hle/mousecam.c: 0.08 degrees each)
 const uint64_t MS = 1000000ull;
 // a Hunter Art's row: its button
@@ -793,10 +789,10 @@ struct State {
     Pulse pulse[6];
     bool run;                // running: R held (the stick's locked run, or the Run button held)
     bool run_lock;           // the stick's run locked ([Touch] StickRun): it goes on after the thumb lifts...
-    bool run_free;           // ...and the thumb has lifted: the stick stays pushed toward run_x, run_y
-    bool run_armed;          // the thumb was inside the run zone since it landed or the last run ended (it may lock)
-    bool run_can;            // a run could start now (StickRun, sheathed, no menu, the hunter played: the zone shows)
-    float run_x, run_y;      // the locked run's way (the stick's, y up, unit length)
+    bool run_free;           // ...and the thumb has lifted: the stick stays pushed full forward
+    bool run_armed;          // the thumb was inside the stick's rim since it landed or the last lock ended (it may lock)
+    bool run_can;            // a lock could start now (StickRun, sheathed, no menu, the hunter played: the circle shows)
+    bool rim;                // the thumb past the rim runs (RUN_ON, down to RUN_OFF)
     uint64_t run_x_until;    // an attack that draws the weapon (X) was pressed: no run's R until then (#151)
     float fx, fy;            // the stick's thumb where it is (the knob stops at the rim)
     bool lock;               // the lock-on: L is pressed every LOCK_EVERY while the hunt camera turns
@@ -932,9 +928,9 @@ void stick_to(State &s, float x, float y) {  // (the knob under the thumb, kept 
     s.fx = x, s.fy = y;
     float dx = x - s.bx, dy = y - s.by, d = sqrtf(dx * dx + dy * dy);
     float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
-    // (inside the run zone: pushed out past it from here, it may run; every finger event, not each update, so that a quick
-    // flick out counts)
-    if (d < 1.0f || d < run_radius(ImVec2(s.bx, s.by), r, dx / d, dy / d, s.w, s.h)) s.run_armed = true;
+    // (inside the rim: pushed from here into the lock circle, it may lock; every finger event, not each update, so that a
+    // quick flick counts)
+    if (d < r) s.run_armed = true;
     if (d > r) x = s.bx + dx / d * r, y = s.by + dy / d * r;
     s.kx = x, s.ky = y;
 }
@@ -1930,7 +1926,10 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     s.stick_part = 0;
     bool moving = false;
-    if (s.stick_on && s.h > 0) {
+    if (s.run_lock && s.h > 0) {  // (the sprint lock, the thumb out past the rim or lifted: the stick held full forward,
+        *ly += 32767;              // where the camera looks: the right thumb steers)
+        moving = true;
+    } else if (s.stick_on && s.h > 0) {
         float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
         float dx = (s.kx - s.bx) / r, dy = -(s.ky - s.by) / r;  // (screen y is down, the stick's up)
         float m = sqrtf(dx * dx + dy * dy);
@@ -1941,15 +1940,13 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
             *lx += (int)(dx * t * 32767), *ly += (int)(dy * t * 32767);
             moving = m > .3f;
         }
-    } else if (s.run_free && s.h > 0) {  // (a locked run, the thumb lifted: the stick held full out the way it ran,
-        *lx += (int)(s.run_x * 32767), *ly += (int)(s.run_y * 32767);  // turning with the camera as a held stick does)
-        moving = true;
     }
     // Running, R held: the dash with the weapon sheathed (never with it out: R is some weapons' guard, and not in a menu:
-    // R turns its pages). [Touch] StickRun: the thumb pushed out past the run zone, from inside it while a run can start,
-    // locks the run with a click; it goes on after the thumb lifts (above) until run_end. StickRun Off: the Run button,
-    // while held. No run's R with X pressed or just after: X draws the weapon, and R + X + A is another move (the Great
-    // Sword's guard from the sheath came out of a run and a draw attack: #151)
+    // R turns its pages). [Touch] StickRun: the thumb past the rim, as before (the rim), and the sprint lock: the thumb slid
+    // into the lock circle above the stick, from inside the rim while a lock can start, locks the run with a click; it goes
+    // on forward (above) until run_end. StickRun Off: the Run button, while held. No run's R with X pressed or just after:
+    // X draws the weapon, and R + X + A is another move (the Great Sword's guard from the sheath came out of a run and a
+    // draw attack: #151)
     int drawn = s.drawn;
     static int drawn_was = -2;
     if (drawn != drawn_was) {
@@ -1957,29 +1954,34 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         drawn_was = drawn;
     }
     if (s.stick_on && s.h > 0) {
-        float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h, dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy);
-        float on = d > 1.0f ? run_radius(ImVec2(s.bx, s.by), r, dx / d, dy / d, s.w, s.h) : RUN_ON * r;
-        if (!s.run_can && d > on) s.run_armed = false;  // (out there while it couldn't run - the weapon out as it was
-                                                        // sheathed: not until it has come back inside)
-        if (s.run_lock && d < r * RUN_KEEP) {
+        float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h, d = hypotf(s.fx - s.bx, s.fy - s.by);
+        // (the rim, as before: well past it, so that a thumb at the edge in a fight still walks; r is the stick's size
+        // in the layout: a bigger stick, farther)
+        s.rim = stick_run && moving && drawn != 1 && !s.menu && d > r * (s.rim ? RUN_OFF : RUN_ON);
+        ImVec2 spot = lock_spot(s.bx, s.by, r, s.h);
+        bool in_lock = hypotf(s.fx - spot.x, s.fy - spot.y) < LOCK_GRAB * r;
+        if (!s.run_can && in_lock) s.run_armed = false;  // (there while it couldn't lock - the weapon out as it was
+                                                         // sheathed: not until it has come back inside the rim)
+        if (s.run_lock && d < r) {
             run_end(s, "the thumb came back in");
-        } else if (!s.run_lock && s.run_can && moving && s.run_armed && d > on) {
+        } else if (!s.run_lock && s.run_can && s.run_armed && in_lock) {
             s.run_lock = true, s.run_free = false;
             tap_due();
-            if (dbg) rt_logf("[touch] run locked (thumb %.2f r, zone %.2f r)\n", d / r, on / r);
+            if (dbg) rt_logf("[touch] run locked (the thumb in the lock circle)\n");
         }
-        if (s.run_lock && d > r * .9f) s.run_x = dx / d, s.run_y = -dy / d;  // (its way, y up: the last the thumb pushed)
+    } else {
+        s.rim = false;
     }
     bool run_held = false;  // (the Run button)
     for (const Finger &f : s.f) run_held |= f.kind == F_BUTTON && !f.done && f.ctl == C_RUN;
-    bool want = s.run_lock || (run_held && !stick_run && drawn != 1 && !s.menu);
+    bool want = s.run_lock || s.rim || (run_held && !stick_run && drawn != 1 && !s.menu);
     if (*buttons & B(BTN_X)) s.run_x_until = now + RUN_X_WAIT;
     s.run = want && now >= s.run_x_until;
     if (s.run) *buttons |= B(BTN_R);
     static bool said_x, said_run;  // (the log: once a change)
     if (dbg && want && !s.run && !said_x) rt_logf("[touch] run: no R while X draws the weapon\n");
     said_x = want && !s.run;
-    if (dbg && s.run != said_run) rt_logf("[touch] run: R %s (%s)\n", s.run ? "held" : "let go", s.run_lock ? "the stick" : "the Run button");
+    if (dbg && s.run != said_run) rt_logf("[touch] run: R %s (%s)\n", s.run ? "held" : "let go", s.run_lock ? "the lock" : s.rim ? "the stick's rim" : "the Run button");
     said_run = s.run;
 }
 
@@ -2869,62 +2871,31 @@ void ranged_face(int i, int drawn, Icon *ic, char *letter, size_t size) {
                                   : b & B(BTN_X) ? "X" : b & B(BTN_R) ? "R" : DEFS[i].letter);
 }
 
-// The run zone round the stick at c ([Touch] StickRun): a ring of short gold dashes where the thumb pushed out locks the
-// run (each at the zone's radius that way: run_radius). nearing (0 at the rim, 1 at the zone): brighter as the thumb nears
-// it, with a glow on the ring toward the thumb (ux, uy) and the run's boot on a small disc there; locked, the ring whole
-// and lit, and a closed padlock on that disc. The same in the MH4U port's touch.cpp
-void run_ring(ImDrawList *dl, ImVec2 c, float r, float w, float h, float a, float nearing, bool locked, float ux, float uy,
-              bool cue = true) {
-    const int N = 24;
-    for (int i = 0; i < N; i++) {
-        float a0 = (i - .25f) * 2 * PI / N, a1 = (i + .25f) * 2 * PI / N, am = i * 2 * PI / N;
-        float rr = run_radius(c, r, cosf(am), sinf(am), w, h);
-        ImVec2 p0(c.x + cosf(a0) * rr, c.y + sinf(a0) * rr), p1(c.x + cosf(a1) * rr, c.y + sinf(a1) * rr);
-        dl->AddLine(p0, p1, locked ? fade(GLOW, a * .85f) : fade(GOLD, a * (.2f + .5f * nearing)), r * (locked ? .07f : .05f));
-    }
-    if (locked) {  // (whole: the gaps closed)
-        for (int i = 0; i < N; i++) {
-            float a0 = (i + .25f) * 2 * PI / N, a1 = (i + .75f) * 2 * PI / N;
-            float r0 = run_radius(c, r, cosf(a0), sinf(a0), w, h), r1 = run_radius(c, r, cosf(a1), sinf(a1), w, h);
-            dl->AddLine(ImVec2(c.x + cosf(a0) * r0, c.y + sinf(a0) * r0), ImVec2(c.x + cosf(a1) * r1, c.y + sinf(a1) * r1),
-                        fade(GLOW, a * .85f), r * .07f);
-        }
-    }
-    if (!cue || (nearing <= 0.0f && !locked)) return;
-    float an = atan2f(uy, ux), rr = run_radius(c, r, ux, uy, w, h), k = locked ? 1.0f : nearing;
-    if (!locked) {  // (the glow toward the thumb: ±25 degrees)
-        const float S = 25 * PI / 180;
-        for (int j = 0; j < 8; j++) {
-            float b0 = an - S + 2 * S * j / 8, b1 = an - S + 2 * S * (j + 1) / 8;
-            float q0 = run_radius(c, r, cosf(b0), sinf(b0), w, h), q1 = run_radius(c, r, cosf(b1), sinf(b1), w, h);
-            dl->AddLine(ImVec2(c.x + cosf(b0) * q0, c.y + sinf(b0) * q0), ImVec2(c.x + cosf(b1) * q1, c.y + sinf(b1) * q1),
-                        fade(GLOW, a * (.25f + .6f * nearing)), r * .08f);
-        }
-    }
-    // the small disc just outside the zone, toward the thumb: the boot, and once locked the padlock, closed
-    float dr = r * .24f, out = rr + dr * 1.25f;
-    ImVec2 dc(c.x + ux * out, c.y + uy * out);
-    dc.x = std::clamp(dc.x, dr, w - dr), dc.y = std::clamp(dc.y, dr, h - dr);  // (on the screen: a zone near its edge)
-    float da = a * (.35f + .65f * k);
-    disc(dl, dc, dr, locked, da);
-    if (locked) padlock(dl, dc, dr * .78f, true, fade(GLOW, da), fade(DEEP, da));
-    else icon(dl, I_RUN, dc, dr, fade(INK, da), fade(DEEP, da));
+// The sprint lock's circle above the stick ([Touch] StickRun): a small disc with a padlock, open, faded in (a) as the thumb
+// pushes up toward it; locked, lit, the padlock closed, a gold ring round it. The same in the MH4U port's touch.cpp
+void lock_circle(ImDrawList *dl, ImVec2 c, float cr, float a, bool locked) {
+    if (a <= 0.0f) return;
+    disc(dl, c, cr, locked, a);
+    padlock(dl, ImVec2(c.x, c.y - cr * .08f), cr * .74f, locked, fade(locked ? GLOW : INK, a), fade(DEEP, a));
+    if (locked) dl->AddCircle(c, cr * 1.18f, fade(GLOW, a * (.6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4))), 32, cr * .1f);
 }
 
 void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
     Geo g = place(l, i, w, h);
     if (i == C_STICK) {
         if ((s.stick_on || s.run_free) && !s.edit) {
-            // (a locked run going on by itself: the knob held at the rim the way it runs)
-            ImVec2 base(s.bx, s.by), knob = s.stick_on ? ImVec2(s.kx, s.ky) : ImVec2(s.bx + s.run_x * g.r, s.by - s.run_y * g.r);
+            // (a locked run going on by itself: the knob held at the rim, forward)
+            ImVec2 base(s.bx, s.by), knob = s.stick_on ? ImVec2(s.kx, s.ky) : ImVec2(s.bx, s.by - g.r);
             stick(dl, base, knob, g.r, a, true);
-            if (s.run_lock || (s.run_can && s.stick_on)) {  // (the run zone: while a run can start and the thumb is on it)
-                float dx = s.stick_on ? s.fx - s.bx : s.run_x, dy = s.stick_on ? s.fy - s.by : -s.run_y, d = hypotf(dx, dy);
-                float ux = d > 1e-3f ? dx / d : 0.0f, uy = d > 1e-3f ? dy / d : -1.0f;
-                float on = run_radius(base, g.r, ux, uy, w, h);
-                float nearing = s.stick_on ? std::clamp((d - g.r) / std::max(1.0f, on - g.r), 0.0f, 1.0f) : 1.0f;
-                run_ring(dl, base, g.r, w, h, a, nearing, s.run_lock, ux, uy);
+            // the sprint lock's circle: faded in as the thumb pushes up past the rim while a lock could start; lit locked
+            float v = s.run_lock ? 1.0f : 0.0f;
+            ImVec2 spot = lock_spot(s.bx, s.by, g.r, h);
+            if (!s.run_lock && s.run_can && s.stick_on) {
+                float dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy), up = d > 1.0f ? -dy / d : 0.0f;
+                float reach = std::max(1.0f, (s.by - spot.y) - (LOCK_R + .9f) * g.r);
+                v = std::clamp((d - .9f * g.r) / reach, 0.0f, 1.0f) * std::clamp((up - LOCK_UP) / .15f, 0.0f, 1.0f);
             }
+            lock_circle(dl, spot, LOCK_R * g.r, a * v, s.run_lock);
             if (s.run) {  // (running: a gold ring round the rim, and streaks behind the knob)
                 dl->AddCircle(base, g.r * 1.12f, fade(GLOW, a * .85f), 48, g.r * .07f);
                 float dx = knob.x - s.bx, dy = knob.y - s.by, n = std::max(1.0f, hypotf(dx, dy));
@@ -3181,14 +3152,14 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     for (int i = 0; i < C_LAID && touch; i++) {
         if (!in_editor(i)) continue;  // (the controls no longer there stay in the file's order only)
         control(dl, font, s.layout, i, w, h, s, 1.0f);
-        if (i == C_STICK && config_live_touch_show(TB_STICK_RUN)) {  // (the run zone, as far out as the stick's size and
-            Geo g = place(s.layout, i, w, h);                         // place put it: StickRun)
-            run_ring(dl, g.c, g.r, w, h, 1.0f, .6f, false, 0.0f, -1.0f, false);
-            // (its name just outside it toward the screen's middle: above it, the editor's panel can lie over it)
+        if (i == C_STICK && config_live_touch_show(TB_STICK_RUN)) {  // (the sprint lock's circle above it: StickRun)
+            Geo g = place(s.layout, i, w, h);
+            ImVec2 spot = lock_spot(g.c.x, g.c.y, g.r, h);
+            float cr = LOCK_R * g.r;
+            lock_circle(dl, spot, cr, .8f, false);
             const char *rt = T("Run");
             float fs = .02f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, rt).x;
-            float right = g.c.x + run_radius(g.c, g.r, 1.0f, 0.0f, w, h);
-            text_center(dl, font, fs, ImVec2(right + tw * .5f + .012f * h, g.c.y), GOLD, rt, w);
+            text_center(dl, font, fs, ImVec2(spot.x + cr * 1.35f + tw * .5f, spot.y), GOLD, rt, w);
         }
         if (i == C_MPAD)  // (its tabs and Minus with it, where it puts them)
             for (int j = C_ML; j <= C_MMINUS; j++)
