@@ -159,6 +159,9 @@ static VkImageAspectFlags aspect_of(uint32_t f) {
 }
 
 static bool format_supports(VkFormat f, VkFormatFeatureFlags want) {
+    static int no_bc = -1;  // (tests: MHGU_VK_NO_BC=1, BC textures decoded on the CPU as on a GPU without them: #171)
+    if (no_bc < 0) no_bc = getenv("MHGU_VK_NO_BC") != NULL;
+    if (no_bc && f >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && f <= VK_FORMAT_BC7_SRGB_BLOCK) return false;
     VkFormatProperties p;
     vkGetPhysicalDeviceFormatProperties(g_vk.phys, f, &p);
     return (p.optimalTilingFeatures & want) == want;

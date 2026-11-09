@@ -209,7 +209,8 @@ static void script_parse(void) {
 //   burst <n> <name>       save the next n presented frames as shots/<name>_<i>.png
 //   dump [n]               save colour target 0 (or the depth of a depth-only pass) of every render pass of the next
 //                          frame (shots/pass_*.png), or of the next n frames (shots/f<i>_pass_*.png for i >= 1)
-//   hudtrace               log every HUD quad of the next frame: its layer, place, and where 16:10 / ultrawide moved it
+//   hudtrace               log every HUD quad of the next frame: its layer, place, and where 16:10 / ultrawide moved it;
+//                          and each pass (targets, stand-ins, area), draw (program, viewport, scissor, textures), copy and dispatch
 //   frame                  log the current frame number
 //   type <text>            type into the game's text entry (runtime/textinput.c); textkey enter|escape|backspace
 //   mousemove <x> <y> <ms> mouse look as if the mouse moved at that many counts a second (y down) for that long

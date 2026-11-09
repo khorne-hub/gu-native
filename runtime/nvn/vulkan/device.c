@@ -82,6 +82,7 @@ static uint32_t instance_api;  // the Vulkan version asked of the instance
 extern bool maxwell_no_int64;   // (nvn/maxwell/translate.c)
 
 static uint32_t msaa_floor(uint32_t s);
+bool vk_gpu_adreno(void);
 #ifdef __ANDROID__
 PFN_vkGetInstanceProcAddr gpu_driver_loader(void);  // (platform/android_gpu.c)
 bool gpu_driver_surface(SDL_Window *win, VkInstance inst, VkSurfaceKHR *out);
@@ -549,6 +550,9 @@ static void create_device(void) {
     }
     g_vk.divisor = g_vk.divisor && div_have.vertexAttributeInstanceRateDivisor;
     g_vk.custom_border = g_vk.custom_border && cbc_have.customBorderColors && cbc_have.customBorderColorWithoutFormat;
+    // (tests: a GPU without them, as an Adreno 640 on 1.1.128 has no custom border colours and a Mali no divisor: #171)
+    if (getenv("MHGU_VK_NO_DIVISOR")) g_vk.divisor = false;
+    if (getenv("MHGU_VK_NO_BORDER")) g_vk.custom_border = false;
 
     VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT div = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT, .vertexAttributeInstanceRateDivisor = VK_TRUE};
@@ -737,7 +741,7 @@ static void pipeline_cache_save(void) {
 // device here does it, so those drivers keep 2x below 720 lines, and nothing else changes
 // [Performance] AdrenoFix Off: never (an Adreno 610 on 1.1.128 was dark and flickering with it, at 40 to 70%; and 2x costs)
 static uint32_t msaa_floor(uint32_t s) {
-    if (s > 1 || g_vk.api12 || !strstr(g_vk.props.deviceName, "Adreno") || g_config.render_h >= 720 || !(g_vk.msaa_counts & 2)) return s;
+    if (s > 1 || g_vk.api12 || !vk_gpu_adreno() || g_config.render_h >= 720 || !(g_vk.msaa_counts & 2)) return s;
     if (g_config.adreno_fix) {
         static bool said;
         if (!said) LOG("[vk] MSAA as set: AdrenoFix is off (this driver may repeat a small picture without MSAA)\n");
@@ -749,7 +753,19 @@ static uint32_t msaa_floor(uint32_t s) {
     told = true;
     return 2;
 }
-bool vk_gpu_adreno(void) { return strstr(g_vk.props.deviceName, "Adreno") != NULL; }
+// (tests: MHGU_VK_ADRENO=1 takes the Adreno-only paths on another GPU - one sample's alpha to coverage as an alpha test,
+// AdrenoFix's MSAA floor on a Vulkan 1.1 driver, the clears as draws under 1.1.128 - and MHGU_VK_ADRENO=0 leaves them out on
+// an Adreno: a Mali phone can show what they do, issues #70, #161, #171)
+bool vk_gpu_adreno(void) {
+    static int v = -1;
+    if (v < 0) {
+        if (!g_vk.props.deviceName[0]) return false;  // (no device chosen yet)
+        const char *e = getenv("MHGU_VK_ADRENO");
+        v = e ? atoi(e) != 0 : strstr(g_vk.props.deviceName, "Adreno") != NULL;
+        if (e) LOG("[vk] MHGU_VK_ADRENO=%d: the Adreno-only paths %s\n", v, v ? "taken" : "left out");
+    }
+    return v;
+}
 bool vk_gpu_adreno_fix_applies(void) { return vk_gpu_adreno() && !g_vk.api12; }  // ([Performance] AdrenoFix: its menu row)
 
 // (platform/android_perf.c, the minute's [mem] line) VMA's VkDeviceMemory blocks, its allocations and their bytes

@@ -137,7 +137,13 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
   `MHGU_FORCE_NOLSE=1` the adapted game code on any CPU, `MHGU_BCN_LOG=1` the time big BC textures take.
 - `control.txt`: appended commands, read while the game runs. `A 8`, `DOWN 8`, `type <text>`, `textkey enter`,
   `memsave <hex address> <hex size> <file>`, `peek`, `poke`, `gpuprof` for one frame's time per render pass, `hudtrace` for one
-  frame's HUD layers, and `crash` for the error screen. Create `control.txt` from the shell with `chmod 666`, or the app can't read it.
+  frame's HUD layers (and each pass's targets and area, each draw's program, viewport, scissor and textures, copies and dispatches),
+  `plpos` for the hunter's place, `STICK_UP 25` and the like to walk, and `crash` for the error screen. Create `control.txt` from
+  the shell with `chmod 666`, or the app can't read it.
+- Another GPU's paths, for bugs only some phones show: `MHGU_VK11=1` (Vulkan 1.1), `MHGU_VK_NO_INT64=1`, `MHGU_VK_NO_BC=1` (BC
+  decoded on the CPU), `MHGU_VK_NO_DIVISOR=1`, `MHGU_VK_NO_BORDER=1` (no custom border colours), `MHGU_VK_D24=0` (D32S8 depth) and
+  `MHGU_VK_ADRENO=1` (the Adreno-only workarounds on any GPU; `0` leaves them out on an Adreno). `MHGU_ASPECT=1612:720` gives a
+  4:3 screen a wide picture (letterboxed) and `MHGU_CONFIG=<file>` another ini, so a phone's own settings stay untouched.
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
