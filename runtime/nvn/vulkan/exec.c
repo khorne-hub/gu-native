@@ -812,7 +812,10 @@ static void *worker(void *a) {
 
 static bool sync_shaders(void) {
     static int v = -1;
-    if (v < 0) v = getenv("MHGU_SYNC_SHADERS") != NULL;
+    if (v < 0) {  // (PowerVR too: its shader compiler crashes building on several threads at once, issues #73, #99)
+        v = getenv("MHGU_SYNC_SHADERS") != NULL || strstr(g_vk.props.deviceName, "PowerVR") != NULL;
+        if (v) LOG("[vk] shaders and pipelines built on one thread, when first needed\n");
+    }
     return v;
 }
 
@@ -3093,7 +3096,10 @@ static void prewarm_translate(void *arg) {
 // (game thread) nvnProgramSetShaders
 void backend_program_created(const NvnProgram *np) {
     static int on = -1;
-    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders();
+    // (not on PowerVR: its shader compiler crashes building many pipelines at once, so a phone that played once closed at
+    // every later start, the saved pipelines being built on the workers (issues #73, #99; the MH4U port saw the same))
+    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders() &&
+                     !strstr(g_vk.props.deviceName, "PowerVR");
     if (!on || !(np->stage_mask & 1) || !(np->stage_mask & 2)) return;
     PrewarmReq *r = malloc(sizeof *r);
     for (int i = 0; i < 2; i++) {
