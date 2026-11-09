@@ -846,6 +846,8 @@ void vk_mem_summary(char *out, size_t size) {
     if (drv_create_graphics && n > 0 && (size_t)n < size)  // (PowerVR: the driver's compiles so far, one at a time)
         snprintf(out + n, size - (size_t)n, ", %llu compiles one at a time (longest wait %.0f ms)",
                  (unsigned long long)atomic_load(&compiler_calls), atomic_load(&compiler_wait_max) / 1e6);
+#else
+    (void)n;
 #endif
 }
 
