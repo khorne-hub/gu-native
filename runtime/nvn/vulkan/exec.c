@@ -4605,6 +4605,7 @@ static void clear(int index, int kind, const void *color, uint32_t mask, bool de
                   uint32_t smask);
 static bool shadow_skipped(void) {
     static NvnTexture *cleared[8];
+    static VkImage cleared_image[8];  // (the image the atlas had then: the game may give it a new one, after a quest)
     if (config_live_shadows()) {
         memset(cleared, 0, sizeof cleared);  // (turned on again: cleared again when it next goes off)
         return false;
@@ -4614,12 +4615,16 @@ static bool shadow_skipped(void) {
     if (!d || (d->width < 512 && d->height < 512) || (d->width == g_render_size[0] && d->height == g_render_size[1])) return false;
     int i = 0;
     while (i < 8 && cleared[i] && cleared[i] != d) i++;
-    if (i < 8 && !cleared[i]) {  // (the first time: the far depth, once; a new atlas - another zone's - once too)
+    VkImage image = d->backend ? ((TexBackend *)d->backend)->image : VK_NULL_HANDLE;
+    // (the first time: the far depth, once; a new atlas - another zone's - once too; and the same atlas again when its
+    // image was made anew: left as it was, its garbage put the whole scene in shadow, dark after a quest - #88, #105)
+    if (i < 8 && (!cleared[i] || cleared_image[i] != image)) {
         bool relaxed = ui_relax_scissor;  // (the whole atlas, not the cascade the scissor is set for)
         ui_relax_scissor = true;
         clear(-1, 0, NULL, 0, true, 1.0f, false, 0, 0);
         ui_relax_scissor = relaxed;
         cleared[i] = d;
+        cleared_image[i] = image;
         LOG("[vk] shadows off: the %ux%u shadow atlas cleared once, its draws left out\n", d->width, d->height);
     }
     renderer_mark_gpu_owned(d);  // (not to be uploaded from the guest's memory when sampled)
