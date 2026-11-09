@@ -3857,17 +3857,18 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // left and right)
                         anchor = pos_x >= 650.0f ? ANCHOR_RIGHT : ANCHOR_LEFT;
                         vanchor = pos_y < 360.0f ? V_TOP : V_BOTTOM;
+                        // (the dialogue box keeps the middle 16:9: at 21:9 or Edges it went under the touch stick, #77, #101)
+                        if (pos_y >= 360.0f && pos_x < 650.0f) anchor = ANCHOR_CENTER;
                     } else if (fabsf(pos_z - 97.0f) < 0.5f || fabsf(pos_z - 98.0f) < 0.5f) {
                         // 97.0: Menus and Submenus
                         // 98.0: text drawn over them (the Qty. label of the quantity box): it used the generic rule, which
                         // centered it 36 px below its top-anchored box
                         // Left window (Quest Info: x <= 430) -> Left anchor
                         // Submenu & Pause Menu (Combine, Items, Menu 1/2: x > 430) -> Right anchor
-                        if (pos_x > 430.0f) {
-                            anchor = ANCHOR_RIGHT;
-                        } else {
-                            anchor = ANCHOR_LEFT;
-                        }
+                        // The game lays its windows out for 16:9: they keep the middle 16:9 at any HUD anchor (split to
+                        // the edges at 21:9 / Edges, they went under the touch controls: #77, #101); the HUD's parts
+                        // on the other layers still go to the edges
+                        anchor = ANCHOR_CENTER;
                         // The Quest Complete banner's lower border slides in from y 739: it belongs to the bottom edge.
                         vanchor = pos_y > 650.0f ? V_BOTTOM : V_TOP;
                         // The Quest Complete stamp is one picture, after its borders (x 640, by the top and bottom edges; the
