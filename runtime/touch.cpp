@@ -1962,13 +1962,15 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     bool run_held = false;  // (the Run button)
     for (const Finger &f : s.f) run_held |= f.kind == F_BUTTON && !f.done && f.ctl == C_RUN;
-    bool want = s.run_lock || (run_held && !stick_run && moving && drawn != 1 && !s.menu);
+    bool want = s.run_lock || (run_held && !stick_run && drawn != 1 && !s.menu);
     if (*buttons & B(BTN_X)) s.run_x_until = now + RUN_X_WAIT;
     s.run = want && now >= s.run_x_until;
     if (s.run) *buttons |= B(BTN_R);
-    static bool said_x;
+    static bool said_x, said_run;  // (the log: once a change)
     if (dbg && want && !s.run && !said_x) rt_logf("[touch] run: no R while X draws the weapon\n");
     said_x = want && !s.run;
+    if (dbg && s.run != said_run) rt_logf("[touch] run: R %s (%s)\n", s.run ? "held" : "let go", s.run_lock ? "the stick" : "the Run button");
+    said_run = s.run;
 }
 
 extern "C" bool touch_visible(void) { return g_visible; }
