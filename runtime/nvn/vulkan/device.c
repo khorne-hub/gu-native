@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <math.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -494,6 +495,78 @@ VkResult vk_create_buffer(const VkBufferCreateInfo *bi, VkBuffer *buf, VmaAlloca
     return vmaCreateBuffer(g_vk.vma, bi, &ai, buf, mem, NULL);
 }
 
+// ---- PowerVR: one driver compile at a time
+// Its shader compiler crashed building several pipelines at once: a phone that had played once closed at every later start,
+// while three workers built the saved pipelines (issues #73, #99). 0.1.8 then built every shader and pipeline on the render
+// thread, and the start built every saved program and pipeline there before its first picture: a black screen for minutes
+// on a Helio G35 (#157). The builds stay on the workers instead (one: exec.c compile_workers), and every call into the
+// driver's compiler takes compiler_lock, from any thread (the worker, the render thread's own pipelines, FSR's, the
+// overlay's): volk's pointers are replaced, which every caller goes through. Never two at once, and the render thread keeps
+// presenting while the saved ones build. MHGU_VK_POWERVR=1 treats another GPU as a PowerVR (this and the rest it gets).
+bool vk_gpu_powervr(void) {
+    static int v = -1;
+    if (v < 0 && g_vk.props.deviceName[0])
+        v = strstr(g_vk.props.deviceName, "PowerVR") != NULL || getenv("MHGU_VK_POWERVR") != NULL;
+    return v > 0;
+}
+
+#ifdef VOLK_H_
+static pthread_mutex_t compiler_lock = PTHREAD_MUTEX_INITIALIZER;
+static PFN_vkCreateShaderModule drv_create_module;
+static PFN_vkCreateGraphicsPipelines drv_create_graphics;
+static PFN_vkCreateComputePipelines drv_create_compute;
+static PFN_vkGetPipelineCacheData drv_cache_data;
+static _Atomic uint64_t compiler_calls, compiler_wait_max;  // (the [mem] line: vk_mem_summary)
+static void compiler_enter(void) {
+    uint64_t t0 = plat_now_ns();
+    pthread_mutex_lock(&compiler_lock);
+    uint64_t w = plat_now_ns() - t0, m = atomic_load(&compiler_wait_max);
+    while (w > m && !atomic_compare_exchange_weak(&compiler_wait_max, &m, w)) {}
+    atomic_fetch_add(&compiler_calls, 1);
+}
+static VKAPI_ATTR VkResult VKAPI_CALL one_create_module(VkDevice d, const VkShaderModuleCreateInfo *ci,
+                                                        const VkAllocationCallbacks *a, VkShaderModule *m) {
+    compiler_enter();
+    VkResult r = drv_create_module(d, ci, a, m);
+    pthread_mutex_unlock(&compiler_lock);
+    return r;
+}
+static VKAPI_ATTR VkResult VKAPI_CALL one_create_graphics(VkDevice d, VkPipelineCache c, uint32_t n,
+                                                          const VkGraphicsPipelineCreateInfo *ci,
+                                                          const VkAllocationCallbacks *a, VkPipeline *p) {
+    compiler_enter();
+    VkResult r = drv_create_graphics(d, c, n, ci, a, p);
+    pthread_mutex_unlock(&compiler_lock);
+    return r;
+}
+static VKAPI_ATTR VkResult VKAPI_CALL one_create_compute(VkDevice d, VkPipelineCache c, uint32_t n,
+                                                         const VkComputePipelineCreateInfo *ci,
+                                                         const VkAllocationCallbacks *a, VkPipeline *p) {
+    compiler_enter();
+    VkResult r = drv_create_compute(d, c, n, ci, a, p);
+    pthread_mutex_unlock(&compiler_lock);
+    return r;
+}
+static VKAPI_ATTR VkResult VKAPI_CALL one_cache_data(VkDevice d, VkPipelineCache c, size_t *size, void *data) {
+    pthread_mutex_lock(&compiler_lock);  // (the cache the compiles write to: not read while one runs)
+    VkResult r = drv_cache_data(d, c, size, data);
+    pthread_mutex_unlock(&compiler_lock);
+    return r;
+}
+#endif
+
+static void one_compiler_install(void) {
+#ifdef VOLK_H_
+    if (!vk_gpu_powervr() || drv_create_graphics) return;
+    drv_create_module = vkCreateShaderModule, vkCreateShaderModule = one_create_module;
+    drv_create_graphics = vkCreateGraphicsPipelines, vkCreateGraphicsPipelines = one_create_graphics;
+    drv_create_compute = vkCreateComputePipelines, vkCreateComputePipelines = one_create_compute;
+    drv_cache_data = vkGetPipelineCacheData, vkGetPipelineCacheData = one_cache_data;
+    LOG("[vk] PowerVR: one shader / pipeline build at a time, on one worker (its compiler crashed building several at once)%s\n",
+        strstr(g_vk.props.deviceName, "PowerVR") ? "" : " (MHGU_VK_POWERVR)");
+#endif
+}
+
 static void create_device(void) {
     uint32_t ne = 0;
     vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, NULL);
@@ -622,6 +695,7 @@ static void create_device(void) {
             VK_CHECK(vkCreateDevice(g_vk.phys, &di, NULL, &g_vk.dev));
         }
     }
+    one_compiler_install();  // (PowerVR: before anything is compiled)
 #ifdef __ANDROID__
     gpu_driver_check();
     {   // (Vulkan 1.2's, and only by the device: the libvulkan of an older Android doesn't know them)
@@ -659,7 +733,7 @@ static void create_device(void) {
     // write tracking had armed only 16 runs. A driver that prefers an allocation of its own for each image gets one
     // VkDeviceMemory each from VMA, and one mapping each on such a GPU. Told it is Vulkan 1.0, VMA never asks: images
     // share its blocks, a few hundred megabytes each, as on the GPUs where the map entries stay flat
-    if (strstr(g_vk.props.deviceName, "PowerVR") && !getenv("MHGU_VMA_DEDICATED")) {
+    if (vk_gpu_powervr() && !getenv("MHGU_VMA_DEDICATED")) {
         ai.vulkanApiVersion = VK_API_VERSION_1_0;
         LOG("[vk] PowerVR: images share VMA's memory blocks (no allocation of their own)\n");
     }
@@ -758,8 +832,13 @@ void vk_mem_summary(char *out, size_t size) {
     if (!g_vk.vma) return;
     VmaTotalStatistics t;
     vmaCalculateStatistics(g_vk.vma, &t);
-    snprintf(out, size, ", GPU memory %u blocks, %u allocations, %llu MB", t.total.statistics.blockCount,
-             t.total.statistics.allocationCount, (unsigned long long)(t.total.statistics.blockBytes >> 20));
+    int n = snprintf(out, size, ", GPU memory %u blocks, %u allocations, %llu MB", t.total.statistics.blockCount,
+                     t.total.statistics.allocationCount, (unsigned long long)(t.total.statistics.blockBytes >> 20));
+#ifdef VOLK_H_
+    if (drv_create_graphics && n > 0 && (size_t)n < size)  // (PowerVR: the driver's compiles so far, one at a time)
+        snprintf(out + n, size - (size_t)n, ", %llu compiles one at a time (longest wait %.0f ms)",
+                 (unsigned long long)atomic_load(&compiler_calls), atomic_load(&compiler_wait_max) / 1e6);
+#endif
 }
 
 // MSAA can't change while FSR runs (it does the anti-aliasing) or with Low-end mode (it has none). A desktop's plain

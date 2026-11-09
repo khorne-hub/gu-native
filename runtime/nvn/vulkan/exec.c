@@ -771,15 +771,20 @@ typedef struct {
     pthread_cond_t cond;
     bool started;
     int threads;  // (0: compile_workers)
+    // (the log's "caught up" line: when the builds queued at the start are done; 1 watching, 2 still being queued)
+    int busy, watch;
+    uint64_t watch_t0, watch_jobs;
 } JobQueue;
 static JobQueue compile_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 0};
 static JobQueue translate_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 1};
 
 // The compile workers (SPIR-V, modules, pipelines): 3. A desktop has cores to spare: half its logical processors, 3 to
 // 6, so a burst of new pipelines ends sooner; on Windows below the game's threads' priority, so they don't compete.
+// A PowerVR: one, its driver compiling one thing at a time anyway (device.c one_compiler_install).
 static int compile_workers(void) {
     const char *e = getenv("MHGU_COMPILE_WORKERS");
     if (e && atoi(e) > 0) return atoi(e) < 16 ? atoi(e) : 16;
+    if (vk_gpu_powervr()) return 1;
 #ifdef __ANDROID__
     return 3;
 #else
@@ -790,6 +795,14 @@ static int compile_workers(void) {
 #endif
     return n < 3 ? 3 : n > 6 ? 6 : (int)n;
 #endif
+}
+
+// (under q->lock) the builds queued at the start all done (progcache_open): logged once, with how long they took
+static void queue_caught_up(JobQueue *q) {
+    if (q->watch != 1 || q->head || q->lhead || q->busy) return;
+    q->watch = 0;
+    LOG("[shader] the builds queued at the start are done: %llu in %.1f s\n", (unsigned long long)q->watch_jobs,
+        (plat_now_ns() - q->watch_t0) / 1e9);
 }
 
 static void *worker(void *a) {
@@ -814,17 +827,24 @@ static void *worker(void *a) {
             q->lhead = j->next;
             if (!q->lhead) q->ltail = NULL;
         }
+        q->busy++;
         pthread_mutex_unlock(&q->lock);
         j->fn(j->arg);
         free(j);
+        pthread_mutex_lock(&q->lock);
+        q->busy--;
+        if (q->watch) q->watch_jobs++, queue_caught_up(q);
+        pthread_mutex_unlock(&q->lock);
     }
     return NULL;
 }
 
+// (not for a PowerVR any more: built on the render thread, its start built every saved program and pipeline before the
+// first picture, a black screen for minutes on a Helio G35, #157; it gets one worker and one compile at a time instead)
 static bool sync_shaders(void) {
     static int v = -1;
-    if (v < 0) {  // (PowerVR too: its shader compiler crashes building on several threads at once, issues #73, #99)
-        v = getenv("MHGU_SYNC_SHADERS") != NULL || strstr(g_vk.props.deviceName, "PowerVR") != NULL;
+    if (v < 0) {
+        v = getenv("MHGU_SYNC_SHADERS") != NULL;
         if (v) LOG("[vk] shaders and pipelines built on one thread, when first needed\n");
     }
     return v;
@@ -2958,6 +2978,9 @@ static void progcache_open(void) {
     plist_export_finish();
     // Programs a draw has used (each has recorded pipelines) are built now; the others (the prewarm's) stay dormant
     // until a draw wants one (prog_want)
+    pthread_mutex_lock(&compile_q.lock);
+    compile_q.watch = 2, compile_q.watch_t0 = t0, compile_q.watch_jobs = 0;
+    pthread_mutex_unlock(&compile_q.lock);
     for (int i = 0; i < PROG_TAB; i++) {
         Prog *p = progcache_tab[i].prog;
         if (!p || !p->prewarm) continue;
@@ -2966,6 +2989,10 @@ static void progcache_open(void) {
         run_job(load_program, p);
         used++;
     }
+    pthread_mutex_lock(&compile_q.lock);
+    compile_q.watch = used && !sync_shaders() ? 1 : 0;
+    queue_caught_up(&compile_q);
+    pthread_mutex_unlock(&compile_q.lock);
     LOG("[shader] program cache: %d programs (%d used before: building on the workers), read in %.0f ms\n", n, used,
         (plat_now_ns() - t0) / 1e6);
 }
@@ -3107,10 +3134,10 @@ static void prewarm_translate(void *arg) {
 // (game thread) nvnProgramSetShaders
 void backend_program_created(const NvnProgram *np) {
     static int on = -1;
-    // (not on PowerVR: its shader compiler crashes building many pipelines at once, so a phone that played once closed at
-    // every later start, the saved pipelines being built on the workers (issues #73, #99; the MH4U port saw the same))
-    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders() &&
-                     !strstr(g_vk.props.deviceName, "PowerVR");
+    // (not on PowerVR: its shader compiler crashed building many pipelines at once, so a phone that played once closed at
+    // every later start, the saved pipelines being built on the workers (issues #73, #99; the MH4U port saw the same).
+    // Its one worker has the saved programs and pipelines to build first)
+    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders() && !vk_gpu_powervr();
     if (!on || !(np->stage_mask & 1) || !(np->stage_mask & 2)) return;
     PrewarmReq *r = malloc(sizeof *r);
     for (int i = 0; i < 2; i++) {

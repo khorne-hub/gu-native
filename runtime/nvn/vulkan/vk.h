@@ -184,6 +184,8 @@ void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h);
 // The devices that can run the game (Vulkan 1.1; one per name, in the driver's order) and which of them runs it (-1:
 // none yet), for the settings' GPU row ([Display] GPU, settings_panel.cpp): their count, 0 before the device is made
 int vk_gpu_list(const char **names, int max, int *in_use);
+// A PowerVR (or MHGU_VK_POWERVR=1): one driver compile at a time, on one worker (device.c one_compiler_install)
+bool vk_gpu_powervr(void);
 #ifdef _WIN32
 // The picked device's LUID, which Windows' own GPU figures go by (the performance readout: platform/win_stats.c, any
 // thread); false: no device yet, or its driver gives none
