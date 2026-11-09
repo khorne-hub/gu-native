@@ -21,6 +21,8 @@
 #define VT_HEAVY      0x194bdc4u   // those classes' vtables
 #define VT_LIGHT      0x194c694u
 #define VT_BOW        0x194e9e0u
+#define VT_PROWLER    0x19515ecu   // (uPlayerQuest15: the last of the sixteen vtables with FN_DRAWN in slot 94, the base
+                                   // class first; a Prowler is a hunter to the rest of this file)
 #define LINK_A        0x15b0u
 #define LINK_B        0x3010u
 #define MAIN_LO       0x00200000u  // (main's image: a vtable is in it)
@@ -79,6 +81,9 @@ bool weapon_aiming(uint32_t h) {
     uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
     return (st == 1 && no >= 45 && no <= 48) || (st == 2 && no == 16);
 }
+
+// the local player is a Prowler (a Palico played): its item bar holds Support Moves, chosen with L + Y / A
+bool weapon_prowler(uint32_t h) { return h && LD32(h) == VT_PROWLER; }
 
 // the hunter's current action, st << 16 | no (the log of a shot that found no aim it knew)
 unsigned weapon_action(uint32_t h) { return h ? (unsigned)LD16(h + PL_ACT_ST) << 16 | LD16(h + PL_ACT_NO) : 0; }

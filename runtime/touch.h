@@ -15,6 +15,12 @@ extern "C" {
 // host main thread (runtime/host_input.c)
 bool touch_event(const SDL_Event *e);  // a finger event: true when it was the controls'
 void touch_input(bool pad_connected, bool typing, uint64_t *buttons, int *lx, int *ly, float *cam_dx, float *cam_dy);
+// after touch_input: a Hunter Art tapped that the player's controls perform with the right stick (Control Type 4, or R
+// Stick Controls swapped) sets the right stick for a moment
+void touch_right_stick(int *rx, int *ry);
+// the item bar turned a step (a desktop's wheel, ItemLeft / ItemRight; dir < 0 left): a hunter's items, a Prowler's
+// Support Moves (L + Y / A)
+void touch_item_step(int dir);
 // game thread (runtime/overlay.cpp): drawn over the game, under the port's menus
 bool touch_visible(void);
 // (something of them is on the screen: hidden, the settings button alone, or the lock-on's padlock by the target camera's
@@ -52,6 +58,7 @@ bool touch_game_menu(void);
 // menu takes input
 uint64_t touch_menu_buttons(void);
 void touch_reset(void);  // every finger gone (the app went to the background: runtime/ui.c)
+void touch_test_window(int ms);  // (tests, the control file's fakewindow) a menu's window seen for that long, no press
 // while shown ([Touch] MoveHUD On), the HUD's arrangement is the touch controls' (HUD_TOUCH): out of the thumbs' way by
 // default, the status to the left edge, the item bar to the bottom middle, the Hunter Arts and the target camera to
 // the top right (nvn/vulkan/exec.c); else the plain one (HUD_PLAIN: a controller's, a keyboard's)
@@ -67,6 +74,9 @@ void touch_hud_frame(void);
 void touch_hud_menu(void);  // (render thread) a menu window of the game's was drawn this frame: the menu pad, the
                             // lock-on waits
 void touch_hud_front(void);  // (render thread) and it is the front end's (the title, the main menu): no menu pad there
+// (render thread) a model drawn in a window of the game's this frame (the smithy's weapon, the item box's hunter: a
+// depth-tested draw in a viewport smaller than the picture), which the game turns with the sticks
+void touch_hud_preview(void);
 // (any thread) where a part (HP_*) was drawn last, in display pixels, its art and a margin: x0, y0, x1, y1. Moved or
 // not, the touch controls shown or not; false while it isn't drawn (no hunt, a menu over it, a cutscene)
 bool touch_hud_zone(int part, float display_w, float display_h, float rect[4]);

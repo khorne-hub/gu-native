@@ -2255,6 +2255,16 @@ static bool preview_mapped(void) {
     float w = st.viewport[0][2], h = fabsf(st.viewport[0][3]);
     return !(w < 8.0f || w > 0.9f * pw || h > 0.98f * ph);
 }
+// The same draw at any shape of picture, while a menu of the game's is open: a model shown in its window (the smithy's
+// weapon, the item box's hunter), which the game turns with the sticks (runtime/touch.cpp: the touch stick and drags are
+// the game's sticks then, #172)
+static void preview_tell(void) {
+    if (!ui_menu_open || !st.ds[0] || !pass_w) return;
+    float pw, ph;
+    pass_guest_size(&pw, &ph);
+    float w = st.viewport[0][2], h = fabsf(st.viewport[0][3]);
+    if (ph == (float)g_render_size[1] && !(w < 8.0f || w > 0.9f * pw || h > 0.98f * ph)) touch_hud_preview();
+}
 static bool ui_preview_map(PreviewMap *pm) {
     float asp = g_render_aspect, pw, ph;
     pass_guest_size(&pw, &ph);
@@ -4853,6 +4863,7 @@ static void draw(CmdRec *r, bool indexed) {
     float *vp = st.viewport[0], movie_vp[4], v[4];
     PreviewMap pm;
     if (movie && movie_viewport(movie, vp, movie_vp)) vp = movie_vp;
+    else preview_tell();
     memcpy(v, vp, sizeof v);
     if (vp != movie_vp && ui_preview_map(&pm)) {  // (a model preview: the viewport keeps its size, its centre moves)
         v[0] = pm.sx + (vp[0] + vp[2] * 0.5f) * pm.kx - vp[2] * 0.5f;
