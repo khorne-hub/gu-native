@@ -679,9 +679,14 @@ static bool lobby_server(char *out) {
 }
 // Playing online for the first time: the menu's card says which server the game connects to, and that the server sees
 // the player's IP address (settings_panel.cpp). Until it is closed ([Multiplayer] OnlineNoticeShown) no hub server is
-// asked: a search finds the LAN's hubs only, a created hub waits to be listed (the game searches again by itself)
-static bool online_ok(const char *srv) {
-    if (settings_panel_online_ok(srv)) return true;
+// asked. A search waits for it (up to wait_ms: the game searches on a thread of its own, and shows its searching while
+// the card is up; a search that found nothing would end there), a created hub is listed once it is closed
+static bool online_ok(const char *srv, int wait_ms) {
+    for (uint64_t end = plat_now_ns() + (uint64_t)wait_ms * 1000000ull;;) {
+        if (settings_panel_online_ok(srv)) return true;
+        if (plat_now_ns() >= end) break;
+        plat_sleep_until_ns(plat_now_ns() + 100000000ull);
+    }
     ONCE("[ldn] hub server %s: not asked until the notice about playing online is closed\n", srv);
     return false;
 }
@@ -825,7 +830,7 @@ static void *lobby_thread(void *arg) {
         struct sockaddr_in addr;
         hsock s = BADSOCK;
         if (!lobby_server(srv)) break;
-        if (!online_ok(srv)) {  // (listed once the notice is closed)
+        if (!online_ok(srv, 0)) {  // (listed once the notice is closed)
             if (!lobby_wait(gen, 500)) break;
             continue;
         }
@@ -1228,6 +1233,7 @@ static void probe_networks(hsock u, const uint8_t *probe, size_t size, struct so
     DWORD bytes = 0;
     if (WSAIoctl(u, SIO_GET_INTERFACE_LIST, NULL, 0, list, sizeof list, &bytes, NULL, NULL) == SOCKET_ERROR) return;
     int sent = 0;
+    char names[256] = "";
     for (DWORD i = 0; i < bytes / sizeof list[0]; i++) {
         const INTERFACE_INFO *f = &list[i];
         if (!(f->iiFlags & IFF_UP) || !(f->iiFlags & IFF_BROADCAST) || (f->iiFlags & IFF_LOOPBACK) ||
@@ -1235,10 +1241,11 @@ static void probe_networks(hsock u, const uint8_t *probe, size_t size, struct so
             continue;
         to.sin_addr.s_addr = f->iiAddress.AddressIn.sin_addr.s_addr | ~f->iiNetmask.AddressIn.sin_addr.s_addr;
         sendto(u, (const char *)probe, (int)size, 0, (struct sockaddr *)&to, sizeof to);
-        ONCE("[ldn] searching on %s\n", inet_ntoa(to.sin_addr));
+        size_t at = strlen(names);
+        snprintf(names + at, sizeof names - at, "%s%s", sent ? ", " : "", inet_ntoa(to.sin_addr));
         sent++;
     }
-    ONCE("[ldn] %d local network(s) to search\n", sent);
+    ONCE("[ldn] %d local network(s) to search: %s\n", sent, names);
 }
 #endif
 #endif
@@ -1555,7 +1562,8 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     uint64_t hubs[MAX_FOUND] = {0};
     pthread_t lt;
     hnet_init();  // (before the thread's first socket call)
-    bool asked = lobby_server(online.server) && online_ok(online.server) && !pthread_create(&lt, NULL, lobby_list_thread, &online);
+    bool asked = lobby_server(online.server) && online_ok(online.server, 60000) &&
+                 !pthread_create(&lt, NULL, lobby_list_thread, &online);
     int n = discover(infos, addrs, 16), k = 0;
     if (asked) {  // the server's hubs after the LAN's (a hub found both ways is joined directly)
         pthread_join(lt, NULL);

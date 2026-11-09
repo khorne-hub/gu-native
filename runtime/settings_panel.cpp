@@ -3857,8 +3857,8 @@ bool g_thanks_armed[IM_COUNTOF(THANKS_KEYS)];
 // everyone), and that the server sees the player's IP address (settings_panel_online_ok: runtime/net/ldn.c asks before
 // anything reaches a hub server, the menu's Check hub server too). It opens when the credits and the thank-you are gone,
 // over the game or the menu, and takes the input the same way. Closed, [Multiplayer] OnlineNoticeShown goes into the file
-// and what waited for it goes on (the game's next search finds the internet's hubs, a created hub is listed, a check
-// asks). MHGU_ONLINE_NOTICE=0 shows it once more in a test run, =1 never.
+// and what waited for it goes on (the game's search, which waits under it, finds the internet's hubs; a created hub is
+// listed; a check asks). MHGU_ONLINE_NOTICE=0 shows it once more in a test run, =1 never.
 enum class Card { Thanks, Online };
 std::atomic<Card> g_card{Card::Thanks};  // what the card open (or fading out) is
 std::atomic<bool> g_online_asked{false}, g_online_seen{false};

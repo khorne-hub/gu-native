@@ -265,8 +265,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Test runs can override the device's settings without touching its ini: `MHGU_LOWEND=0|1|2`, `MHGU_SCALE`, `MHGU_SHADOWS`, `MHGU_BLOOM`,
   `MHGU_FPS_LIMIT`, `MHGU_NO_REVERB=1`. A phone on its charger reads charging current: unplug it to measure watts. At 30 FPS the GPU runs at
   lower clocks, so `gpuprof` times are longer: compare frame rates or watts, not milliseconds, across FPS limits.
-- Internet hubs (`net/ldn.c`, the `server/` hub server): the Network page shows Hub server, Matchmaking key and Check hub server on
-  Android too; empty Server is None (`LDN_DEFAULT_SERVER` is empty: the project runs no server). Players type any server they want.
+- Internet hubs (`net/ldn.c`, the `server/` hub server): the Multiplayer page (Network before 0.1.9) puts the internet first: Hub
+  server (a short list, `LDN_SERVERS`, Custom... and Off), Matchmaking key and Check hub server, which runs by itself as the page
+  shows. Empty Server is `LDN_DEFAULT_SERVER`, `hunterhubid-gu-hub.duckdns.org`: a community server that speaks PROTO_VERSION 2 /
+  LOBBY_PROTO 1 (the project runs none; never upstream's, whose owner asks forks not to use it). Keep PROTO_VERSION and the
+  public room (no key: all zero) as they are, or 0.1.6-0.1.8 players stop meeting newer ones. Nothing reaches a hub server
+  before the one-time notice about playing online was closed (`settings_panel_online_ok`, the thank-you's card;
+  `[Multiplayer] OnlineNoticeShown`): the game's search waits under the card (up to 60 s: it runs on a thread of its own, and
+  a search that finds nothing ends there) and a created hub waits to be listed. `MHGU_ONLINE_NOTICE=0|1` in a test run. MH4U for Android shows the same card and text.
 - While a menu of the game's is open the touch layout doesn't change: the menu pad shows besides (`C_MPAD`, `[Touch] ShowMenuPad`,
   saved as `menu_pad` in touch_layout.txt) and presses the d-pad, its page tabs above it (`C_ML` / `C_MR`: the pair the game's option
   turns pages with, `menu_pages_zl`), the other pair above them with `ShowMenuZL` / `ShowMenuZR` (off by default) and a small Minus
