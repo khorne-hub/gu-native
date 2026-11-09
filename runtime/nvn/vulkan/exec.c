@@ -1259,6 +1259,7 @@ static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out fr
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
                                // and its scissor moves with it
 static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows of layer 100 then sit beside Top-anchored ones)
+static bool ui_window_pass;  // and one of a menu's windows (not the chat's log or the Quest Complete stamp, drawn there too)
 // The HUD quads this pass drew last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left /
 // 1 right / 2 centre): a model preview follows the window drawn over it (ui_preview_map)
 #define UI_RECENT 256
@@ -2134,6 +2135,7 @@ static void begin_pass(void) {
     ui_results_pass = false;
     ui_meownster_pass = false;
     ui_menu_pass = false;
+    ui_window_pass = false;
     ui_menu_open = touch_game_menu();
     ui_nrecent = 0;
     pass_msaa = false;
@@ -3923,7 +3925,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                             // stays a few seconds after a line is sent or comes, and kept a menu believed open under the
                             // player. Measured on a Motorola g06, a village)
                             bool chat_log = pos_x < 620.0f && pos_y >= 540.0f;
-                            if (!ui_stamp_pass && !chat_log) ui_menu_drawn();
+                            if (!ui_stamp_pass && !chat_log) ui_window_pass = true, ui_menu_drawn();
                         }
                         if (ui_stamp_pass) anchor = ANCHOR_CENTER;
                     } else if (fabsf(pos_z - 100.0f) < 0.5f) {
@@ -3939,6 +3941,11 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // of layer 97: one anchor for the whole window, or it splits. Without a menu in the pass (the results screen, whose
                         // labels on the left and numbers on the right are one table) they stay Bottom like the rest of the layer.
                         vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f || (ui_menu_pass && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
+                        // and sideways those left windows keep the middle 16:9 with the menu's own (layer 97, since 0.1.8):
+                        // Right, at 21:9 / Edges they slid over the window beside them (the canteen's dish and its Meal
+                        // Effects over the Felyne skills, #167). Not a cinematic's bar, nor the Meownster screen's frame
+                        if (ui_window_pass && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
+                            anchor = ANCHOR_CENTER;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (x 1200, y < 100) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's)
