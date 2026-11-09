@@ -370,6 +370,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Your own DLC of the game: each one's folder holds a DLC.dlcp. You can also put them yourself in the dlc folder inside your game folder. Then, in the game's main menu: Download. Experimental.",
          "Tus propios DLC del juego: la carpeta de cada uno tiene un DLC.dlcp. También puedes ponerlos tú en la carpeta dlc, dentro de la carpeta del juego. Después, en el menú principal del juego: Descarga. Experimental."},
         {"Shadows", "Sombras"},
+        {"Grass", "Pasto"},
         {"Bloom and depth of field", "Bloom y desenfoque de profundidad"},
         {"Reverb", "Reverberación"},
         {"Toaster", "Tostadora"},

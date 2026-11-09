@@ -1830,6 +1830,7 @@ std::vector<Row> main_rows() {
         if (c.draw_distance == 0)
             r.back().value = tr("No limit");
         add_bool(r, "shadows", "Shadows", &c.shadows, ini("Shadows"));
+        add_bool(r, "grass", "Grass", &c.grass, ini("Grass"));
         add_bool(r, "bloom", "Bloom and depth of field", &c.bloom, ini("Bloom"));
         if (c.fsr && !c.low_end) {  // (FSR finds the start of the HUD from these passes: lowend_skipped)
             r.back().enabled = false;
@@ -2474,6 +2475,8 @@ const PhoneHelp PHONE_HELP[] = {
      "Para un teléfono débil: sin resplandor ni profundidad de campo, texturas más livianas y más chicas, y el HUD sigue nítido sobre una imagen 3D más chica. Tostadora: todo para la velocidad y la batería antes que el aspecto."},
     {"Shadows", "The shadows of hunters, monsters and scenery. Off: a little faster on a weak phone.",
      "Las sombras de cazadores, monstruos y escenario. Apagadas: un poco más rápido en un teléfono débil."},
+    {"Grass", "The tall grass and the foliage of the maps. Off: faster where there is a lot of it (the Marshland's area 8) on a weak phone.",
+     "El pasto alto y el follaje de los mapas. Apagado: más rápido donde hay mucho (la zona 8 del Pantano) en un teléfono débil."},
     {"AdrenoFix", "Some Adreno drivers repeat the 3D picture in a grid at a low 3D resolution: Auto keeps 2x MSAA there. If the picture looks dark or flickers, or for more speed, choose Off.",
      "Algunos drivers de Adreno repiten la imagen 3D en grilla con una resolución 3D baja: Auto deja MSAA 2x en ese caso. Si la imagen se ve oscura o parpadea, o para ganar velocidad, elige Off."},
     {"LockOn", "Keeps the camera on the monster, as in the newer games, and a bow's or a bowgun's shots go to it. Off: the icon turns the camera to it once.",
