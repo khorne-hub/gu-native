@@ -54,6 +54,9 @@ static _Atomic int stat_compiles;
 // (MHGU_VK_STATS) shader / pipeline builds: skips by cause, frames with skips, the waits, build times per job kind
 // (translate, GLSL -> SPIR-V + modules, pipeline), request -> ready latency, the slowest frame (exec thread's view)
 static uint64_t stat_skip_prog, stat_skip_pipe, stat_skip_frames, stat_waited_ns, stat_waits, stat_rescued, stat_frame_max;
+bool vk_gpu_adreno(void);  // (device.c)
+// (this draw: the game's alpha to coverage done as an alpha test at 0.5, one sample on an Adreno: the draw, #70)
+static bool a2c_as_test;
 static _Atomic uint64_t stat_pw_new, stat_pw_known, stat_pw_left;  // prewarm: translated, already cached, jobs queued
 static _Atomic uint64_t stat_job_n[3], stat_job_ns[3], stat_job_max[3], stat_lat_n, stat_lat_ns, stat_lat_max;
 static void atomic_max(_Atomic uint64_t *m, uint64_t v) {
@@ -4181,10 +4184,11 @@ static VkDescriptorSet stage_set(int nbinds, const VkBindingInfo *binds, VkDescr
             bi[n] = ubo_span(shared_rscale, sizeof rs);
             w[n].pBufferInfo = &bi[n];
         } else if (b->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b->binding == ALPHA_REF_BUFFER_INDEX) {
-            float ref[4] = {st.alpha_ref, 0, 0, 0};
+            const float aref = a2c_as_test ? 0.5f : st.alpha_ref;
+            float ref[4] = {aref, 0, 0, 0};
             shared_new_submission();
-            if (!shared_have_aref || !shared_on() || memcmp(&shared_aref_v, &st.alpha_ref, sizeof shared_aref_v))
-                shared_aref = vk_transient_copy(ref, sizeof ref, 256), shared_aref_v = st.alpha_ref, shared_have_aref = true;
+            if (!shared_have_aref || !shared_on() || memcmp(&shared_aref_v, &aref, sizeof shared_aref_v))
+                shared_aref = vk_transient_copy(ref, sizeof ref, 256), shared_aref_v = aref, shared_have_aref = true;
             bi[n] = ubo_span(shared_aref, sizeof ref);
             w[n].pBufferInfo = &bi[n];
         } else if (b->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER) {  // tint (19), gmap (20): zeros
@@ -4676,7 +4680,7 @@ static PipeKey pipe_key(Prog *pr, uint32_t mode, bool native, VkPrimitiveTopolog
         if (fw == ~0ull) { const char *e = getenv("MHGU_FORCE_WMASK"); fw = e ? strtoull(e, NULL, 16) : 0; }
         if (fw && st.program->stages[1].code_addr == fw && k.ncolor) k.write_mask[0] = 0xF;
     }
-    k.a2c = st.ms[0xC] != 0;
+    k.a2c = st.ms[0xC] != 0 && !a2c_as_test;
     k.topology = (uint8_t)(native ? topo : VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
     k.poly_fill = st.poly[2] != 1;
     k.cull = st.poly[0];
@@ -4780,6 +4784,16 @@ static void draw(CmdRec *r, bool indexed) {
     pass_skip_clear = 0;  // (drawn into: later clears are clears again)
     VkCommandBuffer cb = vk_cmd();
     int af = fkey.alpha_func;
+    // One sample on an Adreno: the game's alpha to coverage became nothing at all for partly transparent texels (the
+    // tall grass missing on an Adreno 640, #70; Mali keeps those at alpha 0.5 and up): done as an alpha test at 0.5
+    a2c_as_test = false;
+    if (pass_samples <= 1 && st.ms[0xC] && af == 0 && vk_gpu_adreno()) {
+        a2c_as_test = true;
+        fkey.alpha_func = 7;
+        pr = get_program(st.program, &vkey, &fkey);
+        if (!pr) { stat_skipped++; return; }
+        if (!await_build(&pr->state, pr, 0, pr->loaded)) { skip_draw(&stat_skip_prog); return; }
+    }
     if (pass_samples > 1 && (af == 2 || af == 4 || af == 5 || af == 7)) {  // MSAA: the alpha test as sample coverage
         fkey.alpha_coverage = (uint8_t)pass_samples;
         pr = get_program(st.program, &vkey, &fkey);
