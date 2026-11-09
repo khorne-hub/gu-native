@@ -62,11 +62,11 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
-// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, and the mouse in the game's
-// menus)
+// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
+// menus, the grass and the pause in the menu)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -551,6 +551,12 @@ static const char DEFAULT_INI[] =
     "; minimized), so it uses no battery there; it goes on where it was when you come back\n"
     "; Default: On\n"
     "PauseInBackground = On\n"
+#ifdef __ANDROID__  // (runtime/overlay.cpp)
+    "\n"
+    "; The game waits while the settings menu is open, when you play alone (with others it goes on)\n"
+    "; Default: On\n"
+    "PauseInMenu = On\n"
+#endif
     "\n"
     "; Ask before the game window closes (closing does not save the game)\n"
     "; Default: On\n"
@@ -824,6 +830,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Audio", "MuteInBackground", mute_in_background, false),
     ON_OFF("Audio", "Reverb", reverb, false),
     ON_OFF("Application", "PauseInBackground", pause_background, false),
+    ON_OFF("Application", "PauseInMenu", pause_menu, false),
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),
     {"Application", "Language", SET_CHOICE, F(language), 0, 0, 0, "English|en,Spanish|es", NULL, false, ERR_LANGUAGE},
     {"Application", "ButtonIcons", SET_CHOICE, F(button_icons), 0, 0, 0, "Xbox,Switch,PlayStation", NULL, false, ERR_ICONS},

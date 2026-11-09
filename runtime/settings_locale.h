@@ -218,6 +218,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Vibrate on touch", "Vibrar al tocar"},
         {"Game rumble on the phone", "Vibración del juego en el teléfono"},
         {"Pause in the background", "Pausar en segundo plano"},
+        {"Pause in this menu", "Pausar en este menú"},
         {"Drag to move  -  pinch or use - / + for its size", "Arrastra para mover  -  pellizca o usa - / + para el tamaño"},
         {"Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size",
          "Aparece cuando hay un menú del juego abierto - arrástralo para moverlo, pellizca o usa - / + para el tamaño"},

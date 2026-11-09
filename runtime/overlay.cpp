@@ -37,6 +37,7 @@ static void ImGui_ImplVulkan_UpdateTexture(ImTextureData *) {}
 #include "menu_confirm.h"
 #include "overlay.h"
 #include "perfstats.h"
+#include "platform.h"
 #include "hle/chat.h"
 #include "settings_locale.h"
 #include "settings_panel.h"
@@ -598,10 +599,45 @@ static void snap_clear(void) {
     g_snap.Valid = false;
 }
 
+static void frame_once(void *cpu);
+#ifdef __ANDROID__
+extern "C" bool ldn_net_up(void);
+extern "C" void vi_menu_hold(bool on);
+extern "C" bool vk_present_again(void);
+extern "C" uint64_t vk_last_present_ns(void);
+// The settings menu is open and the player plays alone ([Application] PauseInMenu; never with others: a Local Play or
+// hub network up)
+static bool menu_holds_game(void) {
+    return g_ready && g_settings_open && !g_modal_open && config_live_pause_menu() && !ldn_net_up();
+}
+#endif
+
 void overlay_frame(void *cpu) {
     // (once a frame on the game's update thread: with [Application] PauseInBackground the game stops here while the app
     // is in the background, its clock held: runtime/hle/vi.c)
     vi_pause_game();
+    frame_once(cpu);
+#ifdef __ANDROID__
+    // (the settings menu open, playing alone: the game waits here, as on the console's HOME menu - gu-native #94. The menu
+    // goes on being drawn, over the last picture presented again once the game's own presents have stopped)
+    if (menu_holds_game()) {
+        vi_menu_hold(true);
+        uint64_t next = plat_now_ns();
+        while (menu_holds_game()) {
+            next += 16666667;
+            uint64_t now = plat_now_ns();
+            if (next < now) next = now;
+            plat_sleep_until_ns(next);
+            vi_pause_game();  // (the app went to the background meanwhile)
+            frame_once(cpu);
+            if (plat_now_ns() - vk_last_present_ns() > 50000000ull) vk_present_again();
+        }
+        vi_menu_hold(false);
+    }
+#endif
+}
+
+static void frame_once(void *cpu) {
     if (!g_ready) return;
     // (the menu closed: its state let go here, drawn - the credits - only inside the frame below: before the first frame
     // there is no font, the credits' text measured with none faulted at the first frame - "accessing 0" under

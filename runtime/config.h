@@ -135,6 +135,8 @@ typedef struct {
                               // (runtime/hle/mousemenu.c, host_input.c); off, it turns the camera there as elsewhere
     int grass;                // [Performance] Grass: 0 the tall grass and foliage drawn with alpha to coverage left out
                               // (nvn/vulkan/exec.c; the Marshland's area 8 slowed weak phones down: #85, #121)
+    int pause_menu;           // [Application] PauseInMenu (Android): the game waits while the settings menu is open and the
+                              // player plays alone (runtime/overlay.cpp; #94)
 } Config;
 uint32_t config_combo_mask(const char *text);  // "A+X" -> the BTN_* bits, 0 if there is nothing or anything else in it
 void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
@@ -255,6 +257,7 @@ int config_live_touch_vibration(void);  // [Touch] Vibration
 int config_live_phone_rumble(void);     // [Controls] PhoneRumble
 int config_live_show_stats(void);       // [Performance] ShowStats
 int config_live_pause_background(void); // [Application] PauseInBackground
+int config_live_pause_menu(void);       // [Application] PauseInMenu
 int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
 int config_live_reverb(void);           // [Audio] Reverb

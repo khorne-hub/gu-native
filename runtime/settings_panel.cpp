@@ -630,6 +630,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(mouse_menus);
     SAME(show_stats);
     SAME(pause_background);
+    SAME(pause_menu);
     SAME(button_icons);
     SAME(menu_theme);
     SAME(discord);
@@ -1184,6 +1185,7 @@ void reset_section() {
         c.menu_scale = f.menu_scale;
         c.confirm_exit = f.confirm_exit;
         c.pause_background = f.pause_background;
+        c.pause_menu = f.pause_menu;
         c.updates = f.updates;
         c.bonus_content = f.bonus_content;
         break;
@@ -2073,6 +2075,9 @@ std::vector<Row> main_rows() {
 #endif
         number(r, "scale", "Interface scale (%)", &c.menu_scale, (int)lo("MenuScale"), (int)hi("MenuScale"), 10, ini("MenuScale"));
         add_bool(r, "pause.bg", "Pause in the background", &c.pause_background, ini("PauseInBackground"));
+#ifdef __ANDROID__  // (runtime/overlay.cpp)
+        add_bool(r, "pause.menu", "Pause in this menu", &c.pause_menu, ini("PauseInMenu"));
+#endif
 #ifndef __ANDROID__  // (a desktop's background: the window minimized, host_input.c)
         r.back().help = tr("The game stops while its window is minimized, and goes on where it was when you bring it back.");
 #endif
@@ -2532,6 +2537,8 @@ const PhoneHelp PHONE_HELP[] = {
     {"Language", "The language of this menu.", "El idioma de este menú."},
     {"MenuScale", "The size of this menu.", "El tamaño de este menú."},
     {"PauseInBackground", "The game stops while you are out of the app.", "El juego se detiene mientras estás fuera de la app."},
+    {"PauseInMenu", "The game waits while this menu is open, when you play alone. With others online or in Local Play it goes on.",
+     "El juego espera mientras este menú está abierto, cuando juegas solo. Con otros, en línea o en juego local, sigue."},
     {"BonusContent", "Copies the free downloadable content (event quests, item packs, Palicoes) to a save that has not received it yet.",
      "Copia el contenido descargable gratuito (misiones de evento, packs de objetos, Palicoes) a una partida que todavía no lo recibió."},
     {"Updates", "At most once a day the app asks GitHub for the latest version (nothing else is sent) and tells you at the next start when there is a new one. It never downloads or installs anything by itself.",

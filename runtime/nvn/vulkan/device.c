@@ -1152,6 +1152,10 @@ void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, floa
 
 static uint64_t g_frames;
 uint64_t vk_frame_counter(void) { return g_frames; }
+// The picture presented last (after FSR's), for vk_present_again, and when (plat_now_ns): the update thread's menu pause
+static NvnTexture *g_last_picture;
+static volatile uint64_t g_last_present_ns;
+uint64_t vk_last_present_ns(void) { return __atomic_load_n(&g_last_present_ns, __ATOMIC_ACQUIRE); }
 
 // The MHGU_SHOT_AT list: is this frame one of them?
 static bool shot_frame(uint64_t f) {
@@ -1169,6 +1173,7 @@ void backend_present(NvnTexture *t) {
     vi_frame_presented();  // (the frame rate target back in place; MHGU_STEPLOG's count: runtime/hle/vi.c)
     vk_lock();
     if (g_fsr_on) t = vk_fsr_present(t);  // FSR: its output-size picture with the HUD (fsr.c)
+    g_last_picture = t;
     TexBackend *b = vk_tex(t, true);
     b->presented = true;
     vk_end_pass();
@@ -1247,10 +1252,42 @@ void backend_present(NvnTexture *t) {
         t0 = now, n0 = g_frames;
     }
     if (HITCH_ON) hitch_frame(HT_RENDER, 0);  // ((debug) MHGU_HITCHLOG: present to present, runtime/hitchlog.c)
+    __atomic_store_n(&g_last_present_ns, plat_now_ns(), __ATOMIC_RELEASE);
     // (the app in the background, [Application] PauseInBackground: the presenting thread stops here, outside the
     // Vulkan lock, until it is back; the next frame then makes the window's surface again: frame_begin)
     extern void vi_pause_wait(void);
     vi_pause_wait();
+}
+
+// The settings menu holds the game (runtime/overlay.cpp, [Application] PauseInMenu): the last picture again, with the
+// overlay's newest frame over it, while the game's presenting thread waits (runtime/hle/vi.c vi_menu_hold). false: there
+// is no picture yet.
+bool vk_present_again(void) {
+    vk_lock();
+    NvnTexture *t = g_last_picture;
+    if (!t) { vk_unlock(); return false; }
+    TexBackend *b = vk_tex(t, true);
+    vk_end_pass();
+    if (frame_begin()) {
+        double ww = g_vk.sc_extent.width, wh = g_vk.sc_extent.height;
+#ifdef __ANDROID__
+        double a = (double)t->width / t->height;
+#else
+        double a = g_render_aspect > 0 ? g_render_aspect : (double)t->width / t->height;
+#endif
+        double vw = ww, vh = ww / a;
+        if (vh > wh) vh = wh, vw = wh * a;
+        void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, float vw, float vh);  // (exec.c)
+        vk_present_draw(vk_cmd(), b, (float)((ww - vw) / 2), (float)((wh - vh) / 2), (float)vw, (float)vh);
+        OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
+                            g_vk.sc_extent.width, g_vk.sc_extent.height};
+        overlay_draw(vk_cmd(), &ot);
+        frame_end(NULL);
+    } else {
+        vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
+    }
+    vk_unlock();
+    return true;
 }
 
 // ================================================================== init
