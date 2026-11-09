@@ -33,9 +33,10 @@ import java.util.List;
  * The same screens and texts as MH4U for Android's.
  */
 public class SaveFolderActivity extends Activity {
+    static final String EXTRA_GATE = "gate";  // (opened by the start gate: the game isn't running, Cancel goes back to it)
     private static final int PICK = 1, ACCESS = 2;
 
-    private boolean es, waitingAccess, committed;
+    private boolean es, waitingAccess, committed, gate;
     private TextView status, now;
     private Button choose, own;
 
@@ -44,6 +45,7 @@ public class SaveFolderActivity extends Activity {
         super.onCreate(state);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         es = Look.es();
+        gate = getIntent().getBooleanExtra(EXTRA_GATE, false);
         int pad = Look.dp(this, 14);
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
@@ -107,7 +109,7 @@ public class SaveFolderActivity extends Activity {
         own.setOnClickListener(v -> backToOwn());
         row.addView(own, params(0));
         Button leave = Look.button(this, es ? "Cancelar" : "Cancel", false);
-        leave.setOnClickListener(v -> finish());
+        leave.setOnClickListener(v -> { if (gate) backToGate(); else finish(); });
         row.addView(leave, params(120));
         whole.addView(row);
         whole.setOnApplyWindowInsetsListener((v, insets) -> {  // (the buttons stay above the system's bar)
@@ -182,10 +184,33 @@ public class SaveFolderActivity extends Activity {
         }
     }
 
+    /** From the start gate: the app opens again, and the gate looks at the folder again. */
+    private void backToGate() {
+        Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
+        if (launch != null) {
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(launch);
+        }
+        finish();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (gate) backToGate();
+        else super.onBackPressed();
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
         refresh();
+        // (the gate's "Give permission": once it is given and the folder is there, back to the game)
+        File f = SaveFolder.chosen(this);
+        if (gate && !committed && f != null && SaveFolder.hasAccess(this) && f.isDirectory() && f.canWrite()) {
+            backToGate();
+            return;
+        }
         if (waitingAccess && SaveFolder.hasAccess(this)) {
             waitingAccess = false;
             status.setVisibility(View.GONE);
@@ -357,7 +382,7 @@ public class SaveFolderActivity extends Activity {
                        : "The game can't reach " + path + ": an SD card taken out, or a folder moved or renamed. Nothing was changed.",
                     new Look.Choice(es ? "Reintentar" : "Try again", true, again),
                     new Look.Choice(es ? "Elegir carpeta" : "Choose folder", false, () -> {
-                        a.startActivity(new Intent(a, SaveFolderActivity.class));
+                        a.startActivity(new Intent(a, SaveFolderActivity.class).putExtra(EXTRA_GATE, true));
                         a.finish();
                     }),
                     useMine, exit);
@@ -367,7 +392,7 @@ public class SaveFolderActivity extends Activity {
                     es ? "Para usar tu carpeta de partidas necesita de nuevo el acceso a todos los archivos."
                        : "To use your save folder it needs access to all files again.",
                     new Look.Choice(es ? "Dar permiso" : "Give permission", true, () -> {
-                        a.startActivity(new Intent(a, SaveFolderActivity.class));
+                        a.startActivity(new Intent(a, SaveFolderActivity.class).putExtra(EXTRA_GATE, true));
                         a.finish();
                     }),
                     useMine, exit);
