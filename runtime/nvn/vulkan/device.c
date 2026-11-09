@@ -650,7 +650,10 @@ static void create_device(void) {
     g_vk.msaa = msaa_floor(g_vk.msaa);
 
     VmaAllocatorCreateInfo ai = {.physicalDevice = g_vk.phys, .device = g_vk.dev, .instance = g_vk.inst,
-                                 .vulkanApiVersion = g_vk.api12 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1};
+                                 .vulkanApiVersion = g_vk.api12 ? VK_API_VERSION_1_2 : VK_API_VERSION_1_1,
+                                 // (blocks of 32 MB, not VMA's 256: a phone holds a block whole however little of it is
+                                 // used; 7 blocks, 928 MB, and vkQueueSubmit out of device memory on a 2.7 GB phone)
+                                 .preferredLargeHeapBlockSize = 32ull << 20};
     // PowerVR (BXM-8-256, Dimensity 7020 to 7300): games closed after 5 to 15 minutes, out of the process's memory map
     // entries (mprotect: "out of memory" on a phone with 11 GB; pipelines failing with OUT_OF_HOST_MEMORY), while the
     // write tracking had armed only 16 runs. A driver that prefers an allocation of its own for each image gets one

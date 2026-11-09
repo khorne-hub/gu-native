@@ -245,6 +245,20 @@ static bool low_memory_textures(void) {
     return on;
 }
 
+// 3 GB or less (phones that ran out of GPU memory, vkQueueSubmit failing after minutes): big 3D textures lose two levels
+static bool very_low_memory_textures(void) {
+    static int on = -1;
+    if (on < 0) {
+#ifdef _WIN32
+        on = 0;
+#else
+        on = (uint64_t)sysconf(_SC_PHYS_PAGES) * (uint64_t)sysconf(_SC_PAGESIZE) < 3584ull << 20;
+        if (on) LOG("[vk] 3.5 GB or less: big 3D textures without their two largest levels\n");
+#endif
+    }
+    return on;
+}
+
 static void create_image(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
     uint32_t tw = t->width ? t->width : 1, th = t->height ? t->height : 1;
@@ -305,7 +319,7 @@ static void create_image(NvnTexture *t, TexBackend *b) {
             }
             if (levels >= 4 && layers == 1 && depth == 1 && samples == 1 && type == VK_IMAGE_TYPE_2D && t->target != 8 &&
                 t->target != 9 && (tw >= 256 || th >= 256) && tw >= 4 && th >= 4 && (low_memory_textures() || g_config.low_end))
-                b->mip_skip = g_config.low_end && levels >= 5 && (tw >= 512 || th >= 512) ? 2
+                b->mip_skip = (g_config.low_end || very_low_memory_textures()) && levels >= 5 && (tw >= 512 || th >= 512) ? 2
                             : g_config.low_end == LOW_END_TOASTER && levels >= 5 ? 2  // (Toaster: the 256s too)
                                                                                  : 1;
             static int nlog;
