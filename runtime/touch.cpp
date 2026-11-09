@@ -1959,7 +1959,8 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         // in the layout: a bigger stick, farther)
         s.rim = stick_run && moving && drawn != 1 && !s.menu && d > r * (s.rim ? RUN_OFF : RUN_ON);
         ImVec2 spot = lock_spot(s.bx, s.by, r, s.h);
-        bool in_lock = hypotf(s.fx - spot.x, s.fy - spot.y) < LOCK_GRAB * r;
+        // (the thumb in the circle, past the rim: a stick placed high has the circle clamped near it)
+        bool in_lock = d > r && hypotf(s.fx - spot.x, s.fy - spot.y) < LOCK_GRAB * r;
         if (!s.run_can && in_lock) s.run_armed = false;  // (there while it couldn't lock - the weapon out as it was
                                                          // sheathed: not until it has come back inside the rim)
         if (s.run_lock && d < r) {
