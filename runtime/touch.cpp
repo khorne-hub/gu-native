@@ -759,6 +759,8 @@ struct State {
     float bx, by, kx, ky;    // the stick's base and knob, pixels
     float cam_dx, cam_dy;    // pixels dragged since the last touch_input
     uint64_t held;           // buttons held by fingers
+    uint64_t tapped;         // and those held at any moment since the game last read them (touch_input): a quick tap
+                             // between two reads still reaches the game, as mashing to break free of a grab needs (#150)
     uint64_t last_ns;        // the last touch
     uint64_t cam_ns;         // the last camera drag
     uint64_t tap_ns;         // the last short tap on the camera's part (a second one soon after centres it)
@@ -927,6 +929,7 @@ void recompute_held(State &s) {  // (the menu pad's go by s.pad_held: touch_inpu
     s.held = 0;
     for (Finger &f : s.f)
         if (f.kind == F_BUTTON && !f.done && !of_mpad(f.ctl)) s.held |= finger_buttons(f);
+    s.tapped |= s.held;
 }
 
 // Every finger let go of, nothing held or waiting (the app to the background, an editor opened): no old direction of
@@ -934,7 +937,7 @@ void recompute_held(State &s) {  // (the menu pad's go by s.pad_held: touch_inpu
 void drop_fingers(State &s) {
     for (Finger &f : s.f) f.kind = F_NONE;
     for (Pulse &p : s.pulse) p.until = 0;
-    s.stick_on = false, s.held = s.pad_held = 0, s.stick_part = 0, s.pinch = false;
+    s.stick_on = false, s.held = s.pad_held = s.tapped = 0, s.stick_part = 0, s.pinch = false;
 }
 
 // the port's settings menu takes the fingers as its mouse (overlay.cpp)
@@ -1777,7 +1780,8 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     s.cam_dx = s.cam_dy = 0;
     if (!visible || s.edit) return;
-    *buttons |= s.held;
+    *buttons |= s.held | s.tapped;
+    s.tapped = 0;
     if (s.menu) g_menu_buttons |= s.pad_held;
     // (a press that can open a menu, and a locked shot's aim: on every input's buttons, touch_lock_buttons and
     // touch_lock_shot)
