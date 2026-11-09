@@ -277,7 +277,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   the next update on (an X there drew the weapon): a d-pad press then is a Hunter Art. The stick keeps walking (the pause menu, the
   pouch and the town's item box don't read the stick); it moves the cursor where the hunter isn't played (the title, the main menu)
   and in a town's menu once the player hasn't moved for 300 ms of tilt (the item box, a shop). Test with `finger` and `touchedit`
-  (MHGU_CONTROL); `menutrace` shows each pad update's buttons and how many updates ago a cursor ran.
+  (MHGU_CONTROL); `menutrace` shows each pad update's buttons and how many updates ago a cursor ran. In a town's menu (no Hunter
+  Art there) the pad's presses pass while its windows show, a cursor run or not (sorting in the item box, the pad pressed nothing
+  there: #174). A window that came without a press (`game_menu`: a bubble) becomes a menu once a cursor of the game's runs: the full
+  pouch's comes as a long gathering ends, past `WINDOW_PRESS`; `fakewindow <ms>` in the control file shows such a window. A model
+  drawn in a town's menu (a shop's or the smithy's weapon, the item box's hunter: a depth-tested draw in a viewport smaller than the picture,
+  `touch_hud_preview`) turns with the sticks: the touch stick and drags are the game's sticks there, never its cursor.
 - The HUD's parts (`runtime/hud_parts.h`: the item bar, the Hunter Arts, the target camera, the clock, health and stamina, the
   sharpness and gauges, the party, the minimap) are found by layer and place in `cbuf_info` (`nvn/vulkan/exec.c`; the status, layer
   103, split by region, a piece in none going with the nearest part: `hudtrace` says which part and "nearest") and placed by
@@ -289,4 +294,17 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   bubble, an aim, the Quest Complete stamp are drawn there too): with one open a part takes only pieces at places it had in the
   last 1.5 s, and a moved part on its window isn't drawn. The hunt's pause menu and pouch draw only the status, before their
   windows; the minimap has no scissor.
+- The Options' third page is in sUserInfo (`*0x1a97f78`), a byte each, written as soon as an option changes there: +0x446c Control
+  Type (0..3: Type 1..4), +0x446d + Button Controls, +0x446e L/R Button Controls (`menu_pages_zl`), +0x446f R Stick Controls; the
+  input shown beside each Hunter Art follows them at once (poked in a hunt: Type 2 B, Type 3 X, Type 4 and the swapped stick the
+  right stick). The earlier pages are in sGameControl (`*0x1a8ca48`) from +0x5e in the menu's order (the music +0x5e, the camera
+  angle +0x63, Bowgun Controls +0x67, Bow Controls +0x6c). A tap on a Hunter Art presses what the Control Type uses for it
+  (`art_press`, touch.cpp): Type 1 the d-pad up / right / down, Type 2 R + A + B / ZL / ZR, Type 3 ZL with X / A / B, Type 4 the
+  right stick (`touch_right_stick`), each pressed at once for 120 ms. R + A + B at once is taken (tested at a high frame rate:
+  R and A held then B, or all three together). With an empty gauge ZL + X gives X's own move (the Great Sword's draw slash), at
+  once or with ZL 5 frames ahead; an art with a full gauge was not seen from a tap yet. `MHGU_LOG_MOVES=1` logs what each started.
+- A Prowler is `uPlayerQuest15`: vtable 0x19515ec, the last of the sixteen with `FN_DRAWN` in slot 94 (the base class first, then
+  00 at 0x1949a88, the Great Sword's, seen on a Motorola g06), so `weapon_hunter` finds it. Its item bar holds Support Moves, chosen
+  with L + Y / A as the game does (`support_step`), never through the hunter's pouch slot. Not yet seen on a device: a Prowler is
+  chosen at the item box, and `MHGU_QUICKHUNT` with a Prowler quest (100201) departs the save's hunter as it is.
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.
