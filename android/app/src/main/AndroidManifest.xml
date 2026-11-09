@@ -72,6 +72,8 @@
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.GAME" />
             </intent-filter>
+            <!-- una pulsación larga en el ícono: Compartir registro (un juego que se queda en negro no llega a su menú) -->
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Ajustes -> Licencias -->
