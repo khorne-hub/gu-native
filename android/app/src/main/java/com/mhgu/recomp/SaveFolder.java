@@ -217,6 +217,7 @@ final class SaveFolder {
                     }
                 }
                 AppHome.write(file(c, "save_folder.txt"), to.getAbsolutePath());
+                if (now != null && !now.equals(to)) unmark(c, now);
                 Log.i(TAG, "save folder: " + to + (keepFolder ? " (its save kept)" : " (this device's save copied there)"));
             } else if (now != null) {
                 File own = local(c);
@@ -228,6 +229,7 @@ final class SaveFolder {
                 }
                 if (!file(c, "save_folder.txt").delete() && file(c, "save_folder.txt").exists())
                     throw new IOException("save_folder.txt");
+                unmark(c, now);
                 Log.i(TAG, "save folder: back to the game's own" + (keepFolder ? " (the folder's save copied)" : ""));
             }
             file(c, "save_folder_state.txt").delete();
@@ -252,6 +254,8 @@ final class SaveFolder {
     }
 
     static void copyChecked(File src, File dst) throws IOException {
+        File parent = dst.getParentFile();
+        if (parent != null && !parent.isDirectory() && !parent.mkdirs()) throw new IOException("couldn't make " + parent);
         File tmp = new File(dst.getParentFile(), dst.getName() + ".mhgu-copy");
         tmp.delete();
         AppHome.copy(src, tmp);
@@ -372,11 +376,20 @@ final class SaveFolder {
         if (!chosen.getName().equals("system")) {
             File staged = new File(keep, "chosen-" + chosen.getName());
             AppHome.copy(chosen, staged);
-            for (String name : FILES) copyChecked(staged, new File(dir, name));
+            for (String name : FILES) {
+                copyChecked(staged, new File(dir, name));
+                new File(dir, name).setLastModified(chosen.lastModified());
+            }
             others.add(chosen);
         }
         for (File o : others) if (!o.delete()) Log.w(TAG, "save folder: couldn't remove " + o);
         Log.i(TAG, "save folder: kept " + chosen.getName() + ", the other versions in " + keep);
+    }
+
+    /** This device's in-use mark in a folder it no longer uses (another device's stays). */
+    static void unmark(Context c, File folder) {
+        File m = new File(folder, MARKER);
+        if (deviceId(c).equals(keys(m).get("id"))) m.delete();
     }
 
     /** After the gate: what was seen of the folder's save, and this device's mark that the save is open here. */

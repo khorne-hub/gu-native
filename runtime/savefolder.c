@@ -367,26 +367,33 @@ void savefolder_init(void) {
 
 const char *savefolder_chosen(void) { return g_chosen_utf8; }
 
-void savefolder_root(const char *sub, char *out, size_t size) {
+bool savefolder_root(const char *sub, char *out, size_t size) {
+    bool missed = false;
     if (g_chosen[0] && !strcmp(sub, "save_0")) {
         if (writable(g_chosen)) {
             snprintf(out, size, "%s", g_chosen);
-            return;
+            return false;
         }
-        LOG("[save folder] %s can't be reached: this save goes to the game's own folder\n", g_chosen_utf8);
-        char text[64];
-        snprintf(text, sizeof text, "time=%lld\n", (long long)time(NULL));
-        write_file(MISSED_FILE, text);
-        if (!g_missed_told) {
-            g_missed_told = true;
-            overlay_notice(es() ? "Carpeta de partidas" : "Save folder",
-                           es() ? "No se pudo llegar a la carpeta, así que esta partida quedó en este dispositivo. Cuando vuelva, "
-                                  "el juego te preguntará cuál conservar."
-                                : "The folder couldn't be reached, so this save stayed on this device. When it is back, the game "
-                                  "will ask which save to keep.");
-        }
+        LOG("[save folder] %s can't be reached: the game's own folder is used meanwhile\n", g_chosen_utf8);
+        missed = true;
     }
     snprintf(out, size, "%s/%s", g_save_dir, sub);
+    return missed;
+}
+
+void savefolder_missed(void) {
+    char text[64];
+    snprintf(text, sizeof text, "time=%lld\n", (long long)time(NULL));
+    write_file(MISSED_FILE, text);
+    LOG("[save folder] the save went to the game's own folder\n");
+    if (!g_missed_told) {
+        g_missed_told = true;
+        overlay_notice(es() ? "Carpeta de partidas" : "Save folder",
+                       es() ? "No se pudo llegar a la carpeta, así que esta partida quedó en este dispositivo. Cuando vuelva, "
+                              "el juego te preguntará cuál conservar."
+                            : "The folder couldn't be reached, so this save stayed on this device. When it is back, the game "
+                              "will ask which save to keep.");
+    }
 }
 
 void savefolder_tick(void) {

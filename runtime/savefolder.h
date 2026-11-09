@@ -32,10 +32,14 @@ extern "C" {
 // Once g_save_dir is known, before the game runs (main.c): a pending change applied (savefolder_apply_pending; on a
 // phone GameFolderActivity did it already), save_folder.txt read, this device's in-use mark written.
 void savefolder_init(void);
-// The host folder for the save mount `sub` (services/fs.c, at every mount: the game mounts at each save). save_0 with a
-// folder chosen: that folder when it can be reached (and written); else, and for anything else, g_save_dir/sub. A miss
-// is written down (save_folder_missed.txt) and told once over the game: nothing is lost, the game writes its whole save.
-void savefolder_root(const char *sub, char *out, size_t size);
+// The host folder for the save mount `sub` (services/fs.c, at every mount: the game mounts at each save, and at the
+// start to read it). save_0 with a folder chosen: that folder when it can be reached (and written); else, and for anything
+// else, g_save_dir/sub. true: the chosen folder was missed (the mount is the game's own folder instead).
+bool savefolder_root(const char *sub, char *out, size_t size);
+// A save was written to the game's own folder because the chosen one was missed (services/fs.c, after its commit):
+// written down (save_folder_missed.txt, the next start asks which one to keep) and told once over the game. Nothing is
+// lost: the game writes its whole save each time.
+void savefolder_missed(void);
 // The host thread, every frame or so (runtime/ui.c): the in-use mark kept fresh; a notice that waited for the game's
 // first frames.
 void savefolder_tick(void);

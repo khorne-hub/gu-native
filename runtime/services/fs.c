@@ -87,7 +87,7 @@ static Service *open_romfs_storage(void) {
 #define COMMIT_EXT ".mhgu-commit"
 #define MAX_PENDING 16
 typedef struct { char path[1100]; bool deleted, created; } Pending;  // created: the new content is in path + TMP_EXT
-typedef struct { char root[1024]; bool journal; int npending; Pending pending[MAX_PENDING]; } HostFs;
+typedef struct { char root[1024]; bool journal, missed; int npending; Pending pending[MAX_PENDING]; } HostFs;
 typedef struct { int fd; char path[1100]; } HostFile;
 typedef struct { DIR *d; char path[1024]; int mode; } HostDir;
 
@@ -436,7 +436,11 @@ static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     }
     case 10:  // Commit
-        if (fs->journal && !fs_commit(fs)) resp->result = MAKE_RESULT(2, 4000);
+        if (fs->journal) {
+            bool changed = fs->npending > 0;
+            if (!fs_commit(fs)) resp->result = MAKE_RESULT(2, 4000);
+            else if (changed && fs->missed) savefolder_missed();  // (the save folder couldn't be reached: it went here)
+        }
         break;
     case 11: case 12: OUT(int64_t, 0) = 0x40000000; resp_size(resp, 8); break;  // free / total space
     case 13: rm_rf(p, true); break;
@@ -463,7 +467,7 @@ static void filesystem_close(Service *s) {
 static Service *open_host_fs(const char *sub, bool journal) {
     HostFs *fs = calloc(1, sizeof *fs);
     if (getenv("MHGU_SAVE_DIR")) g_save_dir = getenv("MHGU_SAVE_DIR");
-    if (journal) savefolder_root(sub, fs->root, sizeof fs->root);  // (the save: the save folder's, when one is chosen)
+    if (journal) fs->missed = savefolder_root(sub, fs->root, sizeof fs->root);  // (the save: the save folder's, when one is chosen)
     else snprintf(fs->root, sizeof fs->root, "%s/%s", g_save_dir, sub);
     mkdirs(fs->root);
     fs->journal = journal;
