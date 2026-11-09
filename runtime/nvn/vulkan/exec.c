@@ -4643,29 +4643,32 @@ static bool movie_viewport(NvnTexture *y, const float *vp, float out[4]) {
 // drawn into it: its pass never even begins. Every lookup finds nothing in the way: no shadow anywhere.
 static void clear(int index, int kind, const void *color, uint32_t mask, bool depth, float dval, bool stencil, uint32_t sval,
                   uint32_t smask);
+// Which atlases are cleared is kept in each one's own TexBackend (shadow_off_gen, shadow_off_image), so every atlas the game
+// makes is cleared once, however many: a list of the first 8 kept the 9th and later - new ones after some areas or a
+// quest, the village again - uncleared, their garbage putting the whole scene in shadow, dark (#165, as #88, #105). A new
+// atlas has a new TexBackend (0: not cleared), even where its NvnTexture's memory, or its image's handle, was another's.
+// And the same atlas again when its image was made anew. Shadows turned On then Off again: all of them cleared again.
 static bool shadow_skipped(void) {
-    static NvnTexture *cleared[8];
-    static VkImage cleared_image[8];  // (the image the atlas had then: the game may give it a new one, after a quest)
+    static uint32_t off_gen = 1;
+    static bool was_on = true;
     if (config_live_shadows()) {
-        memset(cleared, 0, sizeof cleared);  // (turned on again: cleared again when it next goes off)
+        was_on = true;
         return false;
     }
+    if (was_on) was_on = false, off_gen++;
     if (st.rt.ncolor) return false;
     NvnTexture *d = st.rt.depth;
     if (!d || (d->width < 512 && d->height < 512) || (d->width == g_render_size[0] && d->height == g_render_size[1])) return false;
-    int i = 0;
-    while (i < 8 && cleared[i] && cleared[i] != d) i++;
-    VkImage image = d->backend ? ((TexBackend *)d->backend)->image : VK_NULL_HANDLE;
-    // (the first time: the far depth, once; a new atlas - another zone's - once too; and the same atlas again when its
-    // image was made anew: left as it was, its garbage put the whole scene in shadow, dark after a quest - #88, #105)
-    if (i < 8 && (!cleared[i] || cleared_image[i] != image)) {
+    TexBackend *b = d->backend;
+    if (!b || b->shadow_off_gen != off_gen || b->shadow_off_image != b->image) {
         bool relaxed = ui_relax_scissor;  // (the whole atlas, not the cascade the scissor is set for)
         ui_relax_scissor = true;
-        clear(-1, 0, NULL, 0, true, 1.0f, false, 0, 0);
+        clear(-1, 0, NULL, 0, true, 1.0f, false, 0, 0);  // (makes its image, the first time)
         ui_relax_scissor = relaxed;
-        cleared[i] = d;
-        cleared_image[i] = image;
-        LOG("[vk] shadows off: the %ux%u shadow atlas cleared once, its draws left out\n", d->width, d->height);
+        if ((b = d->backend)) {
+            b->shadow_off_gen = off_gen, b->shadow_off_image = b->image;
+            LOG("[vk] shadows off: the %ux%u shadow atlas cleared once, its draws left out\n", d->width, d->height);
+        }
     }
     renderer_mark_gpu_owned(d);  // (not to be uploaded from the guest's memory when sampled)
     return true;

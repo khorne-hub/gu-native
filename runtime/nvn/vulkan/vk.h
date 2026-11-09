@@ -136,6 +136,8 @@ typedef struct TexBackend {
     uint64_t up_last;       // the frame its contents last changed and were uploaded again
     uint32_t up_run;        // how many frames in a row they did (textures.c say_every_frame)
     bool up_said;
+    uint32_t shadow_off_gen;  // ([Performance] Shadows Off) a shadow atlas cleared once: when (exec.c shadow_skipped)
+    VkImage shadow_off_image; // (and which image it had then)
 } TexBackend;
 
 bool vk_wide_rt_on(void);  // (textures.c) RGBA8 render targets as RGBA16 UNORM ([Graphics] SmoothGradients)
