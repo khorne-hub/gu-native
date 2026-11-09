@@ -1,7 +1,9 @@
 // Touch controls for phones, in the Monster Hunter style: bronze-rimmed dark discs with cream glyphs and the game's
 // button letter on a small badge.
 //   - left thumb: a stick fixed at its place (the knob follows the thumb inside the rim); a light tilt walks, a full
-//     one runs
+//     one walks fast; pushed far out, past a ring of gold dashes, it runs (R, the dash: [Touch] StickRun) and the run
+//     locks, going on by itself after the thumb lifts until the stick is touched again, the weapon comes out or a menu
+//     opens. With StickRun Off a Run button above the attacks runs while held
 //   - right thumb: the attack pill (the heavy attack A on its upper half, the light one X on the lower, both on its
 //     seam), R guard / dash beside its lower end, B dodge below it, ZR, ZL target, L centre the camera (a long press:
 //     the lock-on); Plus (the game's menu), the map (the left stick's click: the minimap) and the port's settings at the
@@ -13,7 +15,8 @@
 //     keeps walking where the game lets the hunter walk (it moves the cursor where the hunter isn't played: the title,
 //     the main menu); A, B and the rest stay what they are. A drag anywhere else moves the cursor, a step every so far
 //   - the game's own HUD, moved out of the thumbs' way (nvn/vulkan/exec.c): a tap on the item bar (bottom middle)
-//     uses the item, a swipe on it turns the bar; a tap on a Hunter Art's panel (top right) performs it; a tap on the
+//     uses the item, a swipe on it turns the bar, a long press holds it open with its neighbouring items (as L held,
+//     with no L: hle/itembar.c); a tap on a Hunter Art's panel (top right) performs it; a tap on the
 //     target camera's icon turns the lock-on on or off (the camera keeps turning to the target, as in the newer games;
 //     a controller's right stick click does the same, runtime/host_input.c). A padlock by the icon, lit while it is on;
 //     with the controls hidden (a controller, a keyboard) it still shows while the lock-on is on, by the icon unmoved
@@ -133,7 +136,9 @@ const Def DEFS[C_COUNT] = {
     {"settings", "Settings", I_GEAR, "", 0, false, .065f, .67f, .040f},
     // sheathe: Y with the weapon out (sheathed, Y uses the item: the item bar's tap); left of the pill's upper half
     {"sheathe", "Sheathe  Y", I_SHEATHE, "Y", B(BTN_Y), true, .44f, .44f, .046f},
-    {"run", "Run", I_RUN, "", 0, false, .29f, .52f, .044f},  // (not shown: the stick's rim runs; kept for the file's order)
+    // run: R while held, with the weapon sheathed ([Touch] StickRun Off: the stick only walks then), above the attacks.
+    // Its key changed with its side (a left one, never shown, was in every layout saved before: those lines are dropped)
+    {"run_button", "Run  R", I_RUN, "R", 0, true, .24f, .56f, .05f},
     // the attack buttons as three of their own (STYLE_SEPARATE), and as one band round the screen's corner (STYLE_CORNER:
     // x, y the band's outer edge from the screen's edges, r the radius of its middle line at the bend)
     {"heavy", "Heavy attack  A", I_ATTACK, "A", B(BTN_A), true, .16f, .33f, .078f},
@@ -225,8 +230,9 @@ bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the pag
 }
 std::atomic<bool> g_menu_town;  // (the menu opened in a town: its ZL stays while the menu is open, touch_input)
 bool in_mode(int i, bool menu) {
-    // (no run button: the thumb past the stick's rim runs; what a hunt can do without is off until asked for: [Touch] Show*)
-    if (i == C_RUN) return false;
+    // (the run button: with StickRun Off, in a hunt and in towns, either layout, never in a menu - R turns its pages;
+    // what a hunt can do without is off until asked for: [Touch] Show*)
+    if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -268,6 +274,22 @@ const float BAND_LEN = BAND_LEFT + PI * .5f + BAND_UP;
 // where its buttons end, in parts of its length: the guard, the light attack, the seam (both attacks), the heavy attack
 const float BAND_GUARD = .30f, BAND_SEAM0 = .63f, BAND_SEAM1 = .69f;
 const float KNOB = .45f;             // the stick's knob, in its base's radius
+// Running with the stick ([Touch] StickRun), in the stick base's radius r: the thumb pushed out to RUN_ON locks the run (R
+// held: the dash, with the weapon sheathed), which goes on after the thumb lifts, the stick held as it was; a thumb still
+// down that comes back under RUN_KEEP lets it go. The zone stays within RUN_REACH screen heights past the rim and RUN_EDGE
+// short of the screen's edge the thumb goes toward (a big stick, or one placed low, runs every way), never under RUN_MIN.
+// The same in the MH4U port's touch.cpp
+const float RUN_ON = 2.0f, RUN_KEEP = .80f, RUN_MIN = 1.25f, RUN_REACH = .11f, RUN_EDGE = .03f;
+const uint64_t RUN_X_WAIT = 400 * 1000000ull;  // (X pressed: no run's R until this long after, run_block)
+// The run zone's radius toward (ux, uy) (a unit vector, y down) from a stick at c of radius r, on a w x h screen
+float run_radius(ImVec2 c, float r, float ux, float uy, float w, float h) {
+    float edge = 1e30f;
+    if (ux > 1e-4f) edge = std::min(edge, (w - c.x) / ux);
+    if (ux < -1e-4f) edge = std::min(edge, c.x / -ux);
+    if (uy > 1e-4f) edge = std::min(edge, (h - c.y) / uy);
+    if (uy < -1e-4f) edge = std::min(edge, c.y / -uy);
+    return std::max(RUN_MIN * r, std::min(std::min(RUN_ON * r, r + RUN_REACH * h), edge - RUN_EDGE * h));
+}
 const float CAMERA_COUNTS = 1150.0f; // mouse counts for a drag the screen's height (hle/mousecam.c: 0.08 degrees each)
 const uint64_t MS = 1000000ull;
 // a Hunter Art's row: its button
@@ -745,6 +767,8 @@ struct Finger {
     uint64_t btn;          // a control of the ranged layout: what it pressed when it landed (the weapon may go out under it)
     int sent;              // the menu pad's: the direction it presses now (dpad_part's; a tab, Minus: 1 pressed), which
                            // follows part as press_ok lets a press start
+    uint64_t keep;         // a thumb from Guard slid onto the attacks ([Touch] GuardSlide): R kept with them
+    bool on_bar;           // ...or one on Guard slid onto the item bar: R + Y there (the item used with the weapon out)
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
@@ -767,12 +791,19 @@ struct State {
     uint64_t step_ns;        // when a drag may move a menu's cursor again
     float tap_x, tap_y;
     Pulse pulse[6];
-    bool run;                // the thumb is past the stick's rim: running (R held)
-    uint64_t run_idle;
+    bool run;                // running: R held (the stick's locked run, or the Run button held)
+    bool run_lock;           // the stick's run locked ([Touch] StickRun): it goes on after the thumb lifts...
+    bool run_free;           // ...and the thumb has lifted: the stick stays pushed toward run_x, run_y
+    bool run_armed;          // the thumb was inside the run zone since it landed or the last run ended (it may lock)
+    bool run_can;            // a run could start now (StickRun, sheathed, no menu, the hunter played: the zone shows)
+    float run_x, run_y;      // the locked run's way (the stick's, y up, unit length)
+    uint64_t run_x_until;    // an attack that draws the weapon (X) was pressed: no run's R until then (#151)
     float fx, fy;            // the stick's thumb where it is (the knob stops at the rim)
     bool lock;               // the lock-on: L is pressed every LOCK_EVERY while the hunt camera turns
     uint64_t lock_next, lock_until, hunt_ns;
     uint64_t item_flash, art_flash;
+    bool bar_open;           // a long press on the item bar holds it open (hle/itembar.c itembar_hold)...
+    SDL_FingerID bar_finger; // ...that finger's
     int item_dir, art_row;
     int drawn;               // weapon_drawn, at the last touch_input
     int weapon;              // WEAPON_* in hand, whatever the layout, at the last touch_input (the lock-on's)
@@ -839,6 +870,7 @@ void hud_asked(const State &s) { g_hud_asked = s.hud_edit || s.hud_request || g_
 std::atomic<bool> g_hud_pad;    // (a controller is read: its B, which cancels the editor, shows on Cancel once used)
 #endif
 const uint64_t LOCK_EVERY = 250 * MS, LOCK_PRESS = 50 * MS, LOCK_AFTER_DRAG = 400 * MS, MIN_PRESS = 70 * MS;
+const uint64_t BAR_HOLD = 400 * MS;  // (a finger kept this long on the item bar, unmoved, holds it open: as the MH4U port)
 
 void ensure_loaded(State &s) {
     if (s.loaded) return;
@@ -890,9 +922,23 @@ void stick_to(State &s, float x, float y) {  // (the knob under the thumb, kept 
     s.fx = x, s.fy = y;
     float dx = x - s.bx, dy = y - s.by, d = sqrtf(dx * dx + dy * dy);
     float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
+    // (inside the run zone: pushed out past it from here, it may run; every finger event, not each update, so that a quick
+    // flick out counts)
+    if (d < 1.0f || d < run_radius(ImVec2(s.bx, s.by), r, dx / d, dy / d, s.w, s.h)) s.run_armed = true;
     if (d > r) x = s.bx + dx / d * r, y = s.by + dy / d * r;
     s.kx = x, s.ky = y;
 }
+
+// The stick's locked run ends (why: for the log); the thumb must come back inside the zone before it can run again
+void run_end(State &s, const char *why) {
+    if (!s.run_lock) return;
+    s.run_lock = s.run_free = s.run_armed = false;
+    static int dbg = -1;
+    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+    if (dbg) rt_logf("[touch] run let go (%s)\n", why);
+}
+// A thumb from Guard keeps R as it slides ([Touch] GuardSlide): with the weapon out, no menu of the game's open
+bool guard_slide(const State &s) { return config_live_touch_show(TB_GUARD_SLIDE) && s.drawn == 1 && !s.menu; }
 
 Finger *finger(State &s, SDL_FingerID id) {
     for (Finger &f : s.f)
@@ -916,13 +962,14 @@ const char *mpad_label(int ctl) {  // (a tab: what it presses)
 int mpad_want(const Finger &f) { return f.ctl == C_MPAD ? f.part : 1; }  // (what its finger asks for now)
 
 uint64_t finger_buttons(const Finger &f) {
-    return f.ctl == C_ATTACK || f.ctl == C_CORNER ? PILL_BUTTONS[f.part]
-         : of_mpad(f.ctl) ? mpad_buttons(f.ctl, f.sent)
-         : is_dpad(f.ctl) ? dpad_buttons(f.part)
-         : is_combo(f.ctl) ? (uint64_t)config_live_touch_combo(f.ctl - C_COMBO)
-         : f.ctl == C_LIGHT && f.part ? PILL_BUTTONS[2]
-         : f.btn ? f.btn
-                 : DEFS[f.ctl].buttons;
+    uint64_t b = f.ctl == C_ATTACK || f.ctl == C_CORNER ? PILL_BUTTONS[f.part]
+               : of_mpad(f.ctl) ? mpad_buttons(f.ctl, f.sent)
+               : is_dpad(f.ctl) ? dpad_buttons(f.part)
+               : is_combo(f.ctl) ? (uint64_t)config_live_touch_combo(f.ctl - C_COMBO)
+               : f.ctl == C_LIGHT && f.part ? PILL_BUTTONS[2]
+               : f.btn ? f.btn
+                       : DEFS[f.ctl].buttons;
+    return b | f.keep | (f.on_bar ? B(BTN_Y) : 0);  // (a guard kept as it slid: [Touch] GuardSlide)
 }
 
 void recompute_held(State &s) {  // (the menu pad's go by s.pad_held: touch_input, as a press may start)
@@ -938,6 +985,8 @@ void drop_fingers(State &s) {
     for (Finger &f : s.f) f.kind = F_NONE;
     for (Pulse &p : s.pulse) p.until = 0;
     s.stick_on = false, s.held = s.pad_held = s.tapped = 0, s.stick_part = 0, s.pinch = false;
+    run_end(s, "every finger let go of");
+    s.bar_open = false;
 }
 
 // the port's settings menu takes the fingers as its mouse (overlay.cpp)
@@ -1009,14 +1058,14 @@ void edit_end(State &s, bool keep) {
 void next_style(State &s) {
     int style = (s.layout.style + 1) % STYLE_COUNT;
     s.layout.style = style, g_style = style;
-    static const struct { int c; float at; } MOVED[2] = {{C_DODGE, .33f}, {C_SHEATHE, .5f}};
+    static const struct { int c; float x, y; } MOVED[3] = {{C_DODGE, .33f, .33f}, {C_SHEATHE, .5f, .5f}, {C_RUN, .325f, .455f}};
     for (const auto &m : MOVED) {
         Layout before = s.saved.style == STYLE_CORNER ? defaults() : s.saved;
         s.layout.x[m.c] = before.x[m.c], s.layout.y[m.c] = before.y[m.c];
         if (style != STYLE_CORNER) continue;
         Geo band = place(s.layout, C_CORNER, s.w, s.h), o = place(s.layout, m.c, s.w, s.h);
         if (band_distance(band, o.c.x, o.c.y, nullptr) < band.r * BAND_T + o.r)
-            s.layout.x[m.c] = s.layout.y[m.c] = m.at;
+            s.layout.x[m.c] = m.x, s.layout.y[m.c] = m.y;
     }
     if (s.sel >= 0 && s.sel < C_COUNT && !in_editor(s.sel)) s.sel = -1;
 }
@@ -1498,6 +1547,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         } else if (!s.stick_on && in_mode(C_STICK, s.menu) && in_stick_zone(s, x, y, item)) {
             f->kind = F_STICK;
             Geo g = place(s.layout, C_STICK, s.w, s.h);
+            run_end(s, "the stick touched again");  // (a run going on by itself stops: this thumb drives now)
             s.stick_on = true, s.bx = g.c.x, s.by = g.c.y;
             stick_to(s, x, y);
         } else {
@@ -1553,13 +1603,32 @@ extern "C" bool touch_event(const SDL_Event *e) {
             f->part = mpad_part(place(s.layout, C_MPAD, s.w, s.h), x, y, f->part);  // press may start: press_ok)
         } else if (f->kind == F_BUTTON && (f->ctl == C_ATTACK || f->ctl == C_CORNER)) {  // sliding along it: another part
             int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);
-            if (c == f->ctl && part != f->part) f->part = part, recompute_held(s), tap_due();
+            if (c == f->ctl && part != f->part) {
+                // (the corner's guard onto its attacks: R kept, [Touch] GuardSlide; back onto the guard, the guard alone)
+                if (f->ctl == C_CORNER && (f->part == 3 || f->keep) && part != 3 && guard_slide(s)) f->keep = B(BTN_R);
+                if (part == 3) f->keep = 0;
+                f->part = part, f->on_bar = false, recompute_held(s), tap_due();
+            } else if (c == C_R && f->keep) {  // (a guard kept, back onto Guard: Guard again)
+                f->ctl = C_R, f->part = 0, f->keep = 0, recompute_held(s), tap_due();
+            }
         } else if (f->kind == F_BUTTON && (f->ctl == C_HEAVY || f->ctl == C_LIGHT)) {  // from one attack to the other
             int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);
             if ((c == C_HEAVY || c == C_LIGHT) && (c != f->ctl || part != f->part)) f->ctl = c, f->part = part, recompute_held(s), tap_due();
-        } else if (f->kind == F_BUTTON && (f->ctl == C_DODGE || f->ctl == C_R)) {  // a thumb sliding onto the attacks
-            int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);
-            if (c == C_ATTACK || c == C_CORNER || c == C_HEAVY || c == C_LIGHT) f->ctl = c, f->part = part, recompute_held(s);
+            else if (c == C_R && f->keep) f->ctl = C_R, f->part = 0, f->keep = 0, recompute_held(s), tap_due();
+        } else if (f->kind == F_BUTTON && (f->ctl == C_DODGE || f->ctl == C_R || f->ctl == C_RUN)) {  // a thumb sliding onto
+            int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);           // the attacks
+            if (c == C_ATTACK || c == C_CORNER || c == C_HEAVY || c == C_LIGHT) {
+                // (from Guard with the weapon out and [Touch] GuardSlide: R kept, R + X, R + A; from Run: the attack
+                // alone, a draw attack, the run's R let go; from Dodge: the attack)
+                f->keep = f->ctl == C_R && guard_slide(s) ? B(BTN_R) : 0;
+                f->ctl = c, f->part = part, f->on_bar = false, recompute_held(s);
+                if (f->keep) tap_due();
+            }
+        }
+        // (a thumb on Guard - the corner's too - slid onto the item bar with GuardSlide: R + Y while it is there)
+        if (f->kind == F_BUTTON && !f->done && (f->ctl == C_R || (f->ctl == C_CORNER && f->part == 3))) {
+            bool bar = guard_slide(s) && zone_rect(zones(), HP_ITEMS, s.w, s.h).in(x, y);
+            if (bar != f->on_bar) f->on_bar = bar, recompute_held(s), tap_due();
         }
         f->x = x, f->y = y;
         return true;
@@ -1590,8 +1659,19 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if (b) pulse(s, b, MIN_PRESS - (now - f->t0));
         }
     }
-    if (f->kind == F_STICK) s.stick_on = false;
+    if (f->kind == F_STICK) {
+        s.stick_on = false;
+        // (a locked run goes on by itself, the stick held as it was - not when the system took the finger)
+        if (cancel) run_end(s, "the stick's finger taken by the system");
+        else if (s.run_lock) {
+            s.run_free = true;
+            static int dbg = -1;
+            if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+            if (dbg) rt_logf("[touch] run goes on by itself (the thumb lifted)\n");
+        }
+    }
     if (f->kind == F_EDIT) s.pinch = false;
+    if (f->kind == F_ITEM && s.bar_open && f->id == s.bar_finger) s.bar_open = false;  // (closed: no item used)
     if (f->kind == F_ITEM && tap && !f->done && fabsf(f->swipe) < .02f * s.h && fabsf(f->swipe_y) < .02f * s.h)
         pulse(s, B(BTN_Y), 80 * MS), tap_due();  // a tap: the item (Y)
     if (f->kind == F_ARTS && tap && f->part >= 0)  // a tap on a Hunter Art's panel: its d-pad direction
@@ -1744,6 +1824,24 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         }
     }
     g_touch_hud = visible && config_live_touch_hud();
+    // A long press on the item bar holds it open, its neighbouring items shown as while L is held, with nothing pressed
+    // (L would turn the camera): a swipe meanwhile turns it, lifting closes it and uses no item (#109, as the MH4U port's)
+    for (Finger &f : s.f)
+        if (f.kind == F_ITEM && !f.done && !f.moved && !s.bar_open && now - f.t0 > BAR_HOLD && !s.menu) {
+            s.bar_open = true, s.bar_finger = f.id;
+            tap_due();
+            if (dbg) rt_logf("[touch] item bar held open\n");
+        }
+    if (s.bar_open && (menu || s.menu || !visible)) s.bar_open = false;  // (a menu over it: closed)
+    itembar_hold(s.bar_open);
+    // The stick's locked run ends once a run can't go on: StickRun turned off, the port's menu or one of the game's open,
+    // the controls hidden or in the editor, the weapon out, the hunter not played (a cutscene, a cart, the quest's end)
+    bool stick_run = config_live_touch_show(TB_STICK_RUN) != 0;
+    s.run_can = stick_run && s.drawn != 1 && !s.menu && play && visible && !s.edit && !menu;
+    if (s.run_lock && !s.run_can)
+        run_end(s, !stick_run ? "StickRun off" : menu ? "the settings menu" : !visible || s.edit ? "the controls hidden or edited"
+                 : s.menu ? "a menu of the game's" : s.drawn == 1 ? "the weapon out" : "the hunter not played");
+    s.run = false;
     // (while a menu is open the fingers are its mouse: nothing of theirs reaches the game or the menu's controller)
     if (menu) {
         s.cam_dx = s.cam_dy = 0;
@@ -1828,25 +1926,44 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
             *lx += (int)(dx * t * 32767), *ly += (int)(dy * t * 32767);
             moving = m > .3f;
         }
+    } else if (s.run_free && s.h > 0) {  // (a locked run, the thumb lifted: the stick held full out the way it ran,
+        *lx += (int)(s.run_x * 32767), *ly += (int)(s.run_y * 32767);  // turning with the camera as a held stick does)
+        moving = true;
     }
-    // the thumb past the stick's rim runs: R held (the dash, weapon sheathed; drawn, some weapons guard with it), with
-    // a little hysteresis so the edge does not flicker
-    s.run = false;
-    // (only sheathed: with the weapon out, R is some weapons' guard - the thumb at the edge in a fight walks)
-    int drawn = weapon_drawn();
+    // Running, R held: the dash with the weapon sheathed (never with it out: R is some weapons' guard, and not in a menu:
+    // R turns its pages). [Touch] StickRun: the thumb pushed out past the run zone, from inside it while a run can start,
+    // locks the run with a click; it goes on after the thumb lifts (above) until run_end. StickRun Off: the Run button,
+    // while held. No run's R with X pressed or just after: X draws the weapon, and R + X + A is another move (the Great
+    // Sword's guard from the sheath came out of a run and a draw attack: #151)
+    int drawn = s.drawn;
     static int drawn_was = -2;
     if (drawn != drawn_was) {
         if (dbg) rt_logf("[touch] weapon %s\n", drawn == 1 ? "out" : drawn == 0 ? "sheathed" : "(not known)");
         drawn_was = drawn;
     }
-    if (s.stick_on && moving && s.h > 0 && drawn != 1 && !s.menu) {  // (not in a menu: R turns its pages)
-        float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h, d = hypotf(s.fx - s.bx, s.fy - s.by);
-        static bool was;
-        was = d > r * (was ? 1.45f : 1.6f);  // (well past the rim: a thumb at the edge in a fight still walks;
-                                             // r is the stick's size in the layout: a bigger stick, farther)
-        s.run = was;
-        if (s.run) *buttons |= B(BTN_R);
+    if (s.stick_on && s.h > 0) {
+        float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h, dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy);
+        float on = d > 1.0f ? run_radius(ImVec2(s.bx, s.by), r, dx / d, dy / d, s.w, s.h) : RUN_ON * r;
+        if (!s.run_can && d > on) s.run_armed = false;  // (out there while it couldn't run - the weapon out as it was
+                                                        // sheathed: not until it has come back inside)
+        if (s.run_lock && d < r * RUN_KEEP) {
+            run_end(s, "the thumb came back in");
+        } else if (!s.run_lock && s.run_can && moving && s.run_armed && d > on) {
+            s.run_lock = true, s.run_free = false;
+            tap_due();
+            if (dbg) rt_logf("[touch] run locked (thumb %.2f r, zone %.2f r)\n", d / r, on / r);
+        }
+        if (s.run_lock && d > r * .9f) s.run_x = dx / d, s.run_y = -dy / d;  // (its way, y up: the last the thumb pushed)
     }
+    bool run_held = false;  // (the Run button)
+    for (const Finger &f : s.f) run_held |= f.kind == F_BUTTON && !f.done && f.ctl == C_RUN;
+    bool want = s.run_lock || (run_held && !stick_run && moving && drawn != 1 && !s.menu);
+    if (*buttons & B(BTN_X)) s.run_x_until = now + RUN_X_WAIT;
+    s.run = want && now >= s.run_x_until;
+    if (s.run) *buttons |= B(BTN_R);
+    static bool said_x;
+    if (dbg && want && !s.run && !said_x) rt_logf("[touch] run: no R while X draws the weapon\n");
+    said_x = want && !s.run;
 }
 
 extern "C" bool touch_visible(void) { return g_visible; }
@@ -2735,17 +2852,68 @@ void ranged_face(int i, int drawn, Icon *ic, char *letter, size_t size) {
                                   : b & B(BTN_X) ? "X" : b & B(BTN_R) ? "R" : DEFS[i].letter);
 }
 
+// The run zone round the stick at c ([Touch] StickRun): a ring of short gold dashes where the thumb pushed out locks the
+// run (each at the zone's radius that way: run_radius). near (0 at the rim, 1 at the zone): brighter as the thumb nears
+// it, with a glow on the ring toward the thumb (ux, uy) and the run's boot on a small disc there; locked, the ring whole
+// and lit, and a closed padlock on that disc. The same in the MH4U port's touch.cpp
+void run_ring(ImDrawList *dl, ImVec2 c, float r, float w, float h, float a, float near, bool locked, float ux, float uy,
+              bool cue = true) {
+    const int N = 24;
+    for (int i = 0; i < N; i++) {
+        float a0 = (i - .25f) * 2 * PI / N, a1 = (i + .25f) * 2 * PI / N, am = i * 2 * PI / N;
+        float rr = run_radius(c, r, cosf(am), sinf(am), w, h);
+        ImVec2 p0(c.x + cosf(a0) * rr, c.y + sinf(a0) * rr), p1(c.x + cosf(a1) * rr, c.y + sinf(a1) * rr);
+        dl->AddLine(p0, p1, locked ? fade(GLOW, a * .85f) : fade(GOLD, a * (.2f + .5f * near)), r * (locked ? .07f : .05f));
+    }
+    if (locked) {  // (whole: the gaps closed)
+        for (int i = 0; i < N; i++) {
+            float a0 = (i + .25f) * 2 * PI / N, a1 = (i + .75f) * 2 * PI / N;
+            float r0 = run_radius(c, r, cosf(a0), sinf(a0), w, h), r1 = run_radius(c, r, cosf(a1), sinf(a1), w, h);
+            dl->AddLine(ImVec2(c.x + cosf(a0) * r0, c.y + sinf(a0) * r0), ImVec2(c.x + cosf(a1) * r1, c.y + sinf(a1) * r1),
+                        fade(GLOW, a * .85f), r * .07f);
+        }
+    }
+    if (!cue || (near <= 0.0f && !locked)) return;
+    float an = atan2f(uy, ux), rr = run_radius(c, r, ux, uy, w, h), k = locked ? 1.0f : near;
+    if (!locked) {  // (the glow toward the thumb: ±25 degrees)
+        const float S = 25 * PI / 180;
+        for (int j = 0; j < 8; j++) {
+            float b0 = an - S + 2 * S * j / 8, b1 = an - S + 2 * S * (j + 1) / 8;
+            float q0 = run_radius(c, r, cosf(b0), sinf(b0), w, h), q1 = run_radius(c, r, cosf(b1), sinf(b1), w, h);
+            dl->AddLine(ImVec2(c.x + cosf(b0) * q0, c.y + sinf(b0) * q0), ImVec2(c.x + cosf(b1) * q1, c.y + sinf(b1) * q1),
+                        fade(GLOW, a * (.25f + .6f * near)), r * .08f);
+        }
+    }
+    // the small disc just outside the zone, toward the thumb: the boot, and once locked the padlock, closed
+    float dr = r * .24f, out = rr + dr * 1.25f;
+    ImVec2 dc(c.x + ux * out, c.y + uy * out);
+    dc.x = std::clamp(dc.x, dr, w - dr), dc.y = std::clamp(dc.y, dr, h - dr);  // (on the screen: a zone near its edge)
+    float da = a * (.35f + .65f * k);
+    disc(dl, dc, dr, locked, da);
+    if (locked) padlock(dl, dc, dr * .78f, true, fade(GLOW, da), fade(DEEP, da));
+    else icon(dl, I_RUN, dc, dr, fade(INK, da), fade(DEEP, da));
+}
+
 void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
     Geo g = place(l, i, w, h);
     if (i == C_STICK) {
-        if (s.stick_on && !s.edit) {
-            stick(dl, ImVec2(s.bx, s.by), ImVec2(s.kx, s.ky), g.r, a, true);
+        if ((s.stick_on || s.run_free) && !s.edit) {
+            // (a locked run going on by itself: the knob held at the rim the way it runs)
+            ImVec2 base(s.bx, s.by), knob = s.stick_on ? ImVec2(s.kx, s.ky) : ImVec2(s.bx + s.run_x * g.r, s.by - s.run_y * g.r);
+            stick(dl, base, knob, g.r, a, true);
+            if (s.run_lock || (s.run_can && s.stick_on)) {  // (the run zone: while a run can start and the thumb is on it)
+                float dx = s.stick_on ? s.fx - s.bx : s.run_x, dy = s.stick_on ? s.fy - s.by : -s.run_y, d = hypotf(dx, dy);
+                float ux = d > 1e-3f ? dx / d : 0.0f, uy = d > 1e-3f ? dy / d : -1.0f;
+                float on = run_radius(base, g.r, ux, uy, w, h);
+                float near = s.stick_on ? std::clamp((d - g.r) / std::max(1.0f, on - g.r), 0.0f, 1.0f) : 1.0f;
+                run_ring(dl, base, g.r, w, h, a, near, s.run_lock, ux, uy);
+            }
             if (s.run) {  // (running: a gold ring round the rim, and streaks behind the knob)
-                dl->AddCircle(ImVec2(s.bx, s.by), g.r * 1.12f, fade(GLOW, a * .85f), 48, g.r * .07f);
-                float dx = s.kx - s.bx, dy = s.ky - s.by, n = std::max(1.0f, hypotf(dx, dy));
+                dl->AddCircle(base, g.r * 1.12f, fade(GLOW, a * .85f), 48, g.r * .07f);
+                float dx = knob.x - s.bx, dy = knob.y - s.by, n = std::max(1.0f, hypotf(dx, dy));
                 dx /= n, dy /= n;
                 for (int i = -1; i <= 1; i++) {
-                    ImVec2 o(s.kx - dy * i * g.r * .22f, s.ky + dx * i * g.r * .22f);
+                    ImVec2 o(knob.x - dy * i * g.r * .22f, knob.y + dx * i * g.r * .22f);
                     dl->AddLine(ImVec2(o.x - dx * g.r * .55f, o.y - dy * g.r * .55f), ImVec2(o.x - dx * g.r * .95f, o.y - dy * g.r * .95f),
                                 fade(GLOW, a * (i ? .5f : .8f)), g.r * .06f);
                 }
@@ -2768,6 +2936,7 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
                 thumb = d > m ? ImVec2(g.c.x + dx / d * m, g.c.y + dy / d * m) : ImVec2(f.x, f.y);
             }
             if (i == C_HEAVY && f.ctl == C_LIGHT && f.part) mask |= 1;  // (the seam between them: both lit)
+            if (f.keep & B(BTN_R)) mask |= i == C_R ? 1 : i == C_CORNER && f.ctl == C_CORNER ? 4 : 0;  // (a guard kept)
         }
     if (of_mpad(i) && s.lit_ctl == i && SDL_GetTicksNS() < s.lit_until) mask |= i == C_MPAD ? s.lit_part : 1;  // (a tap)
     if (i == C_ATTACK) { pill(dl, font, g, mask, a); return; }
@@ -2806,6 +2975,7 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
         return;
     }
     float r = mask ? g.r * .95f : g.r;
+    if (i == C_RUN && s.drawn == 1 && !s.edit) a *= .45f, mask = 0;  // (the weapon out: dimmed, it presses nothing)
     disc(dl, g.c, r, mask != 0, a);
     if (i == C_RUN && s.run) dl->AddCircle(g.c, g.r * 1.16f, fade(GLOW, a * (.6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4))), 40, g.r * .09f);
     if (i == C_L && s.lock) dl->AddCircle(g.c, g.r * 1.16f, fade(GLOW, a * (.6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4))), 40, g.r * .09f);
@@ -2994,6 +3164,12 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     for (int i = 0; i < C_LAID && touch; i++) {
         if (!in_editor(i)) continue;  // (the controls no longer there stay in the file's order only)
         control(dl, font, s.layout, i, w, h, s, 1.0f);
+        if (i == C_STICK && config_live_touch_show(TB_STICK_RUN)) {  // (the run zone, as far out as the stick's size and
+            Geo g = place(s.layout, i, w, h);                         // place put it: StickRun)
+            run_ring(dl, g.c, g.r, w, h, 1.0f, .6f, false, 0.0f, -1.0f, false);
+            float top = g.c.y - run_radius(g.c, g.r, 0.0f, -1.0f, w, h);
+            text_center(dl, font, .02f * h, ImVec2(g.c.x, top - .018f * h), GOLD, T("Run"), w);
+        }
         if (i == C_MPAD)  // (its tabs and Minus with it, where it puts them)
             for (int j = C_ML; j <= C_MMINUS; j++)
                 if (mpad_member(j)) control(dl, font, s.layout, j, w, h, s, 1.0f);
@@ -3233,7 +3409,7 @@ extern "C" void touch_draw(float w, float h) {
     if (!s.loaded) return;
     if (s.w > 0 && (s.w != w || s.h != h)) {  // (the fingers' pixels are the window's; the picture's may differ)
         float kx = w / s.w, ky = h / s.h;
-        s.bx *= kx, s.kx *= kx, s.by *= ky, s.ky *= ky;
+        s.bx *= kx, s.kx *= kx, s.by *= ky, s.ky *= ky, s.fx *= kx, s.fy *= ky;
         for (Finger &f : s.f) f.x *= kx, f.y *= ky;
 #ifndef __ANDROID__
         s.hud_px *= kx, s.hud_py *= ky;

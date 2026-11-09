@@ -348,6 +348,18 @@ static const char DEFAULT_INI[] =
     "ShowR3 = Off\n"
     "ShowStick = On\n"
     "\n"
+    "; On: push the movement stick far out, past the ring that shows round it, and the hunter runs (the dash, with the\n"
+    "; weapon sheathed) and keeps running after you lift your thumb, until you touch the stick again, draw the weapon or\n"
+    "; open a menu. Off: the stick only walks, and a Run button shows above the attacks instead: it runs while held\n"
+    "; Default: On\n"
+    "StickRun = On\n"
+    "\n"
+    "; On: with the weapon out, a thumb that lands on Guard and slides onto the attacks keeps guarding (R held), for the\n"
+    "; moves that need R and an attack together, like a lance's counter or a shield's thrust; slid onto the item bar, it\n"
+    "; presses R and Y together. Off: the slide lets go of R\n"
+    "; Default: Off\n"
+    "GuardSlide = Off\n"
+    "\n"
     "; While a menu of the game's is open, a small pad shows that moves its cursor, with the page buttons above it (L and R,\n"
     "; or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay\n"
     "; where they are; where the hunter can't walk (a town's item box, a shop) it moves the cursor too. If the pad covers a\n"
@@ -788,6 +800,8 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ShowRangedSpecial", touch_show[TB_RSPECIAL], false),
     ON_OFF("Touch", "ShowAmmo", touch_show[TB_AMMO], false),
     ON_OFF("Touch", "ShowItemArrows", touch_show[TB_ITEM_ARROWS], false),
+    ON_OFF("Touch", "StickRun", touch_show[TB_STICK_RUN], false),
+    ON_OFF("Touch", "GuardSlide", touch_show[TB_GUARD_SLIDE], false),
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}
