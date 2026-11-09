@@ -295,8 +295,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   windows; the minimap has no scissor.
 - Android/data on Android 11+: a file or folder another app made there (a file manager through Shizuku, adb) keeps that app as its
   owner, and the app can't write it (gu-native #176: game_folder.txt "open failed: EACCES"). `AppHome.ensure` runs at every start:
-  a foreign file in a folder of the app's is copied and put in its place, a foreign folder is renamed aside
-  (`<name>.other-app-<date>`) and made again; if `files/` itself can't be written (EACCES/EPERM only), the app moves for good to
+  in the folders the app writes (`MHGURecomp`, `save_import`, `cheats`, `cache`, `shots`) and among the files at the top, a foreign
+  file is copied and put in its place and a foreign folder is renamed aside (`<name>.other-app-<date>`) and made again (any other
+  folder, an agent's backup made with adb, is never touched); if `files/` itself can't be written (EACCES/EPERM only), the app moves for good to
   its private folder (`home.txt` in `getFilesDir()`, which `runtime/main.c` reads for `MHGU_HOME`) and says so once. Test with
   `adb shell` (the shell uid, as Shizuku's): `echo x > .../files/game_folder.txt` after deleting the app's own.
 - The save folder (`runtime/savefolder.h` lists its files): only `save_0` moves (`services/fs.c` asks `savefolder_root` at each
