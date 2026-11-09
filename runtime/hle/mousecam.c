@@ -199,6 +199,9 @@ void mousecam_lock_shot(void) {
     // (the touch controls' locked shot holds R for the aim: an aim whose actions weapon_aiming doesn't know, another
     // style's, counts too)
     bool aiming = weapon_aiming(h) || (ranged != WEAPON_BOW && touch_lock_assist());
+    // (aiming while the player turns the camera by hand - the lock-on waiting for it: the aim is theirs, a bow's drawn shot
+    // included, whose draw button counts as fire; the shot's path could not be corrected under the lock-on: #132)
+    if (aiming && !touch_lock_active()) return;
     if (!(aiming && touch_lock_active()) && !((fire || now - fired < SHOT_NS) && (aiming || weapon_moving(h)))) return;
     float x = LDF(h + PL_PLACE), y = LDF(h + PL_PLACE + 4), z = LDF(h + PL_PLACE + 8), t[3];
     if (!isfinite(x) || !lock_target(x, y, z, t)) return;
