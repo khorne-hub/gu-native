@@ -18,6 +18,10 @@
 //   MHGU_SKIP_LOG=1       every draw skipped for a building program / pipeline: its shaders and colour target
 //   MHGU_NO_PREWARM=1     don't translate the game's programs ahead of their first use (see "prewarm"; the ini's
 //                         [Performance] ShaderPrewarm = Off does the same)
+#ifdef __ANDROID__
+#include <sys/resource.h>  // (setpriority: the shader workers below the game)
+#include <unistd.h>
+#endif
 #include <errno.h>
 #include <math.h>
 #include <pthread.h>
@@ -792,6 +796,10 @@ static void *worker(void *a) {
     JobQueue *q = a;
 #ifdef _WIN32
     if (q == &compile_q) plat_thread_below_normal();
+#elif defined(__ANDROID__)
+    // (below the game too: the start's thousands of shaders kept every big core busy, the phone hot in its first minutes
+    // even on a Snapdragon 8 Gen 5, #91, #113; at nice 10 the scheduler gives them the efficient cores first)
+    if (q == &compile_q) setpriority(PRIO_PROCESS, (id_t)gettid(), 10);
 #endif
     for (;;) {
         pthread_mutex_lock(&q->lock);
