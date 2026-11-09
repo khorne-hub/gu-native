@@ -369,7 +369,7 @@ static void lost_report(const char *where) {
     static _Atomic int once;
     if (atomic_exchange(&once, 1)) return;
     uint64_t done = g_vk.has_timeline ? 0 : atomic_load(&fence_done), last = submit_seq + 1;
-    if (g_vk.has_timeline) vkGetSemaphoreCounterValue(g_vk.dev, g_vk.timeline, &done);
+    if (g_vk.has_timeline && vkGetSemaphoreCounterValue(g_vk.dev, g_vk.timeline, &done) != VK_SUCCESS) done = 0;
     LOG("[vk] device lost (%s): submission %llu was being submitted, %llu known finished; the work since:\n", where,
         (unsigned long long)last, (unsigned long long)done);
     uint64_t first = last >= SUBS ? last - SUBS + 1 : 1;

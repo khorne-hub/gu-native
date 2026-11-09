@@ -301,6 +301,7 @@ puntos, **Añadir juegos**.
 | "Este libmhgugame.so es de otra versión" | Una versión nueva de la app lo necesita otra vez: repite el paso 2 con la nueva descarga |
 | El juego se cierra solo | Cierra otras apps y baja la Resolución 3D. Suele ser falta de memoria |
 | Pantalla negra con solo los controles táctiles, o se cierra al presionar A | La copia de `romfs` a tu dispositivo no terminó. Cópiala de nuevo y revisa que ocupe 12,3 GB |
+| El juego dice **Archivos del juego incompletos** | Algunos archivos de `romfs` se cortaron al copiarlos, y el juego puede cerrarse o verse en negro donde los lee. Copia `romfs` de nuevo y revisa que ocupe 12,3 GB |
 | Se cierra después de unos minutos de juego | Actualiza a la 0.1.6 o una más nueva: usa la memoria de video de otra forma en GPU PowerVR. Si sigue pasando, comparte el registro: anota la memoria cada minuto |
 | En un teléfono débil va lento | Activa el modo gama baja, apaga **Sombras** y prueba la resolución 3D al 33 % o al 25 %. Si sigue lento: modo gama baja, **Tostadora** |
 
