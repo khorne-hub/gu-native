@@ -46,6 +46,8 @@ void ldn_send_aux(const void *data, uint32_t len);  // the port's own message to
 enum { HUB_UNKNOWN, HUB_CHECKING, HUB_OFF, HUB_ONLINE, HUB_NOT_FOUND, HUB_UNREACHABLE, HUB_LOST, HUB_NO_ANSWER,
        HUB_BUSY, HUB_VERSION, HUB_REFUSED };
 int ldn_hub_status(const char *server, const char *key, int *ms, int *hubs);  // HUB_*
+// The server an ini Server names: "" the default (LDN_DEFAULT_SERVER), "Off" none (false, out empty)
+bool ldn_server_name(const char *setting, char *out, size_t size);
 void ldn_hub_check(const char *server, const char *key);  // asks the server for its hubs, in a thread
 
 // vsock.c

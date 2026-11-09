@@ -27,6 +27,7 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <strings.h>
 #include <thread>
@@ -414,14 +415,19 @@ void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
 }
 // The Mods tab: the mods folder's state (modorder.h), which is saved with the rest of the settings
 constexpr int PAGES = 9, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7, ABOUT_PAGE = 8;
-const char *const page_names[PAGES] = {"Display", "Graphics & Audio", "Controls", "Network",
+const char *const page_names[PAGES] = {"Display", "Graphics & Audio", "Controls", "Multiplayer",
                                        "Misc",    "Mods",             "Cheats",   "Menu Options",
                                        "Credits & Licenses"};
 // The thank-you shown once, after the credits of the first start (draw_thanks, further down), and on Credits & Licenses
 constexpr const char *THANKS_TEXT =
     "To everyone who created this game, and to everyone who kept it alive over the years: thank you. This work is a love "
     "letter to the Monster Hunter series, with my deepest respect to the people who develop it.";
+// The notice about playing online (the card's, below; the same text in MH4U for Android): %s the server
+constexpr const char *ONLINE_TEXT =
+    "Playing online connects this device to %s. As with any server on the internet, the servers it connects to can see "
+    "your IP address. You can choose another server, or none, in the menu's Multiplayer tab.";
 void thanks_show();
+void online_then(const char *server, std::function<void()> fn);  // (the notice about playing online: the card's, below)
 const char *thanks_signature();
 bool thanks_on(double now);
 void credits_show();  // (the credits shown when the app opens: draw_credits, further down)
@@ -943,12 +949,79 @@ void text(std::vector<Row> &rows, const char *id, const char *name, char *field,
     };
     rows.push_back(std::move(r));
 }
-// The hub server and key being edited, checked on request (runtime/net/ldn.c); the value: the server's last known
-// state, from the check or from the game's own searches and hubs
+// The hub server row: the short list (config.h LDN_SERVERS, the default first), Custom... (typed on the keyboard; the
+// last one typed is offered again) and Off. Empty in the file is the default, so a later default reaches everyone who
+// kept it; a typed one is kept as it is
+std::string g_custom_server;  // (the last custom server this session: Custom... starts from it)
+bool server_off(const char *server) {
+    char name[sizeof s.draft.ldn_server];
+    return !ldn_server_name(server, name, sizeof name);
+}
+void server_row(std::vector<Row> &rows) {
+    static const char *const presets[] = LDN_SERVERS;
+    const int n = (int)std::size(presets), custom = n, off = n + 1;
+    const char *now = s.draft.ldn_server;
+    int selected = !*now ? 0 : server_off(now) ? off : custom;
+    for (int i = 1; i < n; i++)
+        if (!strcasecmp(now, presets[i]))
+            selected = i;
+    if (selected == custom)
+        g_custom_server = now;
+    std::vector<std::string> names;
+    for (int i = 0; i < n; i++)
+        names.push_back(i ? std::string(presets[i]) : std::string(presets[i]) + "  (" + tr("Default") + ")");
+    names.push_back(selected == custom ? fmt("Custom: %s", now) : std::string(tr("Custom...")));
+    names.push_back(tr("Off: only your local network"));
+    Row r;
+    r.id = "server";
+    r.title = tr("Hub server");
+    r.value = selected < n ? std::string(presets[selected]) : selected == off ? std::string(tr("Only your local network")) : std::string(now);
+    keyed(r, ini("Server"));
+    auto set = [custom, off](int i) {
+        if (i == custom) {
+            const size_t size = sizeof s.draft.ldn_server;
+            keyboard(tr("Hub server"), g_custom_server, size - 1, [size](const std::string &typed, std::string &error) {
+                Config temp = s.draft;
+                SDL_strlcpy(temp.ldn_server, typed.c_str(), size);
+                char why[512];
+                if (!config_validate(&temp, why, sizeof why)) {
+                    error = settings_text(s.draft.language, why);
+                    return false;
+                }
+                s.draft = temp;
+                if (*temp.ldn_server && !server_off(temp.ldn_server))
+                    g_custom_server = temp.ldn_server;
+                return true;
+            });
+            return;
+        }
+        SDL_strlcpy(s.draft.ldn_server, i == off ? "Off" : i ? presets[i] : "", sizeof s.draft.ldn_server);
+    };
+    // (left / right go through the list and Off, not Custom..., which opens the keyboard)
+    r.adjust = [selected, n, off, set](int d) {
+        int at = selected >= n ? n : selected;  // (Off, or a custom one, is n here)
+        at = (at + d + n + 1) % (n + 1);
+        set(at == n ? off : at);
+    };
+    r.menu = true;
+    Row copy = r;
+    r.activate = [copy, names, selected, set]() { choices(copy, names, selected, set); };
+    rows.push_back(std::move(r));
+}
+// The hub server and key being edited: checked as the page shows them (once the notice about playing online was
+// closed: settings_panel_online_ok) and on request (runtime/net/ldn.c); the value: the server's last known state, from
+// the check or from the game's own searches and hubs
+std::string g_hub_checked;  // (the server and key checked by themselves since the menu opened)
 void hub_check(std::vector<Row> &rows) {
     int ms = -1, hubs = -1;
     std::string state;
-    switch (ldn_hub_status(s.draft.ldn_server, s.draft.ldn_key, &ms, &hubs)) {
+    const int status = ldn_hub_status(s.draft.ldn_server, s.draft.ldn_key, &ms, &hubs);
+    const std::string pair = std::string(s.draft.ldn_server) + "\n" + s.draft.ldn_key;
+    if (status == HUB_UNKNOWN && g_hub_checked != pair && settings_panel_online_ok(nullptr)) {
+        g_hub_checked = pair;
+        ldn_hub_check(s.draft.ldn_server, s.draft.ldn_key);
+    }
+    switch (status) {
     case HUB_CHECKING: state = tr("Checking..."); break;
     case HUB_OFF: state = tr("Off"); break;
     case HUB_ONLINE:
@@ -968,7 +1041,11 @@ void hub_check(std::vector<Row> &rows) {
     r.title = tr("Check hub server");
     r.help = tr("Asks the hub server above whether it answers, with the matchmaking key above: how long it takes, and how many hubs it lists.");
     r.value = state;
-    r.activate = []() { ldn_hub_check(s.draft.ldn_server, s.draft.ldn_key); };
+    r.activate = []() {
+        char server[sizeof s.draft.ldn_server];
+        ldn_server_name(s.draft.ldn_server, server, sizeof server);
+        online_then(server, []() { ldn_hub_check(s.draft.ldn_server, s.draft.ldn_key); });
+    };
     rows.push_back(std::move(r));
 }
 // The keybinds' rows (config.h BIND_*): what each is called
@@ -1972,16 +2049,15 @@ std::vector<Row> main_rows() {
         r.back().help = tr("The keys and mouse buttons for the Switch controller's buttons, for moving, the camera, the item bar and the combined buttons, and the chat key.");
 #endif
         break;
-    case 3:
-        number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
-        text(r, "hosts", "Search hosts", c.ldn_join, sizeof c.ldn_join, *c.ldn_join ? c.ldn_join : tr("LAN"), ini("Join"));
-        // (internet hubs through a hub server of the player's choice, server/: none is built in, LDN_DEFAULT_SERVER)
-        text(r, "server", "Hub server", c.ldn_server, sizeof c.ldn_server,
-             *c.ldn_server ? std::string(c.ldn_server)
-             : *LDN_DEFAULT_SERVER ? std::string(tr("Default")) + " (" LDN_DEFAULT_SERVER ")" : std::string(tr("None")),
-             ini("Server"));
+    case 3:  // Multiplayer: the internet first (a hub server, the default one already set), then the local network
+        header(r, "online.header", tr("Over the internet"));
+        server_row(r);
         text(r, "key", "Matchmaking key", c.ldn_key, sizeof c.ldn_key, *c.ldn_key ? c.ldn_key : tr("Public"), ini("Key"));
         hub_check(r);
+        header(r, "lan.header", tr("Local network"));
+        number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
+        text(r, "hosts", "Search hosts", c.ldn_join, sizeof c.ldn_join, *c.ldn_join ? c.ldn_join : tr("LAN"), ini("Join"));
+        header(r, "hub.header", tr("In the hub"));
         add_bool(r, "sync", "Sync small monsters", &c.sync_small_monsters, ini("SyncSmallMonsters"));
         add_bool(r, "village", "Village quests in Hub", &c.village_in_hub, ini("VillageQuestsInHub"));
 #ifndef __ANDROID__  // (Discord's Rich Presence is its desktop app's)
@@ -2482,8 +2558,8 @@ const PhoneHelp PHONE_HELP[] = {
     {"LockOn", "Keeps the camera on the monster, as in the newer games, and a bow's or a bowgun's shots go to it. Off: the icon turns the camera to it once.",
      "Mantiene la cámara sobre el monstruo, como en los juegos nuevos, y los disparos de arcos y ballestas van hacia él. Apagado: el ícono gira la cámara una sola vez."},
     {"Join", "A host's IP address, to play over a VPN. Empty: searches your network.", "La dirección IP de un anfitrión, para jugar por VPN. Vacío: busca en tu red."},
-    {"Server", "A hub server's address (name or IP, and :port if it is not 39510), to play over the internet with everyone who uses the same server: their hubs show when you search for hubs in the game. Empty: none, only your network.",
-     "La dirección de un servidor de hubs (nombre o IP, y :puerto si no es el 39510), para jugar por internet con todos los que usen el mismo servidor: sus hubs aparecen al buscar hubs en el juego. Vacío: ninguno, solo tu red."},
+    {"Server", "The server that lists hubs over the internet: everyone who uses the same one finds the others' hubs when they search for hubs in the game, with no ports to open. The default, " LDN_DEFAULT_SERVER ", is run by players, not by this project. Custom: type another (a name or IP, and :port if it is not 39510). Off: only your local network.",
+     "El servidor que lista las salas por internet: todos los que usan el mismo encuentran las salas de los demás al buscar salas en el juego, sin abrir puertos. El predeterminado, " LDN_DEFAULT_SERVER ", lo mantienen jugadores, no este proyecto. Otro: escribe otro (un nombre o una IP, y :puerto si no es el 39510). Ninguno: solo tu red local."},
     {"Key", "On the hub server, only players with the same key see each other's hubs: agree on one with your friends. Empty: public hubs.",
      "En el servidor de hubs, solo los jugadores con la misma clave ven los hubs de los demás: acuerden una con tus amigos. Vacío: hubs públicos."},
     {"1Player", "The health of large monsters in Hub quests, by number of hunters. When you join a hub, the host's values are used.",
@@ -3777,6 +3853,18 @@ const ImGuiKey THANKS_KEYS[] = {ImGuiKey_MouseLeft, ImGuiKey_MouseRight, ImGuiKe
                                 ImGuiKey_Escape,    ImGuiKey_AppBack,    ImGuiKey_Enter,           ImGuiKey_KeypadEnter,
                                 ImGuiKey_Space,     ImGuiKey_F};
 bool g_thanks_armed[IM_COUNTOF(THANKS_KEYS)];
+// The same card tells, once, what playing online means: the hub server the game connects to (the default one, set for
+// everyone), and that the server sees the player's IP address (settings_panel_online_ok: runtime/net/ldn.c asks before
+// anything reaches a hub server, the menu's Check hub server too). It opens when the credits and the thank-you are gone,
+// over the game or the menu, and takes the input the same way. Closed, [Multiplayer] OnlineNoticeShown goes into the file
+// and what waited for it goes on (the game's next search finds the internet's hubs, a created hub is listed, a check
+// asks). MHGU_ONLINE_NOTICE=0 shows it once more in a test run, =1 never.
+enum class Card { Thanks, Online };
+std::atomic<Card> g_card{Card::Thanks};  // what the card open (or fading out) is
+std::atomic<bool> g_online_asked{false}, g_online_seen{false};
+std::mutex g_online_mu;
+std::string g_online_server;          // (the server it names: g_online_mu)
+std::function<void()> g_online_then;  // (the menu's check, waiting for it: the game's thread)
 void thanks_decide() {
     if (g_thanks != Thanks::Unknown)
         return;
@@ -3787,6 +3875,7 @@ void thanks_decide() {
         fprintf(stderr, "[settings] the thank-you shows after the credits (%s)\n", every ? "MHGU_THANKS=1" : "ThanksShown = Off");
 }
 void thanks_open(double now, bool asked) {
+    g_card = Card::Thanks;
     g_thanks = Thanks::Open;
     g_thanks_at = now, g_thanks_shut = -1;
     g_thanks_arm = 1.0;  // (asked for in the menu too: the key that asked for it, held, repeats at about .5 s and would answer)
@@ -3796,6 +3885,56 @@ void thanks_open(double now, bool asked) {
             asked ? " (Credits & Licenses)" : "");
 }
 void thanks_show() { thanks_open(SDL_GetTicks() / 1000.0, true); }
+// The online notice closed (or already closed in the file): what waited for it goes on
+void online_done() {
+    g_online_seen = true;
+    g_online_asked = false;
+    std::function<void()> then = std::move(g_online_then);
+    g_online_then = nullptr;
+    if (then)
+        then();
+}
+// [Multiplayer] OnlineNoticeShown into the file as it closes, as ThanksShown (thanks_seen, below)
+void online_seen() {
+    Config c = config_editable();
+    if (!c.online_notice) {
+        c.online_notice = 1;
+        char error[512];
+        if (config_save(&c, error, sizeof error))
+            fprintf(stderr, "[settings] OnlineNoticeShown = On: the notice about playing online does not show again\n");
+        else
+            fprintf(stderr, "[settings] OnlineNoticeShown could not be saved: %s\n", error);
+        s.draft.online_notice = s.saved.online_notice = 1;  // (a Save from the menu open under it keeps it)
+    }
+    online_done();
+}
+// Asked for: it opens once nothing else is on the screen in its place (the credits, the thank-you)
+void online_frame(double now) {
+    if (!g_online_asked)
+        return;
+    if (g_online_seen) {
+        online_done();
+        return;
+    }
+    if (g_thanks != Thanks::Done || (g_thanks_shut >= 0 && now - g_thanks_shut < THANKS_OUT_S) || g_credits_at < 0 ||
+        now - g_credits_at <= kCreditsShown)
+        return;
+    g_card = Card::Online;
+    g_thanks = Thanks::Open;
+    g_thanks_at = now, g_thanks_shut = -1, g_thanks_arm = 1.0;
+    memset(g_thanks_armed, 0, sizeof g_thanks_armed);
+    std::lock_guard<std::mutex> l(g_online_mu);
+    fprintf(stderr, "[settings] the notice about playing online is open (%s): every input goes to it until it is closed\n",
+            g_online_server.c_str());
+}
+// The menu's: fn once the notice was closed (at once if it was), for a server; none (Off): at once
+void online_then(const char *server, std::function<void()> fn) {
+    if (!*server || settings_panel_online_ok(server)) {
+        fn();
+        return;
+    }
+    g_online_then = std::move(fn);
+}
 bool thanks_fading(double now) { return g_thanks == Thanks::Done && g_thanks_shut >= 0 && now - g_thanks_shut < THANKS_OUT_S; }
 // [Application] ThanksShown into the file as it closes, with the settings as saved (those being edited in the menu are
 // saved or not later, as the player chooses): no Save needed, the rest of the file as it was
@@ -3855,7 +3994,14 @@ void draw_thanks(float a, bool live, bool armed) {
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
     const ImGuiIO &io = ImGui::GetIO();
-    const char *title = tr("Thank you"), *text = tr(THANKS_TEXT), *go = tr("Continue"), *name = "khorne-hub";
+    const bool online = g_card == Card::Online;  // (the notice about playing online: no signature)
+    std::string said;
+    if (online) {
+        std::lock_guard<std::mutex> l(g_online_mu);
+        said = fmt(ONLINE_TEXT, g_online_server.c_str());
+    }
+    const char *title = tr(online ? "Playing online" : "Thank you"), *text = online ? said.c_str() : tr(THANKS_TEXT);
+    const char *go = tr("Continue"), *name = "khorne-hub";
     const bool glyph = has_em_dash();
     // (the text broken into lines at a width that reads well; all of it smaller where it still doesn't fit)
     float f = std::floor(std::clamp(vp->Size.y * .034f, 12.f, 44.f));
@@ -3889,12 +4035,13 @@ void draw_thanks(float a, bool live, bool armed) {
         for (const auto &r : rows)
             w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, r.first, r.second).x);
         bar = std::floor(f * .8f), space = font->CalcTextSizeA(f, FLT_MAX, 0, " ").x;
-        sw = glyph ? font->CalcTextSizeA(f, FLT_MAX, 0, thanks_signature()).x
-                   : bar + space + font->CalcTextSizeA(f, FLT_MAX, 0, name).x;
+        sw = online ? 0
+             : glyph ? font->CalcTextSizeA(f, FLT_MAX, 0, thanks_signature()).x
+                     : bar + space + font->CalcTextSizeA(f, FLT_MAX, 0, name).x;
         bh = std::floor(f * 2.3f);
         bw = std::floor(std::max(f * 8, font->CalcTextSizeA(f, FLT_MAX, 0, go).x + f * 3));
         w = std::max({w, sw, bw});
-        h = tsz + gap * 3 + rows.size() * lead + gap * .25f + f + gap * 2.5f + bh;
+        h = tsz + gap * 3 + rows.size() * lead + (online ? 0 : gap * .25f + f) + gap * 2.5f + bh;
         const float room_w = vp->Size.x * .96f - pad * 2, room_h = vp->Size.y * .94f - pad * 2;
         if ((w <= room_w && h <= room_h) || f <= 10)
             break;
@@ -3938,8 +4085,8 @@ void draw_thanks(float a, bool live, bool armed) {
         text_at(f, ImVec2(std::floor(c.x - lw * .5f), y), fade(IM_COL32(242, 238, 232, 255), a), r.first, r.second);
         y += lead;
     }
-    y += gap * .25f;
-    {  // (the signature at the text's right)
+    if (!online) {  // (the signature at the text's right)
+        y += gap * .25f;
         const float x = std::floor(c.x + w * .5f - sw);
         if (glyph) {
             text_at(f, ImVec2(x, y), fade(gold, a), thanks_signature());
@@ -3954,8 +4101,9 @@ void draw_thanks(float a, bool live, bool armed) {
             dl->AddRectFilled(ImVec2(x, y0), ImVec2(x + bar, y1), fade(gold, a));
             text_at(f, ImVec2(x + bar + space, y), fade(gold, a), name);
         }
+        y += f;
     }
-    y += f + gap * 2.5f;
+    y += gap * 2.5f;
     // Continue: a plate as the menu's and the touch controls' buttons (dark, a bronze edge, a gold rule inside, gold
     // studs), dim until it takes answers, lit under the mouse pointer or a finger
     const ImRect btn(ImVec2(std::floor(c.x - bw * .5f), std::floor(y)), ImVec2(std::floor(c.x + bw * .5f), std::floor(y + bh)));
@@ -3993,14 +4141,19 @@ void thanks_frame() {
     thanks_decide();
     if (g_thanks == Thanks::Wait && g_credits_at >= 0 && now - g_credits_at > kCreditsShown + THANKS_AFTER_S)
         thanks_open(now, false);
+    online_frame(now);
     if (!thanks_on(now))
         return;
     bool live = g_thanks == Thanks::Open;
     const double t = now - g_thanks_at;
     if (live && thanks_input(t)) {  // (closed: input is the game's, or the menu's, from the next frame on)
         g_thanks = Thanks::Done, g_thanks_shut = now, live = false;
-        fprintf(stderr, "[settings] the thank-you was closed after %.1f s\n", t);
-        thanks_seen();
+        const bool online = g_card == Card::Online;
+        fprintf(stderr, "[settings] the %s was closed after %.1f s\n", online ? "notice about playing online" : "thank-you", t);
+        if (online)
+            online_seen();
+        else
+            thanks_seen();
     }
     const float a = live ? (float)std::clamp(t / THANKS_IN_S, 0.0, 1.0)
                          : (float)std::clamp(1 - (now - g_thanks_shut) / THANKS_OUT_S, 0.0, 1.0);
@@ -4145,7 +4298,19 @@ bool settings_panel_credits_up(void) {
     // (and the thank-you after them: it waits for them, shows and fades out over frames of its own. Asked for on Credits &
     // Licenses they need no more than their time: g_credits_asked stays set once asked, and kept frames coming for good)
     const double now = SDL_GetTicks() / 1000.0;
-    return g_credits_at < 0 || now - g_credits_at <= kCreditsShown || thanks_up(now);
+    return g_credits_at < 0 || now - g_credits_at <= kCreditsShown || thanks_up(now) || g_online_asked;
+}
+bool settings_panel_online_ok(const char *server) {
+    if (g_online_seen || config_live_online_notice() || !overlay_enabled())
+        return true;
+    if (server && !g_online_asked) {  // (nullptr: only whether it was closed)
+        {
+            std::lock_guard<std::mutex> l(g_online_mu);
+            g_online_server = server;
+        }
+        g_online_asked = true;
+    }
+    return false;
 }
 void settings_panel(bool *open) {
     thanks_frame();  // (first: while the thank-you is open, nothing after it gets the frame's input)
@@ -4183,6 +4348,7 @@ void settings_panel(bool *open) {
         s.dropdown_drawn = false;
 #endif
         quest_keys();
+        g_hub_checked.clear();  // (the Multiplayer page checks its server again as it shows)
         load_mods();
         load_cheats();
 #ifndef __ANDROID__

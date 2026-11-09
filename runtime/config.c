@@ -62,11 +62,11 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 0
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
-// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, and the mouse in the game's
-// menus)
+// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
+// menus, the grass, and the notice about playing online not shown yet)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -475,7 +475,8 @@ static const char DEFAULT_INI[] =
     "\n"
     "; Hub server for playing over the internet without port forwarding: hubs you create are listed there, and\n"
     "; Search Hubs shows its hubs next to the LAN's. host or host:port (default port 39510).\n"
-    "; Empty or Off: no internet hubs.\n"
+    "; Empty: the default, " LDN_DEFAULT_SERVER ", a server run by players, not by this project.\n"
+    "; Off: no internet hubs, only your local network.\n"
     "; Default:\n"
     "Server =\n"
     "\n"
@@ -811,6 +812,7 @@ const ConfigSetting g_settings[] = {
     {"Multiplayer", "Server", SET_TEXT, F(ldn_server), sizeof g_config.ldn_server, 0, 0, NULL, NULL, false, ERR_SERVER},
     {"Multiplayer", "Key", SET_TEXT, F(ldn_key), sizeof g_config.ldn_key, 0, 0, NULL, NULL, false, ERR_SERVER},
     ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, true),
+    ON_OFF("Multiplayer", "OnlineNoticeShown", online_notice, false),  // (written as the notice closes: settings_panel.cpp)
     {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
     {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
     {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
@@ -1332,6 +1334,7 @@ void config_load(void) {
     if ((e = getenv("MHGU_LDN_JOIN"))) snprintf(g_config.ldn_join, sizeof g_config.ldn_join, "%s", e);
     if ((e = getenv("MHGU_LDN_SERVER"))) snprintf(g_config.ldn_server, sizeof g_config.ldn_server, "%s", e);
     if ((e = getenv("MHGU_LDN_KEY"))) snprintf(g_config.ldn_key, sizeof g_config.ldn_key, "%s", e);
+    if ((e = getenv("MHGU_ONLINE_NOTICE"))) g_config.online_notice = atoi(e) != 0;  // (test runs: 0 shows it again; not saved)
     if ((e = getenv("MHGU_ASPECT"))) parse_aspect(e, &g_config.aspect_ratio);
     if ((e = getenv("MHGU_FOV")) && strtof(e, NULL) >= 0.5f && strtof(e, NULL) <= 2.0f) g_config.fov = strtof(e, NULL);
     if ((e = getenv("MHGU_UI_ANCHOR"))) config_parse(config_setting("UIAnchor"), e, &g_config);

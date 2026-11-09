@@ -135,12 +135,17 @@ typedef struct {
                               // (runtime/hle/mousemenu.c, host_input.c); off, it turns the camera there as elsewhere
     int grass;                // [Performance] Grass: 0 the tall grass and foliage drawn with alpha to coverage left out
                               // (nvn/vulkan/exec.c; the Marshland's area 8 slowed weak phones down: #85, #121)
+    int online_notice;        // [Multiplayer] OnlineNoticeShown: the notice about playing online (which server, and that it
+                              // sees the player's IP address) was closed; until then nothing reaches a hub server
+                              // (runtime/net/ldn.c, settings_panel.cpp's card)
 } Config;
 uint32_t config_combo_mask(const char *text);  // "A+X" -> the BTN_* bits, 0 if there is nothing or anything else in it
 void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
-// The hub server used when ini Server is empty (runtime/net/ldn.c, server/): the project's public one (an Oracle
-// none). "" = no default: no internet hubs unless the player names a server.
-#define LDN_DEFAULT_SERVER ""
+// The hub server used when ini Server is empty (runtime/net/ldn.c, server/): a community server that speaks this port's
+// protocol (PROTO_VERSION 2, LOBBY_PROTO 1), where players of 0.1.6 and later already meet. The project runs none.
+// LDN_SERVERS: the menu's short list, the default first ("Custom..." types any other, Off is none).
+#define LDN_DEFAULT_SERVER "hunterhubid-gu-hub.duckdns.org"
+#define LDN_SERVERS {LDN_DEFAULT_SERVER}
 #define LOW_END_SCALE 40  // what the menu's Low-end mode sets: RenderScale, FPS
 #define LOW_END_FPS 30
 // [Performance] FPS: the most a phone takes; a desktop also takes more, up to FPS_UNLIMITED ("Unlimited" in the file
@@ -260,6 +265,7 @@ int config_live_bloom(void);            // [Performance] Bloom
 int config_live_reverb(void);           // [Audio] Reverb
 void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, FPS; not saved)
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key
+int config_live_online_notice(void);  // [Multiplayer] OnlineNoticeShown
 bool config_restart_required(const Config *draft); // Raw cold fields vs this process's startup INI values.
 float config_audio_gain(void);  // atomic, safe on audio threads; 0 while muted in the background
 void config_window_focus(bool focused);  // the window got / lost the focus (runtime/host_input.c)
