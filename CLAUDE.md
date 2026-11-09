@@ -243,7 +243,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Phones give memory back (`staging_trim`, `vc_trim`, `exec.c`): a staging chunk the ring hasn't taken for 8 s, and vertex cache ranges no
   draw used for 20 s. Before, both only grew: the chunks a burst of uploads made (an area's textures, decoded on a Mali) and the
   vertex data of every area visited, up to the cache's 384 MB, which a 2.8 GB phone couldn't hold (#59, #156). The vertex cache is
-  192 MB at 4 GB of memory or less, 128 at 3 GB. `MHGU_VK_STAGING_TRIM=0`, `MHGU_VK_VC_TRIM=0`, `MHGU_VK_VC_MB=<n>`: as before;
+  192 MB at 4 GB of memory or less, 128 at 3 GB. Under 350 MB of the system's memory available (`memory_short`: Android 14 and newer
+  no longer tell a foreground app memory runs low) both wait 2 s instead. `MHGU_LOWMEM_MB=<n>` sets that threshold;
+  `MHGU_VK_STAGING_TRIM=0`, `MHGU_VK_VC_TRIM=0`, `MHGU_VK_VC_MB=<n>`: as before;
   `MHGU_RAM_MB=<n>` takes the device's memory as that much (the texture and cache choices of a smaller phone).
 - A player's driver is checked once the device is made (`gpu_driver_check`): no library from its folder loaded means the system's runs,
   and the choice moves to `failed`. `DriverActivity` renames a library named as the system's (`vulkan.adreno.so`) to `vulkan.player.so`.

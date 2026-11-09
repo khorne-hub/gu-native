@@ -599,6 +599,34 @@ VkSpan vk_transient(uint64_t size, uint64_t align) {
 // 8 times their size) don't stay for good (#59, #156: a 2.8 GB phone closed by Android). One is always kept.
 // MHGU_VK_STAGING_TRIM=0: kept for good, as before.
 #define STAGING_IDLE_NS 8000000000ull
+
+#ifdef __ANDROID__
+// (phones, the trims below) the system's memory nearly gone: under 350 MB available (MemAvailable, read at most every 2 s;
+// Android 14 and newer no longer tell an app in the foreground that memory runs low, onTrimMemory's RUNNING levels).
+// Then what is idle goes after 2 s, not 8 and 20. MHGU_LOWMEM_MB=<n>: that threshold.
+static bool memory_short(uint64_t now) {
+    static uint64_t next, limit_kb;
+    static bool shrt, said;
+    if (!limit_kb) {
+        const char *e = getenv("MHGU_LOWMEM_MB");
+        limit_kb = (uint64_t)(e && atoi(e) > 0 ? atoi(e) : 350) << 10;
+    }
+    if (now < next) return shrt;
+    next = now + 2000000000ull;
+    FILE *f = fopen("/proc/meminfo", "re");
+    if (!f) return shrt = false;
+    char line[128];
+    long kb = -1;
+    while (fgets(line, sizeof line, f))
+        if (!strncmp(line, "MemAvailable:", 13)) { kb = atol(line + 13); break; }
+    fclose(f);
+    shrt = kb >= 0 && (uint64_t)kb < limit_kb;
+    if (shrt && !said) LOG("[vk] memory short (%ld MB available): idle staging and vertex cache memory goes at once\n", kb >> 10);
+    said |= shrt;
+    return shrt;
+}
+#endif
+
 static void staging_trim(void) {
 #ifdef __ANDROID__
     static uint64_t next;
@@ -607,11 +635,11 @@ static void staging_trim(void) {
     uint64_t now = plat_now_ns();
     if (!on || now < next || nchunks <= 1) return;
     next = now + 1000000000ull;
-    uint64_t done = vk_completed_seq(), freed = 0;
+    uint64_t done = vk_completed_seq(), freed = 0, idle = memory_short(now) ? 2000000000ull : STAGING_IDLE_NS;
     int n = 0;
     for (int i = nchunks - 1; i >= 0 && nchunks > 1; i--) {
         Chunk *c = &chunks[i];
-        if (i == active || c->seq > done || now - c->picked_ns < STAGING_IDLE_NS) continue;
+        if (i == active || c->seq > done || now - c->picked_ns < idle) continue;
         freed += c->size, n++;
         atomic_fetch_sub_explicit(&staging_bytes, c->size, memory_order_relaxed);
         atomic_fetch_sub_explicit(&staging_n, 1, memory_order_relaxed);
@@ -840,9 +868,9 @@ static void vc_trim(void) {
     next = now + 2000000000ull;
     // (the submission that was next VC_IDLE_NS ago: samples every 2 s; entries last used before it are idle)
     hist_t[nh % 16] = now, hist_seq[nh % 16] = vk_pending_seq(), nh++;
-    uint64_t before = 0;
+    uint64_t before = 0, idle = memory_short(now) ? 2000000000ull : VC_IDLE_NS;
     for (int i = 0; i < 16 && i < nh; i++)
-        if (now - hist_t[i] >= VC_IDLE_NS && hist_seq[i] > before) before = hist_seq[i];
+        if (now - hist_t[i] >= idle && hist_seq[i] > before) before = hist_seq[i];
     if (!before || !vc_bytes) return;
     uint64_t freed = 0;
     int n = 0;
