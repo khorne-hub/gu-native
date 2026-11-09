@@ -1757,6 +1757,18 @@ void vk_fsr_draw(const FsrDraw *d) {
         bool reads_rt = false;
         for (int i = 0; i < d->ntex; i++) reads_rt |= d->tex[i] != g_h && is_rt(d->tex[i]);
         if (post && reads_rt) { h_draws++; return; }
+        // (a 3D effect drawn into H after the post passes and tested against the scene's depth - Astalos' charged wings -
+        // is still the scene's. Taken for the start of the HUD, it and what followed were drawn on the output-size stand-ins
+        // over an empty depth target, over the hunter and the monster, and it sampled render-size images at output-size
+        // places: smeared streaks, with Low-end mode's plain scaling only: #60)
+        if (!menu_2d && d->depth_test && d->depth && d->depth->width == rw && d->depth->height == rh) {
+            static int nlog;
+            if (nlog < 3 && (logging || nlog < 1))
+                nlog++, LOG("[fsr] frame %llu: a draw into the full-screen image tested against the scene's depth (%u vertices) "
+                            "before the HUD: drawn with the scene\n", (unsigned long long)g_present_count + 1, d->count);
+            h_draws++;
+            return;
+        }
         if (!menu_2d) menu_2d = true, scene_depth(&menu_2d_scene);
         bool late = menu_models_late || menu_cams_late;  // (menus: their models first)
         if (late && (menu_models < menu_models_late || menu_cams < menu_cams_late || d->depth_write)) return;
