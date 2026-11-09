@@ -4822,7 +4822,8 @@ static void draw(CmdRec *r, bool indexed) {
     pass_skip_clear = 0;  // (drawn into: later clears are clears again)
     VkCommandBuffer cb = vk_cmd();
     // ([Performance] Grass Off: the tall grass and foliage, drawn with alpha to coverage, are left out: #85, #121)
-    if (!g_config.grass && st.ms[0xC]) { stat_skipped++; return; }
+    // (the live value: Off applies once saved, as the menu's row says; the start's value took a restart, #159)
+    if (st.ms[0xC] && !config_live_grass()) { stat_skipped++; return; }
     int af = fkey.alpha_func;
     // One sample on an Adreno: the game's alpha to coverage became nothing at all for partly transparent texels (the
     // tall grass missing on an Adreno 640, #70; Mali keeps those at alpha 0.5 and up): done as an alpha test at 0.5

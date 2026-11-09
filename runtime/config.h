@@ -257,8 +257,9 @@ int config_live_show_stats(void);       // [Performance] ShowStats
 int config_live_pause_background(void); // [Application] PauseInBackground
 int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
+int config_live_grass(void);            // [Performance] Grass
 int config_live_reverb(void);           // [Audio] Reverb
-void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, FPS; not saved)
+void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, Grass, FPS; not saved)
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key
 bool config_restart_required(const Config *draft); // Raw cold fields vs this process's startup INI values.
 float config_audio_gain(void);  // atomic, safe on audio threads; 0 while muted in the background

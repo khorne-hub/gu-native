@@ -590,6 +590,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(low_end);
     SAME(shadows);
     SAME(bloom);
+    SAME(grass);
     SAME(reverb);
     SAME(adreno_fix);
     SAME(fps);
@@ -1114,6 +1115,7 @@ void reset_section() {
         c.low_end = f.low_end;
         c.shadows = f.shadows;
         c.bloom = f.bloom;
+        c.grass = f.grass;
         c.reverb = f.reverb;
         c.adreno_fix = f.adreno_fix;
         c.fsr = f.fsr;
