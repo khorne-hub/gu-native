@@ -48,6 +48,7 @@ void vk_lock(void);
 void vk_unlock(void);
 SDL_Window *ui_window(void);
 void vi_pause_game(void);
+bool romfs_incomplete(double *gb, int *empty);  // (romfs.c)
 }
 
 static std::atomic<bool> g_enabled, g_ready, g_open;
@@ -497,6 +498,42 @@ static void menu_hint(uint64_t now) {
 }
 #endif
 
+// A copy of the game's files cut short (romfs.c romfs_incomplete: under 12.0 GB, or empty files) starts, then closes or
+// draws black somewhere later (#106): a few seconds into each start, once nothing else is shown, the player is told.
+static const uint64_t ROMFS_NOTICE_NS = 8000000000ull;  // (after the first frame the overlay drew)
+static void romfs_notice(uint64_t now) {
+    static uint64_t first;
+    static bool done;
+    if (done) return;
+    double gb = 0;
+    int empty = 0;
+    if (!romfs_incomplete(&gb, &empty)) {
+        done = true;
+        return;
+    }
+    if (!first) first = now;
+    if (now - first < ROMFS_NOTICE_NS || notice_due(now) || settings_panel_credits_up()) return;
+    done = true;
+    int lang = config_language();
+    char size[16], text[400];
+    snprintf(size, sizeof size, "%.1f", gb);
+    if (lang == 1)
+        for (char *c = size; *c; c++)
+            if (*c == '.') *c = ',';  // (Spanish: 11,5)
+    if (gb < 12.0)
+        snprintf(text, sizeof text,
+                 settings_text(lang, "The romfs folder holds %s GB of the game's 12.3 GB: some files were cut short when they were "
+                                     "copied. If the game closes or shows black, copy the romfs folder to the device again."),
+                 size);
+    else
+        snprintf(text, sizeof text,
+                 settings_text(lang, "%d of the romfs folder's files are empty: they were cut short when they were copied. If the "
+                                     "game closes or shows black, copy the romfs folder to the device again."),
+                 empty);
+    overlay_notice(settings_text(lang, "Game files incomplete"), text);
+    LOG("[overlay] notice: the game's files look incomplete (%s GB, %d empty)\n", size, empty);
+}
+
 static void draw_notice(uint64_t now, float scale) {
     std::string title, text;
     uint64_t at;
@@ -613,6 +650,7 @@ void overlay_frame(void *cpu) {
 #ifndef __ANDROID__
     menu_hint(now);
 #endif
+    romfs_notice(now);
     if (g_modal_open) notice_hold(now);
     bool notice = notice_due(now);
     char line[256];

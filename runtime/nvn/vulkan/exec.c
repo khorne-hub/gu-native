@@ -99,6 +99,41 @@ static pthread_mutex_t seq_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool in_pass;
 static void ss_forget(void);
 
+// ---- device lost: what each submission held, for the log when the driver loses the device (a GPU fault or hang
+// in work submitted earlier shows at a later call: every submission not known finished is listed). Per slot of the
+// ring, a few bytes per pass and per program: render thread only, read once at the error.
+#define LOST_PASSES 32
+#define LOST_PROGS 48
+typedef struct { uint16_t w, h; int16_t color, depth; uint8_t ncolor, samples; uint32_t draws; } LostPass;
+typedef struct {
+    uint64_t seq;
+    int npass, nprog;
+    uint32_t passes, draws, drawn_clears, copies;  // (all of them, also past the arrays)
+    LostPass pass[LOST_PASSES];
+    uint32_t prog[LOST_PROGS][2];  // (vertex and fragment code addresses)
+} LostRec;
+static LostRec lost_rec[SUBS];
+static void lost_reset(int slot, uint64_t seq) { memset(&lost_rec[slot], 0, sizeof lost_rec[slot]); lost_rec[slot].seq = seq; }
+static void lost_pass(uint32_t w, uint32_t h, VkFormat c0, uint32_t ncolor, VkFormat depth, uint32_t samples) {
+    LostRec *r = &lost_rec[cur_sub];
+    r->passes++;
+    if (r->npass < LOST_PASSES)
+        r->pass[r->npass++] = (LostPass){(uint16_t)w, (uint16_t)h, (int16_t)c0, (int16_t)depth, (uint8_t)ncolor, (uint8_t)samples, 0};
+}
+static void lost_draw(void) {
+    LostRec *r = &lost_rec[cur_sub];
+    r->draws++;
+    if (r->npass) r->pass[r->npass - 1].draws++;
+}
+static void lost_prog(uint64_t vs, uint64_t fs) {
+    LostRec *r = &lost_rec[cur_sub];
+    for (int i = r->nprog - 1; i >= 0; i--)
+        if (r->prog[i][0] == (uint32_t)vs && r->prog[i][1] == (uint32_t)fs) return;
+    if (r->nprog < LOST_PROGS) r->prog[r->nprog][0] = (uint32_t)vs, r->prog[r->nprog][1] = (uint32_t)fs, r->nprog++;
+}
+static void lost_report(const char *where);
+volatile int g_fake_lost;  // (test) MHGU_CONTROL "devicelost": the next submission with a pass says the device was lost
+
 // Without timeline semaphores (a Vulkan 1.1 driver) each submission signals a fence, one per slot of the ring: sub()
 // waits for a slot's old submission, so its fence is free again by then. A fence can't be reset while another thread
 // waits for it, and any thread may wait for a submission here: so this one thread waits for them all, in order, resets
@@ -121,6 +156,7 @@ static void *fence_thread(void *arg) {
             LOG("[vk] GPU did not finish submission %llu within 10 s (device lost?)\n", (unsigned long long)seq);
         if (r != VK_SUCCESS) {
             if (vk_exiting()) return NULL;
+            if (r == VK_ERROR_DEVICE_LOST) lost_report("vkWaitForFences");
             FATAL("vkWaitForFences: %d (device lost)\n", r);
         }
         VK_CHECK(vkResetFences(g_vk.dev, 1, &f));
@@ -181,7 +217,10 @@ void vk_wait_seq(uint64_t seq) {
         if (HITCH_ON) hitch_add(HC_GPU_OTHER + site, d_, 0);  // ((debug) MHGU_HITCHLOG: the sites in the same order)
     }
     if (r == VK_TIMEOUT) LOG("[vk] GPU did not finish submission %llu within 10 s (device lost?)\n", (unsigned long long)seq);
-    else if (r != VK_SUCCESS) FATAL("vkWaitSemaphores: %d (device lost)\n", r);
+    else if (r != VK_SUCCESS) {
+        if (r == VK_ERROR_DEVICE_LOST) lost_report("vkWaitSemaphores");
+        FATAL("vkWaitSemaphores: %d (device lost)\n", r);
+    }
 }
 
 uint64_t vk_pending_seq(void) { return submit_seq + 1; }
@@ -196,6 +235,7 @@ static Sub *sub(void) {
         if (HITCH_ON && s->npools) hitch_add(HC_DESC_RESET, plat_now_ns() - t0, (uint64_t)s->npools);
         s->cur_pool = 0;
         s->seq = submit_seq + 1;
+        lost_reset(cur_sub, s->seq);
         s->main_begun = s->upload_begun = false;
     }
     return s;
@@ -238,6 +278,8 @@ void vk_full_barrier(VkCommandBuffer cb) {
 }
 
 static void guest_copy_new_submission(void);
+static void staging_trim(void);
+static void vc_trim(void);
 
 // Submit the pending work (if any). wait / signal: binary semaphores for presentation (may be null).
 void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
@@ -272,7 +314,12 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
     }
     vk_upload_jobs_finish();  // (the upload buffer's copies read staging memory the texture workers may still be writing)
     uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
-    VK_CHECK(vkQueueSubmit(g_vk.queue, 1, &si, fence));
+    VkResult sr = vkQueueSubmit(g_vk.queue, 1, &si, fence);
+    if (g_fake_lost && sr == VK_SUCCESS && s->main_begun && lost_rec[cur_sub].passes) sr = VK_ERROR_DEVICE_LOST;  // (test: "devicelost")
+    if (sr != VK_SUCCESS) {
+        if (sr == VK_ERROR_DEVICE_LOST) lost_report("vkQueueSubmit");
+        FATAL("vkQueueSubmit(g_vk.queue, 1, &si, fence) failed: %d (%s:%d)\n", sr, __FILE__, __LINE__);
+    }
     if (HITCH_ON) hitch_add(HC_SUBMIT, plat_now_ns() - t0, 0);
     if (fence) {
         pthread_mutex_lock(&fence_lock);
@@ -287,9 +334,70 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
     cur_sub = (cur_sub + 1) % SUBS;
     guest_copy_new_submission();
     vk_collect_dead();
+    staging_trim();
+    vc_trim();
 }
 
 static void renderer_submit(void) { vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE); }
+
+#ifdef __ANDROID__
+// (device lost) the GPU driver's own lines in this process's logcat (an app reads its own): Adreno's say a page fault
+// from a hang, a Mali's the same
+static void lost_logcat(void) {
+    FILE *f = popen("logcat -d -v brief -t 800 2>/dev/null", "r");
+    if (!f) return;
+    char line[512];
+    int n = 0;
+    static const char *const keys[] = {"Adreno", "adreno", "GSL", "kgsl", "KGSL", "vulkan", "Vulkan", "mali", "Mali", "gralloc", "GPU"};
+    while (fgets(line, sizeof line, f) && n < 60) {
+        if (strstr(line, "/MHGU") || strstr(line, "/SDL")) continue;  // (the game's own log: already in it)
+        bool hit = false;
+        for (size_t i = 0; i < sizeof keys / sizeof keys[0] && !hit; i++) hit = strstr(line, keys[i]) != NULL;
+        if (!hit) continue;
+        line[strcspn(line, "\r\n")] = 0;
+        LOG("[vk]   logcat: %.300s\n", line);
+        n++;
+    }
+    pclose(f);
+    if (!n) LOG("[vk]   logcat: no line of the GPU driver's\n");
+}
+#endif
+
+// (device lost, once) every submission not known finished: its passes (size, first colour format and how many, depth
+// format, samples, draws), the programs it drew with, the clears drawn and the copies; and the driver's own words
+static void lost_report(const char *where) {
+    static _Atomic int once;
+    if (atomic_exchange(&once, 1)) return;
+    uint64_t done = g_vk.has_timeline ? 0 : atomic_load(&fence_done), last = submit_seq + 1;
+    if (g_vk.has_timeline) vkGetSemaphoreCounterValue(g_vk.dev, g_vk.timeline, &done);
+    LOG("[vk] device lost (%s): submission %llu was being submitted, %llu known finished; the work since:\n", where,
+        (unsigned long long)last, (unsigned long long)done);
+    uint64_t first = last >= SUBS ? last - SUBS + 1 : 1;
+    if (done + 1 > first) first = done + 1;
+    for (uint64_t q = first; q <= last; q++) {
+        const LostRec *r = NULL;
+        for (int i = 0; i < SUBS; i++)
+            if (lost_rec[i].seq == q) r = &lost_rec[i];
+        if (!r) continue;
+        LOG("[vk]  submission %llu: %u passes, %u draws, %u clears drawn, %u copies\n", (unsigned long long)q, r->passes, r->draws,
+            r->drawn_clears, r->copies);
+        for (int i = 0; i < r->npass; i++) {
+            const LostPass *p = &r->pass[i];
+            LOG("[vk]   pass %d: %ux%u, colour %d x%u, depth %d, %ux, %u draws\n", i, p->w, p->h, p->color, p->ncolor, p->depth,
+                p->samples, p->draws);
+        }
+        for (int i0 = 0; i0 < r->nprog; i0 += 12) {  // (12 a line)
+            char progs[12 * 20 + 1];
+            int k = 0;
+            for (int i = i0; i < r->nprog && i < i0 + 12; i++)
+                k += snprintf(progs + k, sizeof progs - k, " %x/%x", r->prog[i][0], r->prog[i][1]);
+            LOG("[vk]   programs (vertex/fragment code):%s\n", progs);
+        }
+    }
+#ifdef __ANDROID__
+    lost_logcat();
+#endif
+}
 
 void renderer_flush(void) {
     if (vk_exiting()) return;
@@ -356,9 +464,11 @@ VkDescriptorSet vk_alloc_set(VkDescriptorSetLayout layout) {
 //   MHGU_VK_STAGING=<n>   chunks made at start-up (default 4; 0: none, each made when needed)
 #define CHUNK_SIZE (32ull << 20)
 #define CHUNKS_AHEAD 4
-typedef struct { VkBuffer buf; VmaAllocation mem; uint8_t *ptr; uint64_t size, used, seq; } Chunk;
+typedef struct { VkBuffer buf; VmaAllocation mem; uint8_t *ptr; uint64_t size, used, seq, picked_ns; } Chunk;
 static Chunk *chunks;
 static int nchunks, active = -1;
+static _Atomic uint64_t staging_bytes;  // (the [mem] line: the chunks' bytes and count)
+static _Atomic int staging_n;
 
 static VkResult make_chunk(Chunk *c, uint64_t size) {
     memset(c, 0, sizeof *c);
@@ -440,6 +550,8 @@ static int new_chunk(uint64_t size, bool must) {  // (!must: -1 when the driver 
     }
     chunks = realloc(chunks, (nchunks + 1) * sizeof *chunks);
     chunks[nchunks] = c;
+    atomic_fetch_add_explicit(&staging_bytes, c.size, memory_order_relaxed);
+    atomic_fetch_add_explicit(&staging_n, 1, memory_order_relaxed);
     return nchunks++;
 }
 
@@ -478,7 +590,42 @@ VkSpan vk_transient(uint64_t size, uint64_t align) {
     active = pick;
     chunks[pick].used = size;
     chunks[pick].seq = pending;
+    chunks[pick].picked_ns = plat_now_ns();
     return (VkSpan){chunks[pick].buf, 0, chunks[pick].ptr};
+}
+
+// Phones: a chunk the ring hasn't taken for STAGING_IDLE_NS goes back to the system. The ring takes the first free chunk
+// in order, so the ones it needs every frame stay, and those a burst made (an area's textures, decoded on a Mali to 4 to
+// 8 times their size) don't stay for good (#59, #156: a 2.8 GB phone closed by Android). One is always kept.
+// MHGU_VK_STAGING_TRIM=0: kept for good, as before.
+#define STAGING_IDLE_NS 8000000000ull
+static void staging_trim(void) {
+#ifdef __ANDROID__
+    static uint64_t next;
+    static int on = -1;
+    if (on < 0) { const char *e = getenv("MHGU_VK_STAGING_TRIM"); on = !e || atoi(e) != 0; }
+    uint64_t now = plat_now_ns();
+    if (!on || now < next || nchunks <= 1) return;
+    next = now + 1000000000ull;
+    uint64_t done = vk_completed_seq(), freed = 0;
+    int n = 0;
+    for (int i = nchunks - 1; i >= 0 && nchunks > 1; i--) {
+        Chunk *c = &chunks[i];
+        if (i == active || c->seq > done || now - c->picked_ns < STAGING_IDLE_NS) continue;
+        freed += c->size, n++;
+        atomic_fetch_sub_explicit(&staging_bytes, c->size, memory_order_relaxed);
+        atomic_fetch_sub_explicit(&staging_n, 1, memory_order_relaxed);
+        vmaDestroyBuffer(g_vk.vma, c->buf, c->mem);  // (its submissions are done: nothing reads it)
+        int last = nchunks - 1;
+        if (i != last) {
+            chunks[i] = chunks[last];
+            if (active == last) active = i;
+        }
+        nchunks--;
+    }
+    static int nlog;
+    if (n && nlog++ < 6) LOG("[vk] staging: %d idle chunk(s) given back (%llu MB), %d kept\n", n, (unsigned long long)(freed >> 20), nchunks);
+#endif
 }
 
 VkSpan vk_transient_copy(const void *data, uint64_t size, uint64_t align) {
@@ -538,7 +685,26 @@ static bool guest_range_ok(uint64_t addr, uint64_t size) { return addr && addr <
 //                             with no write reported there is logged (a write the tracking missed), with counts (a
 //                             test: every copy is hashed too)
 #define VC_TAB 4096
-#define VC_BUDGET (384ull << 20)
+// Its budget: 384 MB; on a phone with 4 GB or less 192, and 128 at 3 GB or less (a 2.8 GB phone was closed by Android:
+// #59, #156). Phones also drop entries no draw used for VC_IDLE_NS (vc_trim): the vertex data of areas left behind
+// stayed until the budget was full. MHGU_VK_VC_MB=<n>: that budget.
+static uint64_t vc_budget(void) {
+    static uint64_t b;
+    if (!b) {
+        const char *e = getenv("MHGU_VK_VC_MB");
+        uint64_t mb = 384;
+#ifdef __ANDROID__
+        uint64_t ram = vk_ram_mb();
+        mb = ram <= 3200 ? 128 : ram <= 4400 ? 192 : 384;
+#endif
+        if (e && atoi(e) > 0) mb = (uint64_t)atoi(e);
+        b = mb << 20;
+        if (mb != 384) LOG("[vk] vertex cache: %llu MB at most\n", (unsigned long long)mb);
+    }
+    return b;
+}
+#define VC_BUDGET vc_budget()
+#define VC_IDLE_NS 20000000000ull
 #define VC_FULL_NS 2000000000ull
 #ifdef __ANDROID__
 #define VC_SLICE (2ull << 20)
@@ -554,6 +720,7 @@ typedef struct {
 } VcEnt;
 static VcEnt vc_tab[VC_TAB];
 static uint64_t vc_bytes;
+static _Atomic uint64_t vc_bytes_seen;  // (vc_bytes for the [mem] line's thread)
 static uint64_t vc_frame = ~0ull, vc_t, vc_full_left;  // (the frame's number, its time, the safety net's bytes left)
 uint64_t stat_vc_hits, stat_vc_refresh;
 
@@ -651,9 +818,46 @@ static void vc_slice_copy(VcEnt *e, uint64_t n) {
     if (!e->full_off) e->full_t = vc_t;  // (the pass is over: the next in 2-4 s)
 }
 
+// (device.c vk_mem_summary, the [mem] line, from the presenting thread outside vk_lock) the staging ring's chunks and
+// the vertex cache's bytes
+void vk_exec_mem(uint64_t *staging, int *nstaging, uint64_t *vc) {
+    *staging = atomic_load_explicit(&staging_bytes, memory_order_relaxed);
+    *nstaging = atomic_load_explicit(&staging_n, memory_order_relaxed);
+    *vc = atomic_load_explicit(&vc_bytes_seen, memory_order_relaxed);
+}
+
+static void vc_drop(VcEnt *e);
+
+// (phones, every 2 s from vk_submit_extra) entries no submission used in the last VC_IDLE_NS go: their buffers are
+// destroyed once the submissions that used them are done (vk_defer_buffer)
+static void vc_trim(void) {
+#ifdef __ANDROID__
+    static uint64_t next, hist_t[16], hist_seq[16];
+    static int nh, on = -1;
+    if (on < 0) { const char *e = getenv("MHGU_VK_VC_TRIM"); on = !e || atoi(e) != 0; }
+    uint64_t now = plat_now_ns();
+    if (!on || now < next) return;
+    next = now + 2000000000ull;
+    // (the submission that was next VC_IDLE_NS ago: samples every 2 s; entries last used before it are idle)
+    hist_t[nh % 16] = now, hist_seq[nh % 16] = vk_pending_seq(), nh++;
+    uint64_t before = 0;
+    for (int i = 0; i < 16 && i < nh; i++)
+        if (now - hist_t[i] >= VC_IDLE_NS && hist_seq[i] > before) before = hist_seq[i];
+    if (!before || !vc_bytes) return;
+    uint64_t freed = 0;
+    int n = 0;
+    for (int i = 0; i < VC_TAB; i++)
+        if (vc_tab[i].buf && vc_tab[i].used_seq < before) freed += vc_tab[i].size, n++, vc_drop(&vc_tab[i]);
+    static int nlog;
+    if (n && nlog++ < 6) LOG("[vk] vertex cache: %d idle range(s) dropped (%llu MB), %llu MB kept\n", n, (unsigned long long)(freed >> 20),
+                             (unsigned long long)(vc_bytes >> 20));
+#endif
+}
+
 static void vc_drop(VcEnt *e) {
     vk_defer_buffer(e->buf, e->mem);
     vc_bytes -= e->size;
+    atomic_store_explicit(&vc_bytes_seen, vc_bytes, memory_order_relaxed);
     free(e->sums);
     memset(e, 0, sizeof *e);
 }
@@ -698,6 +902,7 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
         if (HITCH_ON) hitch_add(HC_VC_NEW, plat_now_ns() - t0, size);
         e->addr = addr; e->size = size; e->gen = now; e->checked_seq = pend;
         vc_bytes += size;
+        atomic_store_explicit(&vc_bytes_seen, vc_bytes, memory_order_relaxed);
         copy = true;
     } else if (e->checked_seq != pend) {  // first use in this submission: written since the last copy?
         uint32_t now = 0;
@@ -2205,6 +2410,7 @@ static void begin_pass(void) {
     ss_forget();
     in_pass = true;
     pass_draws_at = stat_draws;
+    lost_pass(minw, minh, pass_ncolor ? pass_color[0] : VK_FORMAT_UNDEFINED, pass_ncolor, pass_depth, pass_samples);
     if (g_dump_active) {  // (debug) the pass's targets: texture object, size, NVN format
         char tg[400];
         int n = 0;
@@ -2653,6 +2859,7 @@ static void clear(int index, int kind, const void *color, uint32_t mask, bool de
     pc[4] = dval;
     vkCmdPushConstants(cb, pc_layout(), VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, 32, pc);
     vkCmdDraw(cb, 3, 1, 0, 0);
+    lost_rec[cur_sub].drawn_clears++;
 }
 
 // ================================================================== programs
@@ -4830,7 +5037,11 @@ static void draw(CmdRec *r, bool indexed) {
     // start of the first movie after an update (its pipeline not in cache/pipelines.bin yet, ~2 frames to build). It
     // waits for its pipeline, so the picture before it stays up that long instead.
     if (!await_build(&pp->state, pp, movie ? 2000000000ll : 0, !pp->cold)) { skip_draw(&stat_skip_pipe); return; }
-    if (ss_need(SS_PIPE, ss.pipe == pp->pipe)) { ss.pipe = pp->pipe; vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pp->pipe); }
+    if (ss_need(SS_PIPE, ss.pipe == pp->pipe)) {
+        ss.pipe = pp->pipe;
+        vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pp->pipe);
+        lost_prog(st.program->stages[0].code_addr, st.program->stages[1].code_addr);
+    }
 
     // ---- dynamic state
     if (k.stencil_test) {
@@ -5038,6 +5249,7 @@ static void draw(CmdRec *r, bool indexed) {
     if (!use_index) vkCmdDraw(cb, count, inst, first, base_inst);
     else vkCmdDrawIndexed(cb, icount, inst, 0, base_vertex, base_inst);
     stat_draws++;
+    lost_draw();
     if (g_fsr_objvel && pr->fsrcap && (k.depth_write || (k.depth_test && pr->vi->cbuf_dynamic)) && inst == 1 && pass_samples == 1) {
         // FSR object motion: the same draw again through the capture variant of its vertex shader (rasterizer
         // discard), which stores each vertex's clip position for the velocity pass (fsr.c)
@@ -5202,6 +5414,7 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
     }
     VkCommandBuffer cb = vk_cmd();
     vk_full_barrier(cb);
+    lost_rec[cur_sub].copies++;
     VkImageAspectFlags sa = s->aspect, da = d->aspect;
     if (s->samples > 1 && d->samples == 1 && sw == dw && sh == dh && s->format == d->format && !(sa & VK_IMAGE_ASPECT_DEPTH_BIT)) {
         VkImageResolve rv = {.srcSubresource = {sa, slv, sly, 1}, .srcOffset = {sx0, sy0, 0}, .dstSubresource = {da, dlv, dly, 1},
@@ -5210,6 +5423,18 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
         return;
     }
     if (s->samples != d->samples) return;
+    {   // (a depth format the GPU can't copy or blit, textures.c depth_format: left out, never an invalid command)
+        bool ds = (sa | da) & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+        bool same = sw == dw && sh == dh && s->format == d->format;
+        VkFormatFeatureFlags fs = ds ? vk_format_features(s->format) : 0, fd = ds ? vk_format_features(d->format) : 0;
+        if (ds && !(same ? (fs & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT) && (fd & VK_FORMAT_FEATURE_TRANSFER_DST_BIT)
+                         : (fs & VK_FORMAT_FEATURE_BLIT_SRC_BIT) && (fd & VK_FORMAT_FEATURE_BLIT_DST_BIT))) {
+            static int nlog;
+            if (nlog++ < 4)
+                LOG("[vk] depth %s %d -> %d left out: the GPU can't do it with that format\n", same ? "copy" : "blit", s->format, d->format);
+            return;
+        }
+    }
     if (sw == dw && sh == dh && s->format == d->format) {
         VkImageCopy c = {.srcSubresource = {sa, slv, sly, 1}, .srcOffset = {sx0, sy0, 0}, .dstSubresource = {da, dlv, dly, 1},
                          .dstOffset = {dx0, dy0, 0}, .extent = {(uint32_t)sw, (uint32_t)sh, 1}};

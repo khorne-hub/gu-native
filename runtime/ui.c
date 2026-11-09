@@ -159,12 +159,14 @@ static void set_fullscreen(bool on) {
 // renderer draws nothing while the window is gone and makes its surface again after (nvn/vulkan/device.c); with
 // [Application] PauseInBackground the game stops meanwhile too (runtime/hle/vi.c).
 extern volatile int g_android_window_state;
+extern volatile uint64_t g_android_bg_ns;  // (when it went to the background: the log's "window back" says how long ago)
 void vi_set_paused(bool on);
 static bool android_lifecycle(void *ud, SDL_Event *e) {
     (void)ud;
     switch (e->type) {
     case SDL_EVENT_WILL_ENTER_BACKGROUND:
     case SDL_EVENT_DID_ENTER_BACKGROUND:
+        if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE) != 1) g_android_bg_ns = plat_now_ns();
         __atomic_store_n(&g_android_window_state, 1, __ATOMIC_RELEASE);
         // (SDL's main thread now blocks until the app is back: the buttons and sticks it gave the game would stay held,
         // and the fingers' ups will not come)

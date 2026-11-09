@@ -293,6 +293,7 @@ static void control_poll(void) {
             if (!strcmp(cmd, "crash")) raise(SIGILL);  // (tests: the error screen, runtime/platform/android.c)
             if (!strcmp(cmd, "msaa")) { void vk_set_msaa(uint32_t); vk_set_msaa((uint32_t)atoi(arg)); continue; }
             if (!strcmp(cmd, "gpuprof")) { extern volatile int g_gpuprof_request; g_gpuprof_request = 1; continue; }
+            if (!strcmp(cmd, "devicelost")) { extern volatile int g_fake_lost; g_fake_lost = 1; continue; }  // (tests: exec.c lost_report)
             if (!strcmp(cmd, "hudtrace")) { g_hudtrace_request = 1; continue; }
             if (!strcmp(cmd, "menutrace")) { mousemenu_trace(atoi(arg)); continue; }  // (hle/mousemenu.c)
             if (!strcmp(cmd, "menupress")) { mousemenu_test_press((uint32_t)strtoul(arg, NULL, 16)); continue; }

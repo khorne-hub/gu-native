@@ -656,6 +656,11 @@ static inline const char *settings_text(int language, const char *english) {
         {"This only happens if your savegame hasn't received any downloadable content yet.", "Solo pasa si tu partida todavía no recibió ningún contenido descargable."},
         // (a desktop: the notice at the start until the menu has been opened once, runtime/overlay.cpp menu_hint)
         {"F1: settings", "F1: opciones"},
+        {"Game files incomplete", "Archivos del juego incompletos"},
+        {"The romfs folder holds %s GB of the game's 12.3 GB: some files were cut short when they were copied. If the game closes or shows black, copy the romfs folder to the device again.",
+         "La carpeta romfs tiene %s GB de los 12,3 GB del juego: algunos archivos se cortaron al copiarlos. Si el juego se cierra o se ve en negro, vuelve a copiar la carpeta romfs al dispositivo."},
+        {"%d of the romfs folder's files are empty: they were cut short when they were copied. If the game closes or shows black, copy the romfs folder to the device again.",
+         "%d archivos de la carpeta romfs están vacíos: se cortaron al copiarlos. Si el juego se cierra o se ve en negro, vuelve a copiar la carpeta romfs al dispositivo."},
         {"+ and - together on a controller", "+ y - juntos en el mando"},
         // Credits & Licenses, and the credits shown when the app opens
         {"Credits & Licenses", "Créditos y licencias"},
