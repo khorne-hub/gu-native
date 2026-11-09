@@ -280,7 +280,7 @@ const float KNOB = .45f;             // the stick's knob, in its base's radius
 // short of the screen's edge the thumb goes toward (a big stick, or one placed low, runs every way), never under RUN_MIN.
 // The same in the MH4U port's touch.cpp
 const float RUN_ON = 2.0f, RUN_KEEP = .80f, RUN_MIN = 1.25f, RUN_REACH = .11f, RUN_EDGE = .03f;
-const uint64_t RUN_X_WAIT = 400 * 1000000ull;  // (X pressed: no run's R until this long after, run_block)
+const uint64_t RUN_X_WAIT = 400 * 1000000ull;  // (X pressed: no run's R until this long after: touch_input)
 // The run zone's radius toward (ux, uy) (a unit vector, y down) from a stick at c of radius r, on a w x h screen
 float run_radius(ImVec2 c, float r, float ux, float uy, float w, float h) {
     float edge = 1e30f;
@@ -768,7 +768,7 @@ struct Finger {
     int sent;              // the menu pad's: the direction it presses now (dpad_part's; a tab, Minus: 1 pressed), which
                            // follows part as press_ok lets a press start
     uint64_t keep;         // a thumb from Guard slid onto the attacks ([Touch] GuardSlide): R kept with them
-    bool on_bar;           // ...or one on Guard slid onto the item bar: R + Y there (the item used with the weapon out)
+    bool on_bar;           // ...or one on Guard slid onto the item bar: R + Y while it is there
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
@@ -2853,17 +2853,17 @@ void ranged_face(int i, int drawn, Icon *ic, char *letter, size_t size) {
 }
 
 // The run zone round the stick at c ([Touch] StickRun): a ring of short gold dashes where the thumb pushed out locks the
-// run (each at the zone's radius that way: run_radius). near (0 at the rim, 1 at the zone): brighter as the thumb nears
+// run (each at the zone's radius that way: run_radius). nearing (0 at the rim, 1 at the zone): brighter as the thumb nears
 // it, with a glow on the ring toward the thumb (ux, uy) and the run's boot on a small disc there; locked, the ring whole
 // and lit, and a closed padlock on that disc. The same in the MH4U port's touch.cpp
-void run_ring(ImDrawList *dl, ImVec2 c, float r, float w, float h, float a, float near, bool locked, float ux, float uy,
+void run_ring(ImDrawList *dl, ImVec2 c, float r, float w, float h, float a, float nearing, bool locked, float ux, float uy,
               bool cue = true) {
     const int N = 24;
     for (int i = 0; i < N; i++) {
         float a0 = (i - .25f) * 2 * PI / N, a1 = (i + .25f) * 2 * PI / N, am = i * 2 * PI / N;
         float rr = run_radius(c, r, cosf(am), sinf(am), w, h);
         ImVec2 p0(c.x + cosf(a0) * rr, c.y + sinf(a0) * rr), p1(c.x + cosf(a1) * rr, c.y + sinf(a1) * rr);
-        dl->AddLine(p0, p1, locked ? fade(GLOW, a * .85f) : fade(GOLD, a * (.2f + .5f * near)), r * (locked ? .07f : .05f));
+        dl->AddLine(p0, p1, locked ? fade(GLOW, a * .85f) : fade(GOLD, a * (.2f + .5f * nearing)), r * (locked ? .07f : .05f));
     }
     if (locked) {  // (whole: the gaps closed)
         for (int i = 0; i < N; i++) {
@@ -2873,15 +2873,15 @@ void run_ring(ImDrawList *dl, ImVec2 c, float r, float w, float h, float a, floa
                         fade(GLOW, a * .85f), r * .07f);
         }
     }
-    if (!cue || (near <= 0.0f && !locked)) return;
-    float an = atan2f(uy, ux), rr = run_radius(c, r, ux, uy, w, h), k = locked ? 1.0f : near;
+    if (!cue || (nearing <= 0.0f && !locked)) return;
+    float an = atan2f(uy, ux), rr = run_radius(c, r, ux, uy, w, h), k = locked ? 1.0f : nearing;
     if (!locked) {  // (the glow toward the thumb: ±25 degrees)
         const float S = 25 * PI / 180;
         for (int j = 0; j < 8; j++) {
             float b0 = an - S + 2 * S * j / 8, b1 = an - S + 2 * S * (j + 1) / 8;
             float q0 = run_radius(c, r, cosf(b0), sinf(b0), w, h), q1 = run_radius(c, r, cosf(b1), sinf(b1), w, h);
             dl->AddLine(ImVec2(c.x + cosf(b0) * q0, c.y + sinf(b0) * q0), ImVec2(c.x + cosf(b1) * q1, c.y + sinf(b1) * q1),
-                        fade(GLOW, a * (.25f + .6f * near)), r * .08f);
+                        fade(GLOW, a * (.25f + .6f * nearing)), r * .08f);
         }
     }
     // the small disc just outside the zone, toward the thumb: the boot, and once locked the padlock, closed
@@ -2905,8 +2905,8 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
                 float dx = s.stick_on ? s.fx - s.bx : s.run_x, dy = s.stick_on ? s.fy - s.by : -s.run_y, d = hypotf(dx, dy);
                 float ux = d > 1e-3f ? dx / d : 0.0f, uy = d > 1e-3f ? dy / d : -1.0f;
                 float on = run_radius(base, g.r, ux, uy, w, h);
-                float near = s.stick_on ? std::clamp((d - g.r) / std::max(1.0f, on - g.r), 0.0f, 1.0f) : 1.0f;
-                run_ring(dl, base, g.r, w, h, a, near, s.run_lock, ux, uy);
+                float nearing = s.stick_on ? std::clamp((d - g.r) / std::max(1.0f, on - g.r), 0.0f, 1.0f) : 1.0f;
+                run_ring(dl, base, g.r, w, h, a, nearing, s.run_lock, ux, uy);
             }
             if (s.run) {  // (running: a gold ring round the rim, and streaks behind the knob)
                 dl->AddCircle(base, g.r * 1.12f, fade(GLOW, a * .85f), 48, g.r * .07f);

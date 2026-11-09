@@ -33,15 +33,15 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 
 #### Cacería con controles táctiles
 
-- **Movimiento:** un pad fijo, que no se mueve con el dedo. Arrastra más allá de su borde para correr; con el arma desenfundada eso se desactiva, para que no salgas corriendo en plena pelea
+- **Movimiento:** un pad fijo, que no se mueve con el dedo. Empújalo bien afuera, más allá del anillo de marcas doradas que aparece a su alrededor, para correr: la carrera se fija y sigue al levantar el pulgar, hasta que vuelvas a tocar el pad, desenvaines o abras un menú (vuelve hacia el centro para frenar antes). No empieza con el arma desenvainada, para que no salgas corriendo en plena pelea. Para correr solo mientras mantienes un botón: en el engranaje, **Controles**, **Botones en pantalla**, desactiva **Correr con la palanca**, y aparece un botón **Correr** sobre los ataques
 - **Cámara:** arrastra en cualquier parte de la pantalla para girarla, como en un juego de teléfono. Con un doble toque se centra
 - **Fijar al monstruo:** toca el ícono del objetivo y la cámara lo sigue hasta que lo vuelvas a tocar, como en los Monster Hunter más nuevos. Solo sigue a un monstruo de tu misma zona. Se puede desactivar en el engranaje, **Controles**, **Fijar objetivo**: entonces el ícono gira la cámara una vez, como en el juego original
 - **Layout propio para arcos y ballestas:** con uno en la mano, en una cacería, los controles cambian solos: un disparo grande bajo el pulgar, recarga, mira con un toque o apuntado rápido si lo mantienes, fuego agachado, y flechas para la munición. Si arrastras sobre el disparo mientras lo mantienes, también apuntas. Respeta la opción Bow Controls del juego y se acomoda aparte en el editor
 - **Cambiar munición al deslizar:** además de las flechas, desliza hacia arriba o abajo sobre la barra de ítems. La lista del juego ahora se ve completa, con los nombres de cada munición
 - **Disparos con el monstruo fijado:** salen hacia el centro de su cuerpo, también si está más alto o más bajo que tú. Para elevar el tiro, una ballesta entra un momento en apuntado rápido. Sin fijarlo, apuntas como siempre
-- **Objetos:** la barra queda abajo al centro. Tócala para usar el objeto y deslízala para cambiarlo; un deslizamiento rápido ya no lo usa por error. También puedes activar flechas a sus lados: en el engranaje, **Controles**, **Botones en pantalla**, **Flechas de ítems**
+- **Objetos:** la barra queda abajo al centro. Tócala para usar el objeto y deslízala para cambiarlo; un deslizamiento rápido ya no lo usa por error. Mantén el dedo sobre ella para ver los objetos anterior y siguiente, como los muestra el juego mientras se mantiene L: desliza mientras tanto para girarla, y levanta el dedo para cerrarla sin usar nada. También puedes activar flechas a sus lados: en el engranaje, **Controles**, **Botones en pantalla**, **Flechas de ítems**
 - **Hunter Arts:** toca el panel de cada una para usarla
-- **Ataques:** tres disposiciones a elegir: píldora dividida en diagonal, botones separados o una banda en U en la esquina de la pantalla
+- **Ataques:** tres disposiciones a elegir: píldora dividida en diagonal, botones separados o una banda en U en la esquina de la pantalla. Con **Seguir en guardia al deslizar** activado (en **Botones en pantalla**), un pulgar que se desliza de la guardia a los ataques sigue en guardia, para movimientos como el contraataque de la lanza
 - **Otros botones:** esquivar, cubrirse y enfundar el arma, cada uno con su ícono
 
 #### Menús y comodidad

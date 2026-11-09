@@ -32,15 +32,15 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 
 #### Touch controls for the hunt
 
-- **Movement:** a fixed pad that doesn't follow your finger. Drag past its edge to run; this turns off while your weapon is out, so you don't run off in the middle of a fight
+- **Movement:** a fixed pad that doesn't follow your finger. Push it far out, past the ring of gold marks that shows around it, to run: the run locks and keeps going after you lift your thumb, until you touch the pad again, draw your weapon or open a menu (pull back toward the middle to stop sooner). It doesn't start while your weapon is out, so you don't run off in the middle of a fight. To run only while you hold a button instead: under the gear, **Controls**, **Buttons on the screen**, turn off **Run with the stick**, and a **Run** button shows above the attacks
 - **Camera:** drag anywhere on the screen to turn it, as in a phone game. A double tap centers it
 - **Monster lock-on:** tap the target icon and the camera follows the monster until you tap it again, as in the newer Monster Hunter games. It only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on**: the icon then turns the camera once, as in the original game
 - **A layout of their own for bows and bowguns:** with one in hand, in a hunt, the controls change by themselves: a large fire button under your thumb, reload, the scope with a tap or quick aim if you hold it, crouching fire, and arrows for the ammo. Drag on the fire button while you hold it to aim. It follows the game's Bow Controls option and has its own place in the editor
 - **Change ammo with a swipe:** besides the arrows, swipe up or down on the item bar. The game's list now shows whole, with each ammo's name
 - **Shots with a monster locked on:** they go toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Without the lock you aim as always
-- **Items:** the bar sits at the bottom center. Tap it to use the item and swipe it to change the item; a quick swipe no longer uses it by mistake. You can also turn on arrows beside it: under the gear, **Controls**, **Buttons on the screen**, **Item arrows**
+- **Items:** the bar sits at the bottom center. Tap it to use the item and swipe it to change the item; a quick swipe no longer uses it by mistake. Hold your finger on it to see the items before and after the selected one, as the game shows them while L is held: swipe meanwhile to turn it, and lift to close it without using anything. You can also turn on arrows beside it: under the gear, **Controls**, **Buttons on the screen**, **Item arrows**
 - **Hunter Arts:** tap each one's panel to use it
-- **Attacks:** three layouts to choose from: a diagonally split pill, separate buttons, or a U-shaped band in the corner of the screen
+- **Attacks:** three layouts to choose from: a diagonally split pill, separate buttons, or a U-shaped band in the corner of the screen. With **Keep guarding while sliding** on (under **Buttons on the screen**), a thumb that slides from guard onto the attacks keeps guarding, for moves like a lance's counter
 - **Other buttons:** dodge, guard and sheathe, each with its own icon
 
 #### Menus and comfort
