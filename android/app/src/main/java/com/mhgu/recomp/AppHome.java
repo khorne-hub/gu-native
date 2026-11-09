@@ -109,6 +109,15 @@ final class AppHome {
         }
     }
 
+    // (the folders the app itself writes in: only these are repaired, with the files at the top. Anything else a player or
+    // adb put there - a backup, a test folder - is never touched)
+    private static final String[] OWNED = {"MHGURecomp", "save_import", "cheats", "cache", "shots"};
+
+    private static boolean owned(String name) {
+        for (String s : OWNED) if (s.equals(name)) return true;
+        return false;
+    }
+
     /** What another app made in the folder becomes the app's again (see above); a few levels, a few thousand files. */
     private static void repair(File dir, int depth, int[] seen) {
         File[] kids = dir.listFiles();
@@ -116,7 +125,8 @@ final class AppHome {
         String stamp = null;
         for (File k : kids) {
             if (++seen[0] > 4000) return;
-            if ((depth == 0 && skipped(k.getName())) || k.getName().contains(".other-app-")) continue;
+            if (k.getName().contains(".other-app-") || k.getName().endsWith(".tmp")) continue;
+            if (depth == 0 && k.isDirectory() && !owned(k.getName())) continue;
             if (k.isDirectory()) {
                 int err = probe(k);
                 if (err == OsConstants.EACCES || err == OsConstants.EPERM) {
