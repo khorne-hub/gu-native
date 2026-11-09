@@ -52,7 +52,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)
 - Importa tu partida desde un emulador, desde otro dispositivo o desde el juego de PC, y expórtala para llevarla ahí: mira [Partidas](#partidas)
-- El juego se pausa solo cuando sales de la app
+- El juego se pausa solo cuando sales de la app, y mientras el menú de opciones está abierto si juegas solo
 - Vibración al tocar los botones y vibración del juego en el teléfono, con o sin mando
 
 #### Personalización

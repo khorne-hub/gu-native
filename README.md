@@ -51,7 +51,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
 - Import your save from an emulator, another device or the PC game, and export it to take it there: see [Saves](#saves)
-- The game pauses by itself when you leave the app
+- The game pauses by itself when you leave the app, and while the settings menu is open if you play alone
 - Vibration on button taps, and the game's rumble on your phone, with or without a controller
 
 #### Customization

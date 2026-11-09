@@ -304,4 +304,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   a save mounts the local one instead and writes `save_folder_missed.txt`; the start gate (`SaveFolderActivity.gate`) asks.
   A `.mhgu-commit` of `system` / `system_backup` is applied only at the save's full size (a sync app can bring one half-written).
   The in-use mark `.mhgu-in-use` is renewed every 5 minutes (`savefolder_tick`) and counts for 15.
+- The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,
+  never with an LDN network up): the update thread stays in `overlay_frame`, drawing the menu (`frame_once`) and presenting the
+  last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the
+  presenting, vsync and audio threads waiting (`vi_menu_hold`, `vi_pause_wait`), as in the background. MH4U for Android does the
+  same with its clock (`android_main.cpp`, `[Interface] PauseInMenu`).
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.
