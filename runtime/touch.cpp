@@ -939,6 +939,11 @@ void run_end(State &s, const char *why) {
 }
 // A thumb from Guard keeps R as it slides ([Touch] GuardSlide): with the weapon out, no menu of the game's open
 bool guard_slide(const State &s) { return config_live_touch_show(TB_GUARD_SLIDE) && s.drawn == 1 && !s.menu; }
+void guard_log(const char *what) {  // (MHGU_TOUCH_LOG)
+    static int dbg = -1;
+    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+    if (dbg) rt_logf("[touch] guard kept: %s\n", what);
+}
 
 Finger *finger(State &s, SDL_FingerID id) {
     for (Finger &f : s.f)
@@ -1622,13 +1627,13 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 // alone, a draw attack, the run's R let go; from Dodge: the attack)
                 f->keep = f->ctl == C_R && guard_slide(s) ? B(BTN_R) : 0;
                 f->ctl = c, f->part = part, f->on_bar = false, recompute_held(s);
-                if (f->keep) tap_due();
+                if (f->keep) tap_due(), guard_log("R with the attacks");
             }
         }
         // (a thumb on Guard - the corner's too - slid onto the item bar with GuardSlide: R + Y while it is there)
         if (f->kind == F_BUTTON && !f->done && (f->ctl == C_R || (f->ctl == C_CORNER && f->part == 3))) {
             bool bar = guard_slide(s) && zone_rect(zones(), HP_ITEMS, s.w, s.h).in(x, y);
-            if (bar != f->on_bar) f->on_bar = bar, recompute_held(s), tap_due();
+            if (bar != f->on_bar) f->on_bar = bar, recompute_held(s), tap_due(), guard_log(bar ? "R + Y on the item bar" : "off the item bar");
         }
         f->x = x, f->y = y;
         return true;
@@ -3167,8 +3172,11 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
         if (i == C_STICK && config_live_touch_show(TB_STICK_RUN)) {  // (the run zone, as far out as the stick's size and
             Geo g = place(s.layout, i, w, h);                         // place put it: StickRun)
             run_ring(dl, g.c, g.r, w, h, 1.0f, .6f, false, 0.0f, -1.0f, false);
-            float top = g.c.y - run_radius(g.c, g.r, 0.0f, -1.0f, w, h);
-            text_center(dl, font, .02f * h, ImVec2(g.c.x, top - .018f * h), GOLD, T("Run"), w);
+            // (its name just outside it toward the screen's middle: above it, the editor's panel can lie over it)
+            const char *rt = T("Run");
+            float fs = .02f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, rt).x;
+            float right = g.c.x + run_radius(g.c, g.r, 1.0f, 0.0f, w, h);
+            text_center(dl, font, fs, ImVec2(right + tw * .5f + .012f * h, g.c.y), GOLD, rt, w);
         }
         if (i == C_MPAD)  // (its tabs and Minus with it, where it puts them)
             for (int j = C_ML; j <= C_MMINUS; j++)
