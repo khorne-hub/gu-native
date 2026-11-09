@@ -16,6 +16,7 @@
 #include "mods.h"
 #include "perfstats.h"
 #include "rt.h"
+#include "savefolder.h"
 #include "touch.h"
 #include "hle/input.h"
 
@@ -31,6 +32,7 @@ void ui_request_save_import(void) { SDL_SetAtomicInt(&requested_action, 5); }
 void ui_request_share_log(void) { SDL_SetAtomicInt(&requested_action, 6); }
 void ui_request_save_export(void) { SDL_SetAtomicInt(&requested_action, 7); }
 void ui_request_import(int kind) { SDL_SetAtomicInt(&requested_action, 9 + kind); }  // (0 cheats, 1 a mod, 2 DLC)
+void ui_request_save_folder(void) { SDL_SetAtomicInt(&requested_action, 12); }
 #ifdef __ANDROID__
 void ui_request_gpu_driver(void) { SDL_SetAtomicInt(&requested_action, 8); }
 static void activity_call(const char *method) {  // (a static void method of GameActivity: as restart_application)
@@ -271,6 +273,7 @@ int ui_run(void) {
         if (action == 9) activity_call("importCheats");
         if (action == 10) activity_call("importMod");
         if (action == 11) activity_call("importDlc");
+        if (action == 12) activity_call("showSaveFolder");
         static float screen_for = -1;  // (the screen's refresh rate follows the FPS limit: GameActivity.setFrameCap)
         float fps_now = config_live_fps();
         if (fps_now != screen_for) screen_for = fps_now, frame_cap_to_activity(fps_now);
@@ -289,6 +292,7 @@ int ui_run(void) {
         }
         host_input_update();
         cheats_frame();
+        savefolder_tick();  // (the save folder's in-use mark kept fresh, runtime/savefolder.h)
         perfstats_poll();  // ([Performance] ShowStats: the phone's temperature, every 2 s at most; a PC's sampler level)
     }
 }

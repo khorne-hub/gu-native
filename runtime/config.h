@@ -87,7 +87,7 @@ typedef struct {
     int fsr_animsurf;         // FSR: surfaces animated through their texture (banners, water): 1 detected, 0 off
     int fsr_upscaler;         // [Upscaler] Upscaler: FSR_UP_3 (FSR 3.1), FSR_UP_4 (FSR 4, runtime/nvn/vulkan/fsr4.c) or
                               // FSR_UP_XESS (XeSS-SR, Windows: runtime/nvn/vulkan/xess.c)
-    int updates;              // [Application] Updates: UPDATES_*, unused (the original project's updater read it; none here)
+    int updates;              // [Application] Updates: UPDATES_*: Android's start looks for a newer release once a day (Notices.java)
     int shader_prewarm;       // [Performance] ShaderPrewarm: translate the game's shaders at start-up (nvn/vulkan/exec.c)
     float draw_distance;      // [Graphics] DrawDistance: town NPCs' fade distance factor, 0 no limit (config.c npc_fade_dist2)
     int mute_in_background;   // [Audio] MuteInBackground: no sound while the window is not focused (config_audio_gain)
@@ -158,7 +158,7 @@ void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
 // (a desktop) how tall the menu's Low-end mode and Toaster make the 3D picture, whatever the screen: config_lowend_scale
 #define LOW_END_LINES 720
 #define TOASTER_LINES 540
-enum { UPDATES_ASK, UPDATES_AUTO, UPDATES_OFF };
+enum { UPDATES_OFF, UPDATES_ON };  // (an older file's Ask and Auto: On; Never: Off)
 enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_XESS };  // [Upscaler] Upscaler (a start-up setting: the device is made for it)

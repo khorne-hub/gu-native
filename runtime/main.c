@@ -16,6 +16,7 @@
 #include "mods.h"
 #include "app_actions.h"
 #include "net/discord.h"
+#include "savefolder.h"
 #ifdef __ANDROID__
 static void game_lib_failed(const char *why);
 #endif
@@ -127,7 +128,7 @@ static const char *boot_text(const char *english) {
 }
 // These files can't be played: GameFolderActivity shows what is wrong with them at the next start
 static void files_rejected(void) {
-    const char *ext = SDL_GetAndroidExternalStoragePath();
+    const char *ext = getenv("MHGU_HOME") ? getenv("MHGU_HOME") : SDL_GetAndroidExternalStoragePath();  // (AppHome's)
     char path[1100];
     snprintf(path, sizeof path, "%s/game_folder_bad.txt", ext ? ext : ".");
     FILE *f = fopen(path, "w");
@@ -144,6 +145,19 @@ static void game_lib_failed(const char *why) {
 static void android_env(void) {
     const char *ext = SDL_GetAndroidExternalStoragePath();
     if (!ext) ext = SDL_GetAndroidInternalStoragePath();
+    // (the app's folder is the private one when another app made the external one and the app can't write it:
+    // android/.../AppHome.java decides once, and home.txt there says so; gu-native #176)
+    static char moved[1024];
+    char mark_path[1100];
+    snprintf(mark_path, sizeof mark_path, "%s/home.txt", SDL_GetAndroidInternalStoragePath() ? SDL_GetAndroidInternalStoragePath() : ".");
+    FILE *mark = fopen(mark_path, "r");
+    if (mark) {
+        if (fgets(moved, sizeof moved, mark)) {
+            moved[strcspn(moved, "\r\n")] = 0;
+            if (moved[0]) ext = moved;
+        }
+        fclose(mark);
+    }
     if (ext) {
         setenv("MHGU_HOME", ext, 0);
         setenv("XDG_DATA_HOME", ext, 0);
@@ -234,6 +248,7 @@ int main(int argc, char **argv) {
         } else {
             fprintf(stderr, "[main] no user data folder: saves go to save\\ beside the executable\n");
         }
+        savefolder_init();  // (Settings -> Save folder: a change made in the menu, the folder chosen, runtime/savefolder.h)
 #ifndef __ANDROID__
         pc_apply_imported_save();  // (a save imported from the menu: in place before the game runs, runtime/pc_actions.c)
         pc_install_bundled_cheats();  // (the port's optional cheats, the first time: off)
