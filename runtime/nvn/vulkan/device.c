@@ -709,6 +709,14 @@ static void create_device(void) {
     vkGetDeviceQueue(g_vk.dev, g_vk.qfam, 0, &g_vk.queue);
     LOG("[vk] features: divisor %d, custom border %d, BC %d, ASTC %d, exclusive full screen off %d\n", g_vk.divisor,
         g_vk.custom_border, h->textureCompressionBC, h->textureCompressionASTC_LDR, no_exclusive);
+    {   // (a player's log tells what the GPU allows: no PowerVR here to read it from, #100)
+        const VkPhysicalDeviceLimits *l = &g_vk.props.limits;
+        LOG("[vk] limits: vertex streams %u, inputs %u; a stage: uniform buffers %u, storage buffers %u, textures %u, samplers %u, "
+            "%u in all; images up to %u, samplers %u, allocations %u\n", l->maxVertexInputBindings, l->maxVertexInputAttributes,
+            l->maxPerStageDescriptorUniformBuffers, l->maxPerStageDescriptorStorageBuffers, l->maxPerStageDescriptorSampledImages,
+            l->maxPerStageDescriptorSamplers, l->maxPerStageResources, l->maxImageDimension2D, l->maxSamplerAllocationCount,
+            l->maxMemoryAllocationCount);
+    }
 
     // MSAA (settings): as many samples as asked for that colour and depth attachments both support and shaders can
     // read from depth (its resolve is a shader: exec.c vk_ms_resolve)
