@@ -170,8 +170,7 @@ static bool copy_checked(const char *src, const char *dst) {
     if (!out) { fclose(in); return false; }
     static char buf[1 << 16];
     bool ok = true;
-    long long total = 0;
-    for (size_t n; (n = fread(buf, 1, sizeof buf, in)) > 0; total += (long long)n)
+    for (size_t n; (n = fread(buf, 1, sizeof buf, in)) > 0;)
         if (fwrite(buf, 1, n, out) != n) { ok = false; break; }
     if (ferror(in)) ok = false;
     fclose(in);
