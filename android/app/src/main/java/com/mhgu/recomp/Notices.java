@@ -201,7 +201,7 @@ final class Notices {
                 es ? "La versión " + v + " ya está disponible (tienes la " + mine + "). "
                      + (over ? "Se instala encima de esta: tu partida y tus ajustes se quedan como están."
                              : "Esta copia no es la oficial, así que la oficial no se instala encima. Primero exporta tu partida "
-                               + "(Ajustes, Exportar partida); después desinstala esta copia, instala la oficial e importa tu partida.")
+                               + "(Opciones, Exportar partida); después desinstala esta copia, instala la oficial e importa tu partida.")
                    : "Version " + v + " is out (you have " + mine + "). "
                      + (over ? "It installs over this one: your save and your settings stay as they are."
                              : "This copy isn't the official one, so the official one won't install over it. First export your "
