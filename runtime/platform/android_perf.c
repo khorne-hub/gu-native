@@ -43,6 +43,7 @@
 #define _GNU_SOURCE
 #include <android/api-level.h>
 #include <dlfcn.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
@@ -448,10 +449,12 @@ static void *mem_thread(void *arg) {
     plat_thread_name("mem");
     setpriority(PRIO_PROCESS, (id_t)gettid(), 10);  // (nothing waits for it)
     for (;;) {
-        while (sem_wait(&mem_sem) != 0) {}  // (EINTR)
+        if (sem_wait(&mem_sem) != 0) {
+            if (errno == EINTR) continue;
+            return NULL;  // (never seen: no more lines rather than a thread turning on a failed wait)
+        }
         mem_line();
     }
-    return NULL;
 }
 
 static void mem_watch(void) {
