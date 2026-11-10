@@ -370,6 +370,15 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   time (`adpcm_block`, the same integer steps). Both give the same samples bit for bit: `MHGU_PERF_AUDIO_CHECK=1` compares them
   with the old way as the game runs and logs any difference every 10 s (PC, quest 101: 100 s, 5.6 million ADPCM samples,
   none; the decoder's fuzz test, 400 million samples, none).
+- The guest's `SleepThread` sleeps precisely (`plat_sleep_until_ns`: a 1 us timer slack set for good on the thread, the last 50 us
+  spun with `sched_yield`), and the game polls with it. The SDK's SleepThread (0x24a31c4) is a leaf, so at the SVC lr is the game's
+  call of main's stub 0x15efdb8 (`kernel.c` `sleep_call_site`). `MHGU_SLEEP_LOG=1` logs each call site's calls every 10 s. PC, quest
+  101's camp at 30 FPS: 0xdffcac 190 a second (5 ms each, one thread), 0xdffcd8 30-44 (20 ms), the frame limiter 0xda5d2c 30, 0x5cd704
+  about 18 (50 ms), the SDK's own 10 (100 ms); the job loop's 100 us retries for a job's dependency (0xdc7bb8) and a busy lock's 1 ms
+  backoffs (0x1431030, 0x143108c) did not show there. `MHGU_PERF_SLEEP_COARSE=1` (Android, 0.1.9's perf pass, off until measured):
+  the game's own calls but the limiter's, and the audio mixer's 200 Hz tick (its queue holds about 45 ms), sleep once to their time
+  with the thread's timer slack as it is (the system's 50 us on a thread that never slept precisely) and no spin
+  (`plat_sleep_coarse_until_ns`), some tens of microseconds later; the SDK's own sleeps and the vsync tick stay precise.
 - `gpuprof` shows the window image's pass (the game's picture copied in, the overlay) as its last line. The game's own passes all load
   their attachments; one whose first commands clear an attachment whole begins with `LOAD_OP_CLEAR` and those values instead
   (`noload_clears`, `render_pass`), and the clears it already did are skipped (`pass_skip_clear`). Not `DONT_CARE` plus the clears: an

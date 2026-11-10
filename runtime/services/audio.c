@@ -135,6 +135,7 @@ typedef struct {
     // a 14-sample frame at a time (adpcm_block), the same integer steps. MHGU_PERF_AUDIO_CHECK=1: both checked against
     // the old way as they run, the result in the log every 2000 frames (10 s).
     uint8_t perf_sdest, perf_adpcm, perf_check;
+    uint8_t perf_sleep;  // (MHGU_PERF_SLEEP_COARSE, Android: the tick sleeps coarsely; its queue holds ~45 ms)
     uint32_t *sd_dirty, nsd_dirty;
     uint64_t chk_frames, chk_sd_copied, chk_sd_all, chk_sd_bad, chk_adpcm, chk_adpcm_bad;
     SDL_AudioStream *stream;
@@ -1299,7 +1300,11 @@ static void *renderer_tick(void *arg) {
             if (q >= prime) primed = true, next = t;
         } else if (!r->stream || q >= low) {
             if (!next || t > next + 4 * period) next = t;  // (behind after a stall: no burst to make up for it)
-            plat_sleep_until_ns(next);  // (Windows: a high-resolution timer, not nanosleep's whole milliseconds)
+#ifdef __ANDROID__
+            if (r->perf_sleep) plat_sleep_coarse_until_ns(next);
+            else
+#endif
+                plat_sleep_until_ns(next);  // (Windows: a high-resolution timer, not nanosleep's whole milliseconds)
             next += period;
             if (r->stream && SDL_GetAudioStreamQueued(r->stream) >= high) {
                 if (r->vt) r->ts.skips++;
@@ -1682,9 +1687,13 @@ static void renderer_perf_init(Renderer *r) {
     r->perf_sdest = (uint8_t)perf_env("MHGU_PERF_AUDIO_SDEST");
     r->perf_adpcm = (uint8_t)perf_env("MHGU_PERF_AUDIO_ADPCM");
     r->perf_check = (uint8_t)perf_env("MHGU_PERF_AUDIO_CHECK");
-    if (r->perf_sdest || r->perf_adpcm || r->perf_check)
-        LOG("[audren] perf: splitter volumes copied %s, ADPCM decoded %s%s\n", r->perf_sdest ? "when changed" : "every frame",
-            r->perf_adpcm ? "a frame at a time" : "a sample at a time", r->perf_check ? ", checked against the old way" : "");
+#ifdef __ANDROID__
+    r->perf_sleep = (uint8_t)perf_env("MHGU_PERF_SLEEP_COARSE");
+#endif
+    if (r->perf_sdest || r->perf_adpcm || r->perf_check || r->perf_sleep)
+        LOG("[audren] perf: splitter volumes copied %s, ADPCM decoded %s, the tick's sleep %s%s\n",
+            r->perf_sdest ? "when changed" : "every frame", r->perf_adpcm ? "a frame at a time" : "a sample at a time",
+            r->perf_sleep ? "coarse" : "precise", r->perf_check ? ", checked against the old way" : "");
 }
 
 static void renderer_open_output(Renderer *r) {

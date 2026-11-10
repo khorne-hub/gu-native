@@ -564,6 +564,13 @@ void plat_sleep_until_ns(uint64_t t) {
     }
 }
 
+// (MHGU_PERF_SLEEP_COARSE) No 1 us timer slack set (a thread that never asked for a precise sleep keeps the system's
+// 50 us, and the kernel may wake it with others) and no yield spin over the last 50 us: one syscall, a little later.
+void plat_sleep_coarse_until_ns(uint64_t t) {
+    struct timespec due = {(time_t)(t / 1000000000ull), (long)(t % 1000000000ull)};
+    while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &due, NULL) == EINTR) {}
+}
+
 // ---- process
 void plat_init(void) {
     // send() on a dropped Local Play connection gives EPIPE here instead of killing the process: Windows reports
