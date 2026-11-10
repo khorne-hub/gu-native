@@ -2731,6 +2731,7 @@ static VkFormat vertex_format(uint32_t f) {
 }
 
 // 3-component 8/16-bit vertex formats aren't universally supported: read 4 components instead.
+static VkFormat vertex_format_wide(VkFormat f);
 static VkFormat vertex_format_supported(VkFormat f) {
     static uint8_t known[256];  // 1 ok, 2 not
     uint32_t i = f < 256 ? f : 0;
@@ -2738,8 +2739,16 @@ static VkFormat vertex_format_supported(VkFormat f) {
         VkFormatProperties p;
         vkGetPhysicalDeviceFormatProperties(g_vk.phys, f, &p);
         known[i] = (p.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) ? 1 : 2;
+        // (once per format, so a log tells whether a GPU takes this path: nothing makes the 4th component 1 there, #180)
+        if (known[i] == 2)
+            LOG("[vk] vertex format %d not supported: read as %d (4 components, the 4th from the next bytes)\n", (int)f,
+                (int)vertex_format_wide(f));
     }
     if (known[i] == 1) return f;
+    return vertex_format_wide(f);
+}
+
+static VkFormat vertex_format_wide(VkFormat f) {
     switch (f) {
     case VK_FORMAT_R8G8B8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
     case VK_FORMAT_R8G8B8_SNORM: return VK_FORMAT_R8G8B8A8_SNORM;
@@ -5107,6 +5116,18 @@ static void pipe_ahead(Prog *pr, uint32_t mode, bool flip_y, int af) {
     pipe_attach(pr, pp);
 }
 
+// The polygon offsets of a pass with only a depth target (the shadow atlas's casters), each one once, the first 8: with the
+// depth format and its depth clamp, so a log shows what a GPU is given where its shadows differ (#180). f: factor, units, clamp.
+static void depth_bias_tell(const float f[3], bool depth_clamp) {
+    static float seen[8][3];
+    static int n;
+    if (n >= 8) return;
+    for (int i = 0; i < n; i++) if (!memcmp(seen[i], f, sizeof seen[i])) return;
+    memcpy(seen[n++], f, sizeof seen[0]);
+    LOG("[vk] depth-only pass %ux%u, format %d: polygon offset factor %g units %g clamp %g, depth clamp %s\n", pass_w, pass_h,
+        (int)pass_depth, f[0], f[1], f[2], depth_clamp ? "on" : "off");
+}
+
 static void draw(CmdRec *r, bool indexed) {
     if (!st.program) { stat_skipped++; return; }
     if (shadow_skipped()) { stat_skipped++; return; }
@@ -5213,6 +5234,7 @@ static void draw(CmdRec *r, bool indexed) {
     {
         float f[3] = {0, 0, 0};
         if (k.depth_bias) memcpy(f, st.poly_offset, sizeof f);
+        if (k.depth_bias && !pass_ncolor) depth_bias_tell(f, k.depth_clamp);
         if (ss_need(SS_DB, !memcmp(ss.db, f, sizeof f))) { memcpy(ss.db, f, sizeof f); vkCmdSetDepthBias(cb, f[1], f[2], f[0]); }
     }
     float *vp = st.viewport[0], movie_vp[4], v[4];
