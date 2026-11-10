@@ -152,6 +152,9 @@ typedef struct {
     char ldn_recent_server[LDN_RECENT][256];  // [Multiplayer] RecentServer1..: the hub servers typed and saved, the last
                                               // first, none of the short list's (the menu's list: settings_panel.cpp)
     char ldn_recent_key[LDN_RECENT][64];      // [Multiplayer] RecentKey1..: the matchmaking keys typed and saved, the same
+    int gyro_aim;             // [Controls] GyroAim: aiming a bow or a bowgun, turning the phone (or a controller with a gyro)
+                              // turns the aim too, from where it was as the aim began (runtime/host_input.c gyro_update)
+    float gyro_sensitivity;   // [Controls] GyroSensitivity: the aim's turn for a turn of the phone (GYRO_SENS_MIN..MAX)
 } Config;
 // The remembered lists (Config's ldn_recent_*: n entries of `width` bytes, the last first, no empty one between): add puts
 // a value at the front once (nocase: compared as host names are; an empty one is nothing), the last one dropped when it
@@ -269,6 +272,8 @@ int config_live_discord_hunter(void);  // [Discord] ShowHunter
 int config_live_touch_controls(void);  // [Touch] (runtime/touch.cpp)
 int config_live_touch_hud(void);
 int config_live_lock_on(void);
+int config_live_gyro_aim(void);           // [Controls] GyroAim
+float config_live_gyro_sensitivity(void); // [Controls] GyroSensitivity
 int config_live_mouse_menus(void);  // [Controls] MouseMenus (a desktop's; 0 on a phone)
 int config_live_touch_show(int button);        // TB_*
 uint32_t config_live_touch_combo(int index);   // its buttons (config_combo_mask)

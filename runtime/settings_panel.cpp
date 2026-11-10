@@ -704,6 +704,8 @@ bool equal(const Config &a, const Config &b) {
     SAME(mute_in_background);
     SAME(touch_vibration);
     SAME(phone_rumble);
+    SAME(gyro_aim);
+    SAME(gyro_sensitivity);
     SAME(mouse_menus);
     SAME(show_stats);
     SAME(pause_background);
@@ -1456,6 +1458,8 @@ void reset_section() {
         c.phone_rumble = f.phone_rumble;
         c.mouse_menus = f.mouse_menus;
         c.lock_on = f.lock_on;
+        c.gyro_aim = f.gyro_aim;
+        c.gyro_sensitivity = f.gyro_sensitivity;
         memcpy(c.touch_show, f.touch_show, sizeof c.touch_show);
         memcpy(c.touch_combo, f.touch_combo, sizeof c.touch_combo);
         memcpy(c.touch_combo_pad, f.touch_combo_pad, sizeof c.touch_combo_pad);
@@ -2277,8 +2281,18 @@ std::vector<Row> main_rows() {
             r.back().help = tr("The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.");
 #endif
         };
+        auto gyro_rows = [&r]() {  // (the MH4U port's the same: names, range, default)
+            add_bool(r, "gyro.aim", "Aim with the gyro", &c.gyro_aim, ini("GyroAim"));
+            r.back().help = tr("Aiming a bow or a bowgun (a gun's aim, its scope, crouching fire; a bow's aiming mode), turning the phone turns the aim too, from where it was as the aim began, with what your fingers or the sticks do. A controller with a gyro is read instead of the phone. The gyroscope is read only while you aim.");
+            if (c.gyro_aim) {
+                number(r, "gyro.sens", tr("Gyro sensitivity"), &c.gyro_sensitivity, lo("GyroSensitivity"), hi("GyroSensitivity"), .1f, ini("GyroSensitivity"));
+                r.back().value = fmt("%.1fx", c.gyro_sensitivity);
+                r.back().help = tr("How far the aim turns for a turn of the phone or the controller: 1.0x the same angle.");
+            }
+        };
         if (fingers) {
             lock_row();
+            gyro_rows();
             header(r, "pad.head", tr("Controller"));
         }
         add_choice(r, "face", "Face buttons", c.face_buttons, {tr("Position"), tr("Label")},
@@ -2303,6 +2317,7 @@ std::vector<Row> main_rows() {
 #endif
         if (!fingers) {  // (a controller's button or a key presses them: that view's combined buttons alone)
             lock_row();
+            gyro_rows();
             action(r, "touch.combos", tr("Combined buttons"), []() { push(View::TouchButtons, "tc.0"); });
             r.back().help = tr("Buttons of your own that press several of the game's at once: on a controller's button, or on a key in Keybinds.");
         }
@@ -2887,6 +2902,10 @@ const PhoneHelp PHONE_HELP[] = {
      "Algunos drivers de Adreno repiten la imagen 3D en grilla con una resolución 3D baja: Auto deja MSAA 2x en ese caso. Si la imagen se ve oscura o parpadea, o para ganar velocidad, elige Off."},
     {"LockOn", "Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.",
      "Mantén apretado L o toca el candado junto a él (un mando: aprieta la palanca derecha; mantenla apretada con el Tipo de control 3, donde el clic cambia el objetivo) y la cámara sigue girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo hagas de nuevo. El botón de objetivo cambia el monstruo. Arcos y ballestas disparan hacia él desde la postura normal; tu propio apuntado, el fuego agachado y los movimientos de los estilos quedan en tus manos. Girar la cámara tú mismo la pausa un momento."},
+    {"GyroAim", "Aiming a bow or a bowgun (a gun's aim, its scope, crouching fire; a bow's aiming mode), turning the phone turns the aim too, from where it was as the aim began, with what your fingers or the sticks do. A controller with a gyro is read instead of the phone. The gyroscope is read only while you aim.",
+     "Al apuntar con un arco o una ballesta (la mira de la ballesta, su visor, el disparo agachado; el modo de apuntar del arco), girar el teléfono también mueve la mira, desde donde estaba al empezar a apuntar, junto con lo que hagan tus dedos o las palancas. Si el mando tiene giroscopio, se usa el del mando en vez del teléfono. El giroscopio solo se lee mientras apuntas."},
+    {"GyroSensitivity", "How far the aim turns for a turn of the phone or the controller: 1.0x the same angle.",
+     "Cuánto gira la mira por cada giro del teléfono o del mando: 1.0x, el mismo ángulo."},
     {"Join", "A host's IP address, to play over a VPN. Empty: searches your network.", "La dirección IP de un anfitrión, para jugar por VPN. Vacío: busca en tu red."},
     {"Server", "The server that lists hubs over the internet: everyone who uses the same one finds the others' hubs when they search for hubs in the game, with no ports to open. The default, " LDN_DEFAULT_SERVER ", is run by players, not by this project. Custom: type another (a name or IP, and :port if it is not 39510). Off: only your local network. The servers you type and save stay in this list, the last one first (up to 24): the × beside one takes it out (with a controller, the button that saves).",
      "El servidor que lista las salas por internet: todos los que usan el mismo encuentran las salas de los demás al buscar salas en el juego, sin abrir puertos. El predeterminado, " LDN_DEFAULT_SERVER ", lo mantienen jugadores, no este proyecto. Otro: escribe otro (un nombre o una IP, y :puerto si no es el 39510). Ninguno: solo tu red local. Los servidores que escribes y guardas quedan en esta lista, el último primero (hasta 24): la × a su lado lo quita (con un mando, el botón que guarda)."},

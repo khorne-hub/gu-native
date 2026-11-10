@@ -8,7 +8,8 @@ uint32_t weapon_hunter(void);
 int weapon_drawn(void);  // 1 the weapon out (being drawn too), 0 sheathed, -1 not known (no hunter)
 int weapon_ranged(uint32_t hunter);
 bool weapon_aiming(uint32_t hunter);
-bool weapon_aim_action(uint32_t hunter);  // in an aim's actions, whatever camera is up (0.1.8's weapon_aiming)
+bool weapon_aim_action(uint32_t hunter);
+bool weapon_gyro_aiming(uint32_t hunter, uint64_t now_ns);  // a bow or a bowgun aims: the gyro turns it (host_input.c)  // in an aim's actions, whatever camera is up (0.1.8's weapon_aiming)
 bool weapon_moving(uint32_t hunter);
 bool weapon_stance(uint32_t hunter);   // a bow or a gun out, standing or walking: no weapon move, no aim (a locked shot's)
 bool weapon_prowler(uint32_t hunter);  // a Prowler: Support Moves on the item bar (L + Y / A)
