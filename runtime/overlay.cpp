@@ -60,7 +60,7 @@ static float g_font_size;
 static ImGuiStyle g_base_style;  // (unscaled; scaled copies follow the window's height)
 static float g_scale;
 // MHGU_PERF_OVERLAY_REUSE (read once, overlay_init): 1 frames of the touch controls alone that would come out the same
-// are not built again; 2 they are, and compared (a check); 0 (the default) every frame built
+// are not built again; 2 they are, and compared (a check); 0 every frame built (1, the default)
 static int g_perf_overlay_reuse;
 static bool g_reuse_last;  // (the frame built last had the touch controls alone, and uploaded no texture)
 static uint32_t g_reuse_w, g_reuse_h;
@@ -474,7 +474,7 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
 #endif
     {
         const char *e = getenv("MHGU_PERF_OVERLAY_REUSE");  // (read once: frame_once)
-        g_perf_overlay_reuse = e ? std::clamp(atoi(e), 0, 2) : 0;
+        g_perf_overlay_reuse = e ? std::clamp(atoi(e), 0, 2) : 1;  // (unset: on)
         if (g_perf_overlay_reuse) touch_reuse_begin();
         if (e) LOG("[perf] MHGU_PERF_OVERLAY_REUSE=%d\n", g_perf_overlay_reuse);
     }

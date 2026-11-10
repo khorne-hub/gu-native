@@ -230,7 +230,7 @@ void discord_init(void) {
     // app's, and the menu hides the rows), and the thread woke every second and tried its sockets every 15 s for nothing;
     // presence_tick then builds no activity either (discord_running)
     const char *e = getenv("MHGU_PERF_NODISCORD");
-    if (e && atoi(e) > 0) return;
+    if (e ? atoi(e) > 0 : true) return;  // (unset: none)
 #endif
     pthread_mutex_lock(&g_mu);
     snprintf(g_want, sizeof g_want, "null");

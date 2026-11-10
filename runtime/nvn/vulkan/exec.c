@@ -64,7 +64,7 @@ static _Atomic int stat_compiles;
 // (MHGU_VK_STATS) shader / pipeline builds: skips by cause, frames with skips, the waits, build times per job kind
 // (translate, GLSL -> SPIR-V + modules, pipeline), request -> ready latency, the slowest frame (exec thread's view)
 static uint64_t stat_skip_prog, stat_skip_pipe, stat_skip_frames, stat_waited_ns, stat_waits, stat_rescued, stat_frame_max;
-// The render passes' power switches (tests until measured: each one off, the old way, unless its MHGU_PERF_<NAME> is set
+// The render passes' power switches (measured in 0.1.9's perf pass and on by default, FMTLIST aside; its MHGU_PERF_<NAME> set
 // in the environment, env.txt on a phone; read once, in vk_exec_init, and named in the log when on). CLAUDE.md lists them.
 // The same struct holds the translator's per-draw switches (perf_init, below).
 static struct {
@@ -78,9 +78,9 @@ static struct {
                        // of the pass that draws into its target next (fill_draw), once checked to give the copy's bytes
 } perf;
 static uint64_t stat_ro_passes, stat_ro_left, stat_atlas_clear, stat_atlas_skipped, stat_fills;  // (MHGU_VK_STATS)
-static int perf_env(const char *name) {
+static int perf_env(const char *name, int def) {  // (def: unset; measured on in 0.1.9's perf pass)
     const char *e = getenv(name);
-    int v = e ? atoi(e) : 0;
+    int v = e ? atoi(e) : def;
     if (v) LOG("[perf] %s=%d\n", name, v);
     return v;
 }
@@ -102,7 +102,7 @@ static void job_stat(int kind, uint64_t t0) {
 }
 
 // ---- (test) the translator's per-draw work, each cut behind a switch of its own, read once at start (vk_exec_init,
-// which logs them): MHGU_PERF_<NAME>=0|1, off (as before) unless set. MHGU_PERF_DRAWS=1 turns on all but DYNUBO at once
+// which logs them): MHGU_PERF_<NAME>=0|1, on unless set to 0. MHGU_PERF_DRAWS=0 turns off all but DYNUBO at once
 // (a switch of its own still wins). None changes what is drawn: the same commands, the same data.
 //   GETENV    debug switches read once, not by getenv at every depth clamp command / buffer-to-texture copy
 //   DRVTAB    the driver constants' storage buffer table (256 bytes) compared before the 2 KB block is zeroed and filled
@@ -141,11 +141,11 @@ static bool perf_switch(const char *name, bool group) {
 }
 static void perf_init(void) {
     const char *g = getenv("MHGU_PERF_DRAWS");
-    bool all = g && atoi(g) != 0;
+    bool all = g ? atoi(g) != 0 : true;  // (unset: on, measured in 0.1.9's perf pass)
     perf.getenv = perf_switch("GETENV", all), perf.drvtab = perf_switch("DRVTAB", all);
     perf.texscan = perf_switch("TEXSCAN", all), perf.textime = perf_switch("TEXTIME", all);
     perf.pipememo = perf_switch("PIPEMEMO", all), perf.lazyidx = perf_switch("LAZYIDX", all);
-    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", false);
+    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", true);
     perf_check = perf_switch("CHECK", false);
     perf_dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL, perf_tex_log = getenv("MHGU_TEX_LOG") != NULL;
     vk_perf_textime = perf.textime;
@@ -890,7 +890,7 @@ static int vc_safety(void) {
         on = e ? atoi(e) : 1;
 #endif
         const char *p = getenv("MHGU_PERF_VCNET");
-        if (on && p && atoi(p) == 1) {
+        if (on && (p ? atoi(p) == 1 : true)) {  // (unset: on)
             vc_full_ns = VC_NET_NS, vc_slice = VC_NET_SLICE;
             LOG("[vk] vertex cache: the safety net every %llu s, %llu KB a frame (MHGU_PERF_VCNET)\n",
                 (unsigned long long)(vc_full_ns / 1000000000ull), (unsigned long long)(vc_slice >> 10));
@@ -1520,9 +1520,9 @@ static void st_defaults(void) {
 void vk_exec_init(void) {
     perf_init();
     st_defaults();
-    perf.rodepth = perf_env("MHGU_PERF_RODEPTH");
-    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR");
-    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW");
+    perf.rodepth = perf_env("MHGU_PERF_RODEPTH", 1);
+    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR", 2);
+    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW", 1);
     if (!g_vk.has_timeline) fence_init();
 #ifdef _WIN32
     ready_event = plat_event_new();  // (NULL: the draws wait on winpthreads' condition variable)
@@ -5792,6 +5792,8 @@ static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, cons
             got |= 1u << 8;
         } else depth_clear_now();
     }
+    for (uint32_t k = 0; k < n && fill.dst; k++)  // (its source an attachment too: the draw would sample it in the pass)
+        if (att[k] == fill.src) fill_now();
     bool has_fill = false;
     for (uint32_t k = 0; k < n && fill.dst; k++) has_fill |= att[k] == fill.dst;
     if (fill.dst && fill.kind == 1 && !has_fill) fill_now();  // (a copy: done before any other pass, which may draw into its input)

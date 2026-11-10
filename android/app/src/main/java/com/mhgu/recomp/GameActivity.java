@@ -85,7 +85,7 @@ public class GameActivity extends SDLActivity {
     // 50 eventos por segundo en el hilo de la interfaz que nada lee: el juego tiene sus sensores siempre quietos,
     // runtime/hle/input.c); el giro de 180 grados que SDL notaba con él lo dice el DisplayManager al cambiar la rotación de
     // la pantalla (onNativeRotationChanged, como antes). El giro del cuadro y el notch no dependen de esto: los hace el
-    // sistema (orientación sensorLandscape) y los insets. 0 (por defecto): el acelerómetro de SDL, como siempre.
+    // sistema (orientación sensorLandscape) y los insets. Encendido por defecto; 0: el acelerómetro de SDL, como siempre.
     private static boolean noAccel;  // (sólo en el hilo de la interfaz)
 
     /** MHGU_PERF_NO_ACCEL=1 (runtime/ui.c, desde el hilo de SDL, una vez al arrancar). */

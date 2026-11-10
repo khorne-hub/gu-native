@@ -1105,13 +1105,13 @@ uint64_t stat_tex_hashed, stat_tex_net, stat_tex_untracked, stat_tex_changed, st
 
 static void tex_net_init(void) {
     const char *e = getenv("MHGU_PERF_TEXNET");
-    tex_net = e && atoi(e) == 1;
+    tex_net = e ? atoi(e) == 1 : 1;  // (the three: unset, on)
     e = getenv("MHGU_PERF_TEXSAMPLE");
-    tex_sample_once = e && atoi(e) == 1;
+    tex_sample_once = e ? atoi(e) == 1 : 1;
     e = getenv("MHGU_TEX_NET_CHECK");
     tex_check = e && atoi(e) == 1;
     e = getenv("MHGU_PERF_TEXSTREAM");
-    tex_stream = e && atoi(e) == 1;
+    tex_stream = e ? atoi(e) == 1 : 1;
 #ifdef __ANDROID__
     tex_net_ns = 30000000000ull;
 #else
@@ -1470,6 +1470,10 @@ VkImageView vk_view(NvnTexture *t, const NvnTextureView *v, bool has_view, bool 
     if (v && (v->setmask & 4) && !(b->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
         VkFormat vf = fmt_of(v->format).vf;
         if (vk_format(t->format) == b->format) fmt = vf;  // (fallback images keep their own format)
+        else if (b->wide && vf != VK_FORMAT_R8G8B8A8_UNORM) {
+            static int nlog;
+            if (nlog++ < 10) LOG("[vk] wide render target %ux%u read as nvn fmt %#x: as RGBA16 instead\n", b->width, b->height, v->format);
+        }
         if (fmt != b->format && fmtlist_on() >= 0) {  // (MHGU_PERF_FMTLIST set: each pair once)
             static uint32_t seen[64];
             static int nseen;
@@ -1479,10 +1483,6 @@ VkImageView vk_view(NvnTexture *t, const NvnTextureView *v, bool has_view, bool 
             if (i == nseen && nseen < 64)
                 seen[nseen++] = key, LOG("[perf] formats: a %ux%u image of format %d read as format %d (nvn %#x as %#x)%s\n",
                                          b->width, b->height, b->format, fmt, t->format, v->format, render ? ", rendered into" : "");
-        }
-        else if (b->wide && vf != VK_FORMAT_R8G8B8A8_UNORM) {
-            static int nlog;
-            if (nlog++ < 10) LOG("[vk] wide render target %ux%u read as nvn fmt %#x: as RGBA16 instead\n", b->width, b->height, v->format);
         }
     }
     uint32_t lv0 = v && (v->setmask & 1) ? v->base_level : 0;

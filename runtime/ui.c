@@ -23,7 +23,7 @@
 static int launch_argc;
 static char **launch_argv;
 static SDL_AtomicInt requested_action, action_failed;
-// MHGU_PERF_INPUT_WAKE=1 (Android; read once, ui_init): between events the window loop waits on this semaphore instead of
+// MHGU_PERF_INPUT_WAKE (Android, on by default; read once, ui_init): between events the window loop waits on this semaphore instead of
 // polling every 3 ms (ui_run). SDL's event watch, each frame presented (nvn/vulkan/device.c), the game's rumble changing
 // (hle/input.c) and the settings menu's requests post it. NULL: the loop as before
 static SDL_Semaphore *loop_sem;
@@ -246,7 +246,7 @@ void ui_init(void) {
 #ifdef __ANDROID__
     SDL_AddEventWatch(android_lifecycle, NULL);
     const char *wake = getenv("MHGU_PERF_INPUT_WAKE");  // (read once: ui_run's waits)
-    if (wake && atoi(wake) == 1) {
+    if (wake ? atoi(wake) == 1 : true) {  // (unset: on)
         SDL_Semaphore *sem = SDL_CreateSemaphore(0);
         if (sem) SDL_AddEventWatch(loop_event, NULL), __atomic_store_n(&loop_sem, sem, __ATOMIC_RELEASE);
     }
@@ -254,7 +254,7 @@ void ui_init(void) {
     // MHGU_PERF_NO_ACCEL=1 (read once): SDL's accelerometer listener off, the display's rotation from a DisplayListener
     // instead (GameActivity.perfNoAccel: nothing here reads the accelerometer)
     const char *accel = getenv("MHGU_PERF_NO_ACCEL");
-    if (accel && atoi(accel) == 1) activity_call("perfNoAccel");
+    if (accel ? atoi(accel) == 1 : true) activity_call("perfNoAccel");  // (unset: on)
     log_orientation = accel != NULL;
     if (accel) LOG("[perf] MHGU_PERF_NO_ACCEL=%d\n", accel && atoi(accel) == 1);
 #endif

@@ -23,7 +23,7 @@
 // So every slot is also put on the grid of the newest vsync seen. A picture presented again (the settings menu holding the game)
 // takes the latest slot. Nothing changes at the refresh rate itself, at a limit that is no whole fraction of it, or with
 // VSync Off or MHGU_VK_PRESENT / MHGU_VSYNC given.
-//   MHGU_PERF_PRESENT_TIME=1   on (read once at start; off by default until it is measured)
+//   MHGU_PERF_PRESENT_TIME=1   on (read once at start; the default; 0 the old way)
 //   MHGU_PRESENT_MARGIN=<us>   a fixed margin instead (tests)
 #ifdef __ANDROID__
 #include <SDL3/SDL.h>
@@ -58,7 +58,7 @@ static struct {
 static bool switch_on(void) {
     if (pp.on < 0) {
         const char *e = getenv("MHGU_PERF_PRESENT_TIME");
-        pp.on = e && *e == '1';
+        pp.on = e ? *e == '1' : 1;  // (unset: on)
     }
     return pp.on;
 }

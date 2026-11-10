@@ -7,12 +7,12 @@
 //   MHGU_ADPF_LOG=1         every 2 s: the work reported per frame (average, max), each thread's CPU time per frame
 //                           (average / max), the target, the thermal headroom and status (also without a session)
 //   MHGU_ADPF_TARGET=<pct>  the target as a percentage of the frame period (default 100; lower: boosted sooner, warmer)
-//   MHGU_PERF_ADPF70=1      (being measured) without MHGU_ADPF_TARGET, the target is 70 % of the period at FPS limits of
+//   MHGU_PERF_ADPF70=1      (off: watts not measured yet) without MHGU_ADPF_TARGET, the target is 70 % of the period at FPS limits of
 //                           60 and below, as in the MH4U port, and the efficient cores go by the period (below)
-//   MHGU_PERF_EFFICIENT=1   (being measured) efficiency_follow forgives a lone frame over the target (below)
+//   MHGU_PERF_EFFICIENT=1   (off: no effect measured) efficiency_follow forgives a lone frame over the target (below)
 //   MHGU_ADPF_EFFICIENT=force  (a test) the efficient cores asked for once the session is made, and never let go: what
 //                           they save at most
-//   MHGU_PERF_MEMTHREAD=1   (being measured) the minute's [mem] line read and written on a thread of its own (mem_watch)
+//   MHGU_PERF_MEMTHREAD=1   (on by default) the minute's [mem] line read and written on a thread of its own (mem_watch)
 //
 // The target as all of the period: the system winds the clocks down until the busiest thread's work fills it, so
 // frames then end on either side of a vsync as their work varies (the Moto g06 at Toaster's 30 FPS: work 25.5 ms on
@@ -465,7 +465,7 @@ static void mem_watch(void) {
         every = (e && atoi(e) > 0 ? (uint64_t)atoi(e) : 60) * 1000000000ull;
         e = getenv("MHGU_PERF_MEMTHREAD");
         pthread_t th;
-        if (e && atoi(e) > 0 && sem_init(&mem_sem, 0, 0) == 0 && pthread_create(&th, NULL, mem_thread, NULL) == 0) {
+        if ((e ? atoi(e) > 0 : 1) && sem_init(&mem_sem, 0, 0) == 0 && pthread_create(&th, NULL, mem_thread, NULL) == 0) {
             pthread_detach(th);
             mem_threaded = true;
         }

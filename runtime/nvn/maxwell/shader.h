@@ -95,7 +95,7 @@ typedef struct {
                      // [GMAP_MAX].x = count)
 extern uint64_t maxwell_gmem_base, maxwell_gmem_size;
 extern bool maxwell_no_int64;
-// GLSL performance switches (set before translating; off by default): fmin / fmax / saturate as GLSL.std.450 NMin /
+// GLSL performance switches (set before translating; on by default, nvn/vulkan/device.c): fmin / fmax / saturate as GLSL.std.450 NMin /
 // NMax / NClamp (GL_EXT_spirv_intrinsics); a varying read as interpolated, where the shader multiplies it by w and by 1 / w;
 // maxwell_vs_trim: the renderer calls maxwell_trim_outputs
 extern bool maxwell_nminmax, maxwell_ipa_fold, maxwell_vs_trim;

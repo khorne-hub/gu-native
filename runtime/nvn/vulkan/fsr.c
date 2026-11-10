@@ -2008,7 +2008,7 @@ void vk_fsr_init(void) {
 #endif
     rw = g_render_size[0], rh = g_render_size[1], ow = g_fsr_output[0], oh = g_fsr_output[1];
     logging = getenv("MHGU_FSR_LOG") != NULL;  // (plain scaling too: where the HUD starts)
-    hud_fuse = getenv("MHGU_PERF_HUDSTART_FUSE") ? atoi(getenv("MHGU_PERF_HUDSTART_FUSE")) : 0;
+    hud_fuse = getenv("MHGU_PERF_HUDSTART_FUSE") ? atoi(getenv("MHGU_PERF_HUDSTART_FUSE")) : 3;  // (unset: 3)
     if (hud_fuse) LOG("[perf] MHGU_PERF_HUDSTART_FUSE=%d\n", hud_fuse);
     if (!g_config.fsr) {  // (RenderScale below 100: config.c)
         plain_only = true;

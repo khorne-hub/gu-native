@@ -645,14 +645,15 @@ static void create_device(void) {
     g_vk.has_timeline = g_vk.api12 && f12_have.timelineSemaphore;
     g_vk.mirror_clamp = g_vk.api12 ? f12_have.samplerMirrorClampToEdge : mirror_ext;
     maxwell_no_int64 = !have.features.shaderInt64 || getenv("MHGU_VK_NO_INT64");  // (the env: tests)
-    // The translator's performance switches, read once here, before any program is translated; off unless asked for.
+    // The translator's performance switches, read once here, before any program is translated; on unless set to 0.
     // NMin / NMax / NClamp only on Vulkan 1.2 drivers but a PowerVR's, until others are checked (old Adreno drivers are 1.1)
     {
         const char *e;
-        bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) && atoi(e) > 0;
+        // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
+        bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
         maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
-        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) && atoi(e) > 0;
-        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) && atoi(e) > 0;
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : true;
         if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
             LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
                 nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
@@ -1017,7 +1018,7 @@ static int turn_wanted(const VkSurfaceCapabilitiesKHR *caps) {
     static int on = -1;
     if (on < 0) {
         const char *e = getenv("MHGU_PERF_PREROTATE");
-        on = e && *e == '1';
+        on = e ? *e == '1' : 1;  // (unset: on)
     }
     int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED), want = t >= 0 ? t : on;
     VkSurfaceTransformFlagsKHR cur = caps->currentTransform;

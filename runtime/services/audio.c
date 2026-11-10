@@ -1679,17 +1679,17 @@ static void request_update(Renderer *r, IpcReq *req, IpcResp *resp) {
     (void)resp;
 }
 
-// The perf pass's switches (MHGU_PERF_AUDIO_*: 1 on, 0 or unset the old way), read once as the renderer opens.
-static int perf_env(const char *name) {
+// The perf pass's switches (MHGU_PERF_AUDIO_*: 1 or unset on, 0 the old way; the check off unless 1), read once as the renderer opens.
+static int perf_env(const char *name, int def) {  // (def: unset; measured on in 0.1.9's perf pass)
     const char *e = getenv(name);
-    return e && *e && strcmp(e, "0") ? 1 : 0;
+    return e ? *e && strcmp(e, "0") ? 1 : 0 : def;
 }
 static void renderer_perf_init(Renderer *r) {
-    r->perf_sdest = (uint8_t)perf_env("MHGU_PERF_AUDIO_SDEST");
-    r->perf_adpcm = (uint8_t)perf_env("MHGU_PERF_AUDIO_ADPCM");
-    r->perf_check = (uint8_t)perf_env("MHGU_PERF_AUDIO_CHECK");
+    r->perf_sdest = (uint8_t)perf_env("MHGU_PERF_AUDIO_SDEST", 1);
+    r->perf_adpcm = (uint8_t)perf_env("MHGU_PERF_AUDIO_ADPCM", 1);
+    r->perf_check = (uint8_t)perf_env("MHGU_PERF_AUDIO_CHECK", 0);
 #ifdef __ANDROID__
-    r->perf_sleep = (uint8_t)perf_env("MHGU_PERF_SLEEP_COARSE");
+    r->perf_sleep = (uint8_t)perf_env("MHGU_PERF_SLEEP_COARSE", 1);
 #endif
     if (r->perf_sdest || r->perf_adpcm || r->perf_check || r->perf_sleep)
         LOG("[audren] perf: splitter volumes copied %s, ADPCM decoded %s, the tick's sleep %s%s\n",

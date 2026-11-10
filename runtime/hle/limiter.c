@@ -1,4 +1,4 @@
-// MHGU_PERF_LIMITER=1 (being measured): the engine's frame limiter sleeps until its frame's time has nearly come,
+// MHGU_PERF_LIMITER=1 (on by default; 0 the old way): the engine's frame limiter sleeps until its frame's time has nearly come,
 // instead of sleeping to a millisecond or two before it and reading the clock in a loop for the rest.
 //
 // The limiter (main 0xda5824, in the path the port's frame rate target drives: its object's +0x40 is 0, runtime/hle/vi.c)
@@ -154,7 +154,7 @@ static void sleep_hook(Cpu *c) {
 
 void limiter_init(void) {
     const char *e = getenv("MHGU_PERF_LIMITER");
-    g_on = e && atoi(e) > 0;
+    g_on = e ? atoi(e) > 0 : true;  // (unset: on)
     e = getenv("MHGU_LIMITER_LOG");
     g_log = e && *e == '1';
     if (!g_on && !g_log) return;  // (nothing hooked: the game's limiter as it is)

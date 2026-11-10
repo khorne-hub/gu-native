@@ -700,7 +700,7 @@ void kernel_log_guest_stack(const char *tag, const Cpu *c) {
 }
 
 // ---- the guest's SleepThread by the game's call site. (debug) MHGU_SLEEP_LOG=1: the calls of each site, in the log
-// every 10 s. The perf pass's MHGU_PERF_SLEEP_COARSE=1 (Android; 0 or unset: the old way): the sleeps of the game's
+// every 10 s. The perf pass's MHGU_PERF_SLEEP_COARSE (Android, on by default; 0: the old way): the sleeps of the game's
 // own calls, other than its frame limiter's, are coarse (plat_sleep_coarse_until_ns: no spin at the end): threads
 // polling every 5 to 50 ms, the job loop's 100 us retries for a job's dependency (0xdc7bb8), a busy lock's 1 ms
 // backoffs (0x1431030, 0x143108c). Those of the SDK's own code (no site found) stay precise.
@@ -719,7 +719,7 @@ static int sleep_log(void) {
 static int sleep_coarse(void) {
 #ifdef __ANDROID__
     static int v = -1;
-    if (v < 0) v = env_flag("MHGU_PERF_SLEEP_COARSE");
+    if (v < 0) v = getenv("MHGU_PERF_SLEEP_COARSE") ? env_flag("MHGU_PERF_SLEEP_COARSE") : 1;  // (unset: on)
     return v;
 #else
     return 0;

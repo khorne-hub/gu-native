@@ -579,7 +579,7 @@ void plat_init(void) {
     // WSAEPIPE to the caller, which is what nn::socket expects.
     signal(SIGPIPE, SIG_IGN);
     const char *e = getenv("MHGU_PERF_THREADNAMES");
-    __atomic_store_n(&g_thread_names, e && atoi(e) > 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_thread_names, e ? atoi(e) > 0 : true, __ATOMIC_RELEASE);  // (unset: on)
 }
 
 // (platform.h) The kernel keeps 15 characters of it: a longer name is cut, never refused.
