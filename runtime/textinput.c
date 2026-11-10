@@ -167,7 +167,9 @@ void textinput_update(void) {
     int want = textinput_active() ? 1 : overlay_menu_open() ? 2 : 0;  // (Forge's menu takes typed text too)
 #ifdef __ANDROID__
     int show = __atomic_load_n(&g_menu_show, __ATOMIC_RELAXED);
-    if (want == 2 && __atomic_load_n(&g_menu_keyboard, __ATOMIC_RELAXED) && !__atomic_load_n(&g_menu_closed, __ATOMIC_RELAXED))
+    // (Back's mark read before what the menu wants: the menu clears what it wants before the mark, so one taking the mark
+    // meanwhile never brings the keyboard up again for a pass - textinput_menu_keyboard_closed)
+    if (want == 2 && !__atomic_load_n(&g_menu_closed, __ATOMIC_ACQUIRE) && __atomic_load_n(&g_menu_keyboard, __ATOMIC_RELAXED))
         want = 3;
     // (the menu's: Back put the phone's keyboard away and SDL turned text input off by itself - the menu keeps its view and
     // its text, a physical keyboard types into it again, and its key brings the phone's keyboard back; or the keyboard's
