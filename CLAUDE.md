@@ -295,9 +295,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   In the Deserted Island's camp (quest 301, a dump on an RX 6800 XT) it holds only the hunters, cats and small props; the scenery's
   shadows there are not in it, and the mask pass after the depth pre-pass (blue only) draws only those and the ground right under them.
   Its casters: polygon offset factor 3, units 0, depth clamp on. The log says once each offset a depth-only pass gets (`[vk] depth-only
-  pass`; the pre-pass at the 3D size gets units -96 to -512, which on D32S8, AMD's only depth-stencil format, are 2^(e-23) each, not
-  D24S8's 2^-24) and any 3-component vertex format read with 4 (`[vk] vertex format`, none on that card). #180's flicker in area 6 is
-  not seen in the camp.
+  pass`; the pre-pass at the 3D size gets units -96 to -512; on D32S8, AMD's stand-in for D24S8, a unit is 2^(e-23), e the exponent of
+  the primitive's largest depth: D24S8's 2^-24 for depths from 0.5 to 1, half or less below 0.5) and any 3-component vertex format read
+  with 4 (`[vk] vertex format`, none on that card). #180's flicker in area 6 is not seen in the camp.
 - The chat's log is a layer 97 window at the bottom left (x 30..605, y 547..708 of the 1280x720 canvas) that stays seconds after a line: it
   must not count as a menu (`touch_hud_menu`), or the menu pad shows over the hunt.
 - A model's skeleton: +0x490 the joint count, +0x494 the array, 0xa0 bytes each, world position at +0x40 (w 1.0), parent at +0x91 (0xff the
