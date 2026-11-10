@@ -198,7 +198,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   locked shot from a bowgun goes through quick aim (`touch.cpp`, `assist_*`). With a gun aimed or a bow drawn the hunt camera's handler does not run: per-update
   work goes in the item bar's hook (`hle/itembar.c`).
 - A menu can't be told from a window over the hunt: no flag in the hunter or the game's globals changes, and the hunt camera runs under menus too. `game_menu`
-  treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before.
+  treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before. Without a window,
+  four seconds without the hunter played is a menu only with no hunter of a quest (`weapon_hunter`): a ballista or a cannon aims
+  without the hunt camera's handler, and its stick became the d-pad (#169; not yet seen on one: the touch log names the action
+  and whether the hunt camera runs each time the hunter is played or not).
 - The renderer's `vk*` are volk's pointers (`third_party/volk`, force-included by `native/CMakeLists.txt`), filled from `runtime/platform/android_gpu.c`: the
   system's `libvulkan.so`, or the player's driver through `third_party/libadrenotools`. `volkLoadDevice` is not used, so calls go through the same loader
   entry points as before. A trial file sends a driver that never drew back to the system's. The hook libraries must stay extracted (`extractNativeLibs`).
