@@ -46,7 +46,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 #### Menus and comfort
 
 - **Menus made for your thumb:** nothing of the layout changes when a menu of the game's opens: a small pad shows and moves the cursor, with the page buttons above it. The movement stick keeps walking (where the hunter can't walk, as at a town's item box or a shop, it moves the cursor; where the game shows a model, as at the smithy, the stick and dragging turn it, as on a controller), A and B stay where they are, and dragging on the screen moves the cursor too. The pad is moved and resized in the editor like the other buttons. To hide it: under the gear, **Controls**, **Buttons on the screen**, **Menu pad**
-- Your phone's keyboard works for typing your character's name, and in the settings menu's text with **Phone keyboard** (Enter accepts, Back cancels); the menu's own keys stay for a controller
+- Your phone's keyboard works for typing your character's name, and in the settings menu's text with **Phone keyboard** (Enter accepts; Back hides the keyboard and keeps what you typed); the menu's own keys stay for a controller
 - The settings menu works by touch and matches the game's look
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)

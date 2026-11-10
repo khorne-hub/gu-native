@@ -47,7 +47,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 #### Menús y comodidad
 
 - **Menús pensados para el pulgar:** al abrirse un menú del juego el diseño no cambia: aparece un pad chico que mueve el cursor, con los botones de página encima. La palanca de movimiento sigue caminando (donde el cazador no puede caminar, como en la caja de objetos de un pueblo o en una tienda, mueve el cursor; donde el juego muestra un modelo, como en la herrería, la palanca y arrastrar lo giran, como con un mando), A y B quedan donde están, y arrastrar en la pantalla también mueve el cursor. El pad se mueve y se cambia de tamaño en el editor como los demás botones. Para ocultarlo: en el engranaje, **Controles**, **Botones en la pantalla**, **Pad de menú**
-- El teclado del teléfono sirve para escribir el nombre de tu personaje, y los textos del menú de opciones con **Teclado del teléfono** (Enter acepta, Atrás cancela); las teclas del propio menú quedan para el mando
+- El teclado del teléfono sirve para escribir el nombre de tu personaje, y los textos del menú de opciones con **Teclado del teléfono** (Enter acepta; Atrás oculta el teclado y deja lo escrito); las teclas del propio menú quedan para el mando
 - El menú de opciones se usa con el dedo y tiene el estilo visual del juego
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)

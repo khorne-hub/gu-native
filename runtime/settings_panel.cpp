@@ -84,7 +84,8 @@ struct Keyboard {
     size_t cursor = 0, capacity = 255;
     bool upper = false, select_all = false;
     std::function<bool(const std::string &, std::string &)> commit;
-    bool phone = false;  // (Android) its Phone keyboard key asked for the phone's own keyboard: up while this view is
+    bool phone = false;  // (Android) its Phone keyboard key asked for the phone's own keyboard: up while this view is,
+                         // until Back puts it away (the view and its text stay; the key brings it back)
 };
 // The phone's sizes (touch_panel, each frame), from the screen's height in its pixels: a row, a tab and a button about
 // 0.09 of it, the text 0.034
@@ -140,11 +141,9 @@ struct State {
     ImGuiID list = 0;      // the list of rows (a child window) this frame; 0: the menu itself scrolls (keyboard / mouse)
     Metrics m;
     Drag drag;
-    // A remembered choice taken out of a picker (its x): the picker of that row opened again, fresh, at that place; and
-    // what was taken out while the menu is open (Save doesn't put it back as the value it replaces: remember_typed)
+    // A remembered choice taken out of a picker (its x): the picker of that row opened again, fresh, at that place
     std::string reopen;
     int reopen_at = 0;
-    std::vector<std::string> forgotten;
 } s;
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel;
 std::atomic<int> request_view;  // (SETTINGS_VIEW_*: a desktop's dialog answered, settings_panel_request_view)
@@ -1025,25 +1024,14 @@ std::vector<std::string> remembered(bool servers) {
     }
     return out;
 }
-// Save applies a hub server or a key: one the player typed goes to the front of its list, and so does the typed one it
-// replaces (a server typed in an older version stays in the list once another one is chosen) - unless that one was
-// taken out of the list while the menu is open. Only when it changes: one taken out while in use stays out
+// Save applies a hub server or a key: one the player typed (or picked from the list) goes to the front of its list, only
+// when it changes. The one it replaces is never put back: one taken out of the list stays out, in use or not (the one
+// typed in an older version went in once, at this version's first start: config_load)
 void remember_typed(Config &c, const Config &before) {
-    auto was_forgotten = [](const char *v) {
-        return std::find(s.forgotten.begin(), s.forgotten.end(), std::string(v)) != s.forgotten.end();
-    };
-    if (strcmp(c.ldn_server, before.ldn_server)) {
-        if (typed_server(before.ldn_server) && !was_forgotten(before.ldn_server))
-            config_recent_add(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], before.ldn_server, true);
-        if (typed_server(c.ldn_server))
-            config_recent_add(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], c.ldn_server, true);
-    }
-    if (strcmp(c.ldn_key, before.ldn_key)) {
-        if (*before.ldn_key && !was_forgotten(before.ldn_key))
-            config_recent_add(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], before.ldn_key, false);
-        if (*c.ldn_key)
-            config_recent_add(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], c.ldn_key, false);
-    }
+    if (strcmp(c.ldn_server, before.ldn_server) && typed_server(c.ldn_server))
+        config_recent_add(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], c.ldn_server, true);
+    if (strcmp(c.ldn_key, before.ldn_key) && *c.ldn_key)
+        config_recent_add(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], c.ldn_key, false);
 }
 // A remembered server or key out of its list (its x in the picker), at once and in the file too: it is no setting, so
 // Save and Discard have nothing to do with it. Then the row's picker again, as the list is now (reopen_picker)
@@ -1063,7 +1051,6 @@ void forget(bool server, const std::string &value, const char *row, int at) {
     }
     out(s.saved);
     out(s.draft);
-    s.forgotten.push_back(value);
     s.reopen = row, s.reopen_at = at;
 }
 // A remembered choice was taken out: the row's picker opens again with the list as it is now, at the same place
@@ -2698,7 +2685,7 @@ std::vector<Row> rows_for_view(bool *open) {
         });
         action(r, "key.space", tr("Space"), []() { insert(" "); });
         action(r, "key.case", tr("Case"), []() { s.keyboard.upper = !s.keyboard.upper; });
-#ifdef __ANDROID__  // (the phone's own keyboard, as the MH4U port's: Enter accepts, Back cancels; textinput.c)
+#ifdef __ANDROID__  // (the phone's own keyboard, as the MH4U port's: Enter accepts, Back puts it away; textinput.c)
         action(r, "key.phone", tr("Phone keyboard"), []() {
             s.keyboard.phone = true;
             textinput_menu_keyboard_show();
@@ -4711,7 +4698,6 @@ void settings_panel(bool *open) {
 #endif
         quest_keys();
         g_hub_checked.clear();  // (the Multiplayer page checks its server again as it shows)
-        s.forgotten.clear();
         s.reopen.clear();
         load_mods();
         load_cheats();
@@ -4725,11 +4711,10 @@ void settings_panel(bool *open) {
         if (opening)
             s.view_at = -1;  // (it comes in with the menu)
     }
-    // (the phone's keyboard put away with Back: the typing is cancelled, as Back does in this view)
-    if (textinput_menu_keyboard_closed() && s.view == View::Keyboard && s.keyboard.phone) {
+    // (the phone's keyboard put away with Back: only the keyboard goes, the view and its text stay - its key brings the
+    // keyboard back, and another Back leaves the view, as in the MH4U port)
+    if (textinput_menu_keyboard_closed() && s.view == View::Keyboard)
         s.keyboard.phone = false;
-        pop();
-    }
     switch (request_view.exchange(0)) {  // (a desktop's file dialog answered: runtime/pc_actions.c)
     case SETTINGS_VIEW_IMPORT_SAVE: if (s.view != View::ImportSave) push(View::ImportSave, "dialog.cancel"); break;
     case SETTINGS_VIEW_RESTART:  // (cheats or a mod added: the tabs list them now)

@@ -19,7 +19,8 @@ static bool g_active;
 static int g_window_on;  // text input on: 0 no, 1 for an entry, 2 for the port's menu (no screen keyboard), 3 for the
                          // port's menu with the phone's keyboard (its keyboard view asked for it: textinput_menu_keyboard)
 // The port's menu (its thread): wants the phone's keyboard; its key's presses, counted (and as far as the window went:
-// the main thread's); Back put the keyboard away, not told to the menu yet (meanwhile what it wants is not asked again)
+// the main thread's); Back put the keyboard away, not told to the menu yet (meanwhile what it wants is not asked again;
+// told, the menu stops wanting it until its key is pressed again)
 static int g_menu_keyboard, g_menu_show, g_menu_closed;
 #ifdef __ANDROID__
 static int g_menu_shown;
@@ -168,14 +169,14 @@ void textinput_update(void) {
     int show = __atomic_load_n(&g_menu_show, __ATOMIC_RELAXED);
     if (want == 2 && __atomic_load_n(&g_menu_keyboard, __ATOMIC_RELAXED) && !__atomic_load_n(&g_menu_closed, __ATOMIC_RELAXED))
         want = 3;
-    // (the menu's: Back put the phone's keyboard away and SDL turned text input off by itself - the menu leaves its typing,
-    // as Back does there, and a physical keyboard types into the menu again; or the keyboard's own button hid it, and the
-    // menu's key asks for it again)
+    // (the menu's: Back put the phone's keyboard away and SDL turned text input off by itself - the menu keeps its view and
+    // its text, a physical keyboard types into it again, and its key brings the phone's keyboard back; or the keyboard's
+    // own button hid it, and the menu's key asks for it again)
     if (want == 3 && g_window_on == 3) {
         SDL_Window *w = ui_window();
         if (w && !SDL_TextInputActive(w)) {
             __atomic_store_n(&g_menu_closed, 1, __ATOMIC_RELAXED);
-            LOG("[textinput] the phone's keyboard put away (Back): the menu's typing cancelled\n");
+            LOG("[textinput] the phone's keyboard put away (Back): the menu's typing stays\n");
             g_window_on = 0;
             want = 2;
         } else if (w && show != g_menu_shown) {  // (SDL can't tell that the keyboard's own button hid it)

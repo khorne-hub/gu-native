@@ -1259,6 +1259,15 @@ bool config_recent_remove(char *list, int n, size_t width, const char *value, bo
     }
     return false;
 }
+// A hub server the player typed: not the default (empty), not Off, none of the short list's (settings_panel.cpp's
+// typed_server)
+static bool typed_server(const char *s) {
+    static const char *const presets[] = LDN_SERVERS;
+    if (!*s || !strcasecmp(s, "off")) return false;
+    for (size_t i = 0; i < sizeof presets / sizeof *presets; i++)
+        if (!strcasecmp(s, presets[i])) return false;
+    return true;
+}
 // A remembered list as the file had it: its empty places, doubles and what the file can't hold left out, the rest in order
 static void recent_tidy(char *list, int n, size_t width, bool nocase) {
     int kept = 0;
@@ -1403,6 +1412,18 @@ void config_load(void) {
     if (f && !g_lock_buttons_set && !g_config.touch_show[TB_ITEM_ARROWS]) {
         g_config.touch_show[TB_ITEM_ARROWS] = 1;
         LOG("[config] the item bar's arrows shown, as by default now (a file of an older version)\n");
+    }
+    // (the hub server and the matchmaking key typed in an older version, the ones in use: in the menu's lists, as if typed
+    // and saved now, once for a file of then, the one without LockOnButtons; the next save writes LockOnButtons and the
+    // lists, and from then on only what is typed and saved goes in - one taken out stays out)
+    if (f && !g_lock_buttons_set && (typed_server(g_config.ldn_server) || *g_config.ldn_key)) {
+        if (typed_server(g_config.ldn_server))
+            config_recent_add(g_config.ldn_recent_server[0], LDN_RECENT, sizeof g_config.ldn_recent_server[0],
+                              g_config.ldn_server, true);
+        if (*g_config.ldn_key)
+            config_recent_add(g_config.ldn_recent_key[0], LDN_RECENT, sizeof g_config.ldn_recent_key[0], g_config.ldn_key,
+                              false);
+        LOG("[config] the hub server and key in use listed in the menu (a file of an older version)\n");
     }
     // Keep Auto/Desktop and file values, rather than persisting temporary environment overrides.
     render_auto = !g_config.render_w;
