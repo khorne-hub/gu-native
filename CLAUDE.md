@@ -384,8 +384,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   near 0) and each switch's programs translated anew in the same run, shot between two shots with the switches off: NMINMAX and VSTRIM
   change no more pixels than translating anew with them off does (9 and 44 against 10 and 45 of 921,600, at the noise's 1-6 / 255), IPA
   0.14 % of them, single pixels scattered over textured ground and rock, most by 1-4 / 255 (at most 32). The old functions against
-  NMin / NMax / NClamp over every pair of special values (+-0, +-inf, NaNs, denormals) on the GPU: the same bits on a Mali-G52 MC2 but
-  NaN payloads; the RX 6800 XT also flushes a denormal returned beside a NaN.
+  NMin / NMax / NClamp over every pair of special values (+-0, +-inf, NaNs, denormals) on the GPU: the same bits on a Mali-G52 MC2 and a
+  Mali-G57 but NaN payloads; the RX 6800 XT also flushes a denormal returned beside a NaN. The RG406V (Mali-G57, 100 %, no frame cap),
+  the same held scene, which stands fully still there: NMINMAX and VSTRIM change no pixel, IPA 0.17 % of them by 1-7 / 255; `gpuprof`,
+  four frames of each between frames with the switches off (4.5-4.7 ms main pass, 21.4-22.1 ms GPU frame): the main pass 4.25 ms
+  with NMINMAX, 4.37 with IPA, 4.48 with VSTRIM, 3.78 with the three, the frame 20.9, 21.4, 22.1 and 20.1. The shadow atlas, whose
+  vertex outputs VSTRIM all leaves out, didn't move: that driver may already drop them, or the pass isn't held up there.
 - Texture uploads (`nvn/vulkan/textures.c`): a texture's first upload is hashed and copied into staging memory by three worker
   threads in bands of about 1 MB, and the submission waits for them (`vk_upload_jobs_finish`): nothing draws early or half uploaded.
   The list's own CPU-side writes (ClearBuffer, CopyBufferToBuffer, UpdateUniformBuffer, ReportCounter) run at once, so one over
