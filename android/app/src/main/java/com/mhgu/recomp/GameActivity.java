@@ -55,8 +55,8 @@ public class GameActivity extends SDLActivity {
         if (!GameFolderActivity.gameStarted) {
             viaEntry = true;
             Log.i(TAG, "a start without the entry screen: it goes first");
-            startActivity(new Intent(this, GameFolderActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             super.onCreate(savedInstanceState);  // (finishes at once: startElsewhere)
+            startActivity(new Intent(this, GameFolderActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             overridePendingTransition(0, 0);
             return;
         }
