@@ -171,7 +171,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   depth target cleared to far (`fsr.c`). A 3D effect the game draws into the full-screen image after its post passes (Astalos'
   charged wings) taken for that start was drawn over the hunter and the monster, and sampled render-size images at output-size
   places: streaks where a sampler clamps, the picture repeated where it wraps. A draw there tested against the scene's depth, or
-  sampling a render target of the render size or half of it, stays with the scene (#60).
+  sampling the picture (that image itself, or a render target of the render size or half of it), stays with the scene (#60).
 - FXAA leaves a 2 px green line at the edges on Mali and costs about a fifth of the frame rate, so it is off by default on Android.
   The cause is unknown.
 - A Vulkan 1.1 driver (seen: Mali-G57 MC2, 1.1.177) has no timeline semaphores: each submission gets a fence and one thread waits for them
