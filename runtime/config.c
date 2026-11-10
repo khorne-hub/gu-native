@@ -1348,6 +1348,12 @@ void config_load(void) {
         g_config.touch_show[TB_L] = g_config.touch_show[TB_ZL] = 1, g_config.lock_buttons = 1;
         LOG("[config] L and the target button shown for the lock-on (a file of an older version)\n");
     }
+    // (the item bar's arrows, off by default up to 0.1.8 and written so by its first start: on, as now, once for a file
+    // of then, the one without LockOnButtons; the next save keeps the choice)
+    if (f && !g_lock_buttons_set && !g_config.touch_show[TB_ITEM_ARROWS]) {
+        g_config.touch_show[TB_ITEM_ARROWS] = 1;
+        LOG("[config] the item bar's arrows shown, as by default now (a file of an older version)\n");
+    }
     // Keep Auto/Desktop and file values, rather than persisting temporary environment overrides.
     render_auto = !g_config.render_w;
     config_store_loaded(&g_config);
