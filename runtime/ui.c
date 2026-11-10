@@ -27,6 +27,7 @@ static SDL_AtomicInt requested_action, action_failed;
 // polling every 3 ms (ui_run). SDL's event watch, each frame presented (nvn/vulkan/device.c), the game's rumble changing
 // (hle/input.c) and the settings menu's requests post it. NULL: the loop as before
 static SDL_Semaphore *loop_sem;
+static bool log_orientation;  // (MHGU_PERF_NO_ACCEL set, 0 or 1: the display's orientation events are logged, ui_run)
 void ui_loop_wake(void) {
     SDL_Semaphore *sem = __atomic_load_n(&loop_sem, __ATOMIC_ACQUIRE);
     if (sem) SDL_SignalSemaphore(sem);
@@ -250,6 +251,12 @@ void ui_init(void) {
         if (sem) SDL_AddEventWatch(loop_event, NULL), __atomic_store_n(&loop_sem, sem, __ATOMIC_RELEASE);
     }
     if (wake) LOG("[perf] MHGU_PERF_INPUT_WAKE=%d\n", loop_sem != NULL);
+    // MHGU_PERF_NO_ACCEL=1 (read once): SDL's accelerometer listener off, the display's rotation from a DisplayListener
+    // instead (GameActivity.perfNoAccel: nothing here reads the accelerometer)
+    const char *accel = getenv("MHGU_PERF_NO_ACCEL");
+    if (accel && atoi(accel) == 1) activity_call("perfNoAccel");
+    log_orientation = accel != NULL;
+    if (accel) LOG("[perf] MHGU_PERF_NO_ACCEL=%d\n", accel && atoi(accel) == 1);
 #endif
 }
 
@@ -309,6 +316,10 @@ int ui_run(void) {
                     overlay_request_close();
                     continue;
                 }
+#ifdef __ANDROID__
+                if (e.type == SDL_EVENT_DISPLAY_ORIENTATION && log_orientation)
+                    LOG("[ui] display orientation %d (SDL_DisplayOrientation)\n", (int)e.display.data1);
+#endif
                 host_input_event(&e);
             } while (SDL_PollEvent(&e));
         }
