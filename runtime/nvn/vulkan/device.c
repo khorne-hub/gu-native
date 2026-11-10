@@ -568,11 +568,13 @@ static VKAPI_ATTR VkResult VKAPI_CALL one_cache_data(VkDevice d, VkPipelineCache
 // vkCreateShaderModule and vkCreateComputePipelines, and builds its pipelines on the render thread when its context is
 // made), so they get the ones above too: never beside the worker's build
 static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL one_device_proc(VkDevice d, const char *name) {
-    if (!strcmp(name, "vkCreateShaderModule")) return (PFN_vkVoidFunction)one_create_module;
-    if (!strcmp(name, "vkCreateGraphicsPipelines")) return (PFN_vkVoidFunction)one_create_graphics;
-    if (!strcmp(name, "vkCreateComputePipelines")) return (PFN_vkVoidFunction)one_create_compute;
-    if (!strcmp(name, "vkGetPipelineCacheData")) return (PFN_vkVoidFunction)one_cache_data;
-    return vkGetDeviceProcAddr(d, name);
+    PFN_vkVoidFunction f = !strcmp(name, "vkCreateShaderModule") ? (PFN_vkVoidFunction)one_create_module
+                         : !strcmp(name, "vkCreateGraphicsPipelines") ? (PFN_vkVoidFunction)one_create_graphics
+                         : !strcmp(name, "vkCreateComputePipelines") ? (PFN_vkVoidFunction)one_create_compute
+                         : !strcmp(name, "vkGetPipelineCacheData") ? (PFN_vkVoidFunction)one_cache_data : NULL;
+    if (!f) return vkGetDeviceProcAddr(d, name);
+    LOG("[vk] PowerVR: %s handed to an upscaler takes the compiler's lock\n", name);
+    return f;
 }
 #endif
 
