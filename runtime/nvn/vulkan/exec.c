@@ -6748,6 +6748,7 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
 
 // ================================================================== presentation helper (device.c)
 VkRenderPass vk_window_pass(void);
+int vk_window_turn(void);
 static VkPipelineLayout present_layout;
 static VkDescriptorSetLayout present_set_layout;
 
@@ -6814,8 +6815,14 @@ void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, floa
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, present_layout, 0, 1, &ds, 0, NULL);
     ss.known &= ~SS_SETS;  // (not draw's sets any more)
     VkViewport vp = {vx, vy, vw, vh, 0, 1};
+    // (the window image drawn turned for the panel, device.c MHGU_PERF_PREROTATE: the rectangle turned with it, and the
+    // shader samples the picture turned back)
+    int turn = vk_window_turn();
+    float W = (float)g_vk.sc_extent.width, H = (float)g_vk.sc_extent.height;
+    if (turn == 1) vp = (VkViewport){H - vy - vh, vx, vh, vw, 0, 1};
+    else if (turn == 3) vp = (VkViewport){vy, W - vx - vw, vh, vw, 0, 1};
     vkCmdSetViewport(cb, 0, 1, &vp);
-    float pv[8] = {nvn_window_origin() == 0 ? 1.0f : 0.0f, 0, 0, 0, 0, 0, 1, 1};  // (flip, crop origin / size)
+    float pv[8] = {nvn_window_origin() == 0 ? 1.0f : 0.0f, (float)turn, 0, 0, 0, 0, 1, 1};  // (flip, turn, crop origin / size)
     vkCmdPushConstants(cb, present_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, 32, pv);
     vkCmdDraw(cb, 3, 1, 0, 0);
 }

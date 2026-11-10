@@ -278,6 +278,21 @@ public class GameActivity extends SDLActivity {
     }
 
     /**
+     * Cuánto antes de un vsync hay que entregar un búfer para que se vea en él (Display.getPresentationDeadlineNanos):
+     * el margen de los presents con hora (runtime/nvn/vulkan/present_pacing.c). 0 si no se sabe. Como el del MH4U.
+     */
+    public static long presentationDeadlineNs() {
+        SDLActivity activity = mSingleton;
+        if (activity == null) return 0;
+        try {
+            Display display = Build.VERSION.SDK_INT >= 30 ? activity.getDisplay() : activity.getWindowManager().getDefaultDisplay();
+            return display != null ? display.getPresentationDeadlineNanos() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /**
      * La tasa de refresco más baja que alcanza para el límite de FPS, nunca menos de 60: una pantalla a 120 Hz con el juego
      * a 60 gasta batería y calienta el teléfono sin mostrar nada más. Sin límite conocido, la más alta.
      */
