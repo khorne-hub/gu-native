@@ -1807,14 +1807,15 @@ std::vector<Row> main_rows() {
                     d.fps = std::min(d.fps, LOW_END_FPS);
                     d.shadows = 0;
                     d.bloom = 0;
-                    if (v == LOW_END_TOASTER) d.reverb = 0;
-                    else if (was == LOW_END_TOASTER) d.reverb = 1;
+                    if (v == LOW_END_TOASTER) d.reverb = 0, d.grass = 0;
+                    else if (was == LOW_END_TOASTER) d.reverb = 1, d.grass = 1;
                 } else {
                     if (d.render_scale <= LOW_END_SCALE) d.render_scale = 100;
                     if (d.fps == LOW_END_FPS) d.fps = 60;
                     d.shadows = 1;
                     d.bloom = 1;
                     d.reverb = 1;
+                    if (was == LOW_END_TOASTER) d.grass = 1;  // (only Toaster turns the grass off: On leaves it as set)
                 }
 #else  // (a desktop: the 3D picture about 720 lines tall, 540 with Toaster, whatever the screen (config_lowend_scale), and
        // Bloom off; Low-end keeps the frame rate and the shadows, Toaster sets 30 FPS and no shadows; the reverb stays.
@@ -1850,7 +1851,7 @@ std::vector<Row> main_rows() {
             },
             ini("LowEnd"));
 #ifdef __ANDROID__
-        r.back().help = tr("For weak phones: turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture. It also sets the 3D resolution and the frame rate, and you can change all of them. Toaster: everything for speed and the battery before looks: 25%, 30 FPS, no reverb, and a lighter HUD and textures still.");
+        r.back().help = tr("For weak phones: turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture. It also sets the 3D resolution and the frame rate, and you can change all of them. Toaster: everything for speed and the battery before looks: 25%, 30 FPS, no reverb or grass, and a lighter HUD and textures still.");
 #else  // (a PC's GPU takes the game's textures as they are: none smaller, nvn/vulkan/textures.c; config.c turns MSAA and FSR off,
        // and with Toaster FXAA. The switch sets RenderScale for the Resolution the draft has, once: config.c ignores
        // RenderScale with a RenderResolution of its own)

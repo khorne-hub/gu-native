@@ -71,7 +71,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 - Resolución 3D ajustable, hasta el 25 %, para ganar rendimiento en equipos modestos
 - **Sombras:** apágalas para ganar velocidad, en el engranaje, **Gráficos y audio**, **Sombras**. En un Moto g06 bajó cerca de un 15 % el trabajo de la GPU por cuadro en una cacería
 - **Modo gama baja:** para teléfonos débiles. Apaga el bloom, el desenfoque de profundidad y las sombras, usa texturas más livianas y mantiene el HUD nítido sobre una imagen 3D más chica
-- **Modo tostadora:** la tercera opción del modo gama baja, para los teléfonos más débiles y para la batería: resolución 3D al 25 %, 30 fps, sin reverberación, y el HUD y las texturas todavía más livianos. En un Moto g06 se mantuvo en 30 fps y gastó cerca de un tercio menos de energía que el modo gama baja a 60 fps
+- **Modo tostadora:** la tercera opción del modo gama baja, para los teléfonos más débiles y para la batería: resolución 3D al 25 %, 30 fps, sin reverberación ni pasto, y el HUD y las texturas todavía más livianos. En un Moto g06 se mantuvo en 30 fps y gastó cerca de un tercio menos de energía que el modo gama baja a 60 fps
 - **Bloom y desenfoque de profundidad** y **Reverberación** (engranaje, **Gráficos y audio**): interruptores propios. Apagados, la GPU o el procesador trabajan menos
 - **Pasto** (engranaje, **Gráficos y audio**): apagado, se omiten el pasto alto y el follaje de los mapas; más rápido donde hay mucho (la zona 8 del Pantano)
 - Contador opcional de FPS y temperatura

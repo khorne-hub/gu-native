@@ -229,6 +229,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   half the target, and stops at once when they near it. `MHGU_ADPF_EFFICIENT=0` turns it off. A phone that isn't charging gives real watts:
   `/sys/class/power_supply/battery/current_now` and `voltage_now`. Measured in a hunt, standing: the FPS limit is what counts. Moto g06 at 60 FPS
   3.37 W, at 30 FPS 2.70 W; S25 Ultra at 120 (106 real) 3.48 W, at 60 2.33 to 2.73 W. 60 Hz against a faster screen showed no gain beyond the noise on either.
+  Toaster at 30 FPS on the Moto, at the quest-101 camp (#178): Shadows On 2.75 W, Off 2.68 W (ABBA, 4-9 min, two runs each), +2.5 %,
+  no more than two runs of one setting differ from each other. The shadow pass is 6.2 ms of a 29 ms GPU frame there, Off 25 ms: at 30 FPS the
+  GPU drops a clock step instead of idling (Off, its other passes took about 10 % longer), so the 6 ms saved little power.
   A Galaxy denies those files: use `dumpsys battery` (Charge counter, in steps of 4.9 mAh); its `dumpsys thermalservice` repeats a stale value.
 - `MHGU_FS_NEW=1` logs each fragment program the first time it draws; `MHGU_FS_WATCH=<hash>` saves the frames where one draws. A hit draws
   `cc207b43683737c8`, a 17-sample radial blur. The device's `shots` folder keeps old files: go by the names in the log, not by what's there.
@@ -377,9 +380,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   phone. Its frame is CPU-bound: the GPU span in `gpuprof` includes the gaps where the GPU waits for the render thread.
 - `[Performance] LowEnd` is Off, On or Toaster (2). On a phone (a desktop's: Building for Windows) everything that tests `low_end`
   treats Toaster as On; Toaster adds a HUD at most 540 lines tall and smaller BC textures, and the menu sets 25 %, 30 FPS, Shadows,
-  Bloom and Reverb off. `[Performance] Bloom` (the bloom and depth of field chain, `lowend_skipped`; not with real FSR: the plain
-  scaling sets `g_fsr_on` too, so test `g_config.fsr`) and `[Audio] Reverb` are switches for everyone. A file with LowEnd on and no
-  Bloom key gets Bloom off, as before.
+  Bloom, Reverb and Grass off (leaving Toaster gives the Reverb and the Grass back, as leaving Low-end does the rest).
+  `[Performance] Bloom` (the bloom and depth of field chain, `lowend_skipped`; not with real FSR: the plain scaling sets `g_fsr_on`
+  too, so test `g_config.fsr`) and `[Audio] Reverb` are switches for everyone. A file with LowEnd on and no Bloom key gets Bloom off,
+  as before.
 - Test runs can override the device's settings without touching its ini: `MHGU_LOWEND=0|1|2`, `MHGU_SCALE`, `MHGU_SHADOWS`, `MHGU_BLOOM`,
   `MHGU_GRASS`, `MHGU_FPS_LIMIT`, `MHGU_NO_REVERB=1`, `MHGU_UI_ANCHOR=Edges`. A phone on its charger reads charging current: unplug it to measure watts. At 30 FPS the GPU runs at
   lower clocks, so `gpuprof` times are longer: compare frame rates or watts, not milliseconds, across FPS limits.

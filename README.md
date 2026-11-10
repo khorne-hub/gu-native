@@ -70,7 +70,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - Adjustable 3D resolution, down to 25%, to gain performance on modest devices
 - **Shadows:** turn them off for more speed, under the gear, **Graphics & Audio**, **Shadows**. On a Moto g06 it cut the GPU's work per frame by about 15% in a hunt
 - **Low-end mode:** for weak phones. It turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture
-- **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
+- **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb or grass, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
 - **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**): switches of their own. Off, the GPU or the processor does less
 - **Grass** (gear, **Graphics & Audio**): off, the tall grass and foliage of the maps are left out, faster where there is a lot of it (the Marshland's area 8)
 - Optional FPS and temperature counter
