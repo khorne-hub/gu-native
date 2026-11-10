@@ -372,6 +372,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   sets), and draw skips binding the same two again (`SS_SETS`; any other graphics bind forgets them). Zeros, the identity rescale table,
   the alpha reference and each stage's driver constants are copied once per submission (`shared_*`, `zero_ubo`), or every set would be
   new; a storage buffer of zeros is shared only by shaders without `uses_gmem_store`. `MHGU_VK_SETREUSE=0`, `MHGU_VK_SHARED=0`: off.
+- The translator's performance switches, off by default until measured (`MHGU_PERF_<NAME>=1` in `env.txt` or the environment, read
+  once at the start; the log's `[shader] translator switches` line says which are on). The program cache's stamp includes them, so a run
+  with others translates every program again: `MHGU_NO_PROGRAM_CACHE=1` in both arms of an A/B. `MHGU_PERF_NMINMAX`: fmin, fmax and
+  saturate as GLSL.std.450's NMin, NMax and NClamp (`glsl_prelude_nminmax`; Vulkan 1.2 drivers but a PowerVR's), Maxwell's NaN rules in
+  one instruction each instead of compares and selects. `MHGU_PERF_IPA`: where a shader multiplies a varying by w and by 1 / w (an
+  IPA.MULTIPLY by the MUFU.RCP of position w's IPA, `ipa_w_track`) the varying is read as it comes, 1704 of the 1736 such reads of the
+  quest-101 camp's 211 fragment shaders; not bit-exact (the old product was 1-2 ulp off the interpolated value). `MHGU_PERF_VSTRIM`: a
+  vertex shader's outputs its fragment shader doesn't read become plain variables (`maxwell_trim_outputs`; 771 of the camp's 1381),
+  dead code to the driver's compiler. Checked on an RX 6800 XT with the scene held still (a test build's hook: the engine's frame step
+  near 0) and each switch's programs translated anew in the same run, shot between two shots with the switches off: NMINMAX and VSTRIM
+  change no more pixels than translating anew with them off does (9 and 44 against 10 and 45 of 921,600, at the noise's 1-6 / 255), IPA
+  0.14 % of them, single pixels scattered over textured ground and rock, most by 1-4 / 255 (at most 32). The old functions against
+  NMin / NMax / NClamp over every pair of special values (+-0, +-inf, NaNs, denormals) on the GPU: the same bits on a Mali-G52 MC2 but
+  NaN payloads; the RX 6800 XT also flushes a denormal returned beside a NaN.
 - Texture uploads (`nvn/vulkan/textures.c`): a texture's first upload is hashed and copied into staging memory by three worker
   threads in bands of about 1 MB, and the submission waits for them (`vk_upload_jobs_finish`): nothing draws early or half uploaded.
   The list's own CPU-side writes (ClearBuffer, CopyBufferToBuffer, UpdateUniformBuffer, ReportCounter) run at once, so one over
