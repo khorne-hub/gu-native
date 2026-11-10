@@ -2333,7 +2333,8 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
 // and after a shot (the game leaves the aim then) the next press from the stance aims anew.
 // Everything else is the player's and passes untouched: their own R (the quick aim, the scope), crouching fire, a reload, a
 // dodge, a sheathe, the styles' moves (Valor's slide, its sheathing stance), and any press out of the stance (#132, #177),
-// with L, ZL or ZR (the item bar, Control Type 3's Hunter Arts) or with no monster to aim at (mousecam_lock_aimable).
+// with L, ZL or ZR (the item bar, Control Type 3's Hunter Arts), with no monster to aim at (mousecam_lock_aimable) or
+// while the camera is turned by hand (the follow paused: no shot is turned then).
 // On every input's fire button (the touch controls', a key, a mouse button, a controller's: host_input.c gives them all,
 // once each update). The aim is known by the hunter's actions (weapon_aiming) or by the hunt camera's handler stopping (a
 // gun aimed has a camera of its own: so any style's aim is seen); a moment of R without either fires anyway: R is the aim
@@ -2402,8 +2403,9 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
             } else if (!s.combo_t0) {
                 bool stance = weapon_stance(hunter), alone = !others && !mods && now - s.others_ns >= window && !s.keep_r &&
                                                              now >= s.replay_until;
-                // (and a monster to aim at: without one the help would only hold the shot back)
-                bool target = mousecam_lock_aimable();
+                // (and a monster to aim at, the camera not turned by hand just now - the mouse, a finger, the right stick, L:
+                // hle/mousecam.c turns no shot then -: else the help would only hold the shot back)
+                bool target = mousecam_lock_aimable() && g_lock_follow.load();
                 if (stance && alone && target) {
                     // (after a shot the game leaves the aim, R held or not: the next press from the stance aims anew, its
                     // R let go through the window first, so the game takes it as a new press of R; held that long, its
@@ -2414,7 +2416,7 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
                     rt_logf("[touch] fire passed: %s (action %04x:%03u)\n",
                             !alone ? "another button with it" : weapon_aiming(hunter) ? "aiming" : weapon_moving(hunter) ? "a weapon move"
                             : !mousecam_hunt_camera() ? "no hunt camera (an aim, crouching fire)"
-                            : !stance ? "not in the stance" : "no monster to aim at",
+                            : !stance ? "not in the stance" : !g_lock_follow.load() ? "the camera turned by hand" : "no monster to aim at",
                             act >> 16, act & 0xffff);
                 }
             }
