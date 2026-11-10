@@ -99,6 +99,7 @@ enum Ctl {
     C_HMINUS, C_R3, C_HDPAD, C_COMBO, C_COMBO_END = C_COMBO + TOUCH_COMBOS - 1,
     C_RFIRE, C_RSECOND, C_RAIM, C_RSPECIAL, C_RDODGE, C_RSHEATHE, C_AMMO_UP, C_AMMO_DOWN,  // (a bow's or a bowgun's)
     C_MPAD,                                                                                // (the menu pad, in menus)
+    C_ITEML, C_ITEMR,                                                                      // (the item bar's arrows)
     C_STICK,                                                                               // (laid out: touch_layout.txt)
     C_ML, C_MR,          // (the menu pad's: its page tabs above it, as a controller's shoulders, placed from it;
     C_MZL, C_MZR,        // the other pair above them, when [Touch] ShowMenuZL / ZR say so; Minus below it, with the
@@ -107,7 +108,8 @@ enum Ctl {
 };
 const int C_LAID = C_STICK + 1;
 enum Icon { I_ATTACK, I_DODGE, I_SHIELD, I_BURST, I_TARGET_SELECT, I_CAMERA, I_MENU, I_MAP, I_GEAR, I_SHEATHE, I_RUN, I_STICK, I_DPAD,
-            I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN };
+            I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN,
+            I_LEFT, I_RIGHT };
 // The menu pad (C_MPAD), in its base's radius: a thumb within MPAD_GRAB is its, before anything else (a tap on its
 // edge is a step that way, never a tab); a direction comes on past MPAD_ON and stays down to MPAD_OFF
 const float MPAD_GRAB = 1.35f, MPAD_ON = .35f, MPAD_OFF = .25f;
@@ -177,6 +179,11 @@ const Def DEFS[C_COUNT] = {
     // HUD in the middle, mostly in the strip right of the game's windows). Its key changed with that place (it was
     // placed from the HUD's right edge, in the middle of the screen): a layout saved before keeps it at the default
     {"menupad", "Menu pad", I_DPAD, "", 0, true, .21f, .55f, .08f},
+    // the item bar's arrows ([Touch] ShowItemArrows), one each side of the bar: these places only mark them as not placed
+    // by the player (they follow the bar then, or show by its usual place while none is known: arrow_follow), as the MH4U
+    // port's; the editor moves them as the other controls, and their places are kept in touch_layout.txt
+    {"item_left", "Item bar: previous", I_LEFT, "", 0, true, .64f, .085f, .052f},
+    {"item_right", "Item bar: next", I_RIGHT, "", 0, true, .565f, .085f, .052f},
     {"stick", "Movement", I_STICK, "", 0, false, .29f, .27f, .115f},
     // the menu pad's (x, y unused: place(); what the tabs press: the game's option, mpad_buttons)
     {"ml", "L", I_LETTER, "L", B(BTN_L), true, 0, 0, .040f},  // (the shoulders: tabs in the item box, the shops)
@@ -221,6 +228,7 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     case C_MAP: return TB_L3;
     case C_R3: return TB_R3;
     case C_STICK: return TB_STICK;
+    case C_ITEML: case C_ITEMR: return TB_ITEM_ARROWS;
     default: return -1;
     }
 }
@@ -240,6 +248,7 @@ bool in_mode(int i, bool menu) {
     // (the run button: with StickRun Off, in a hunt and in towns, either layout, never in a menu - R turns its pages;
     // what a hunt can do without is off until asked for: [Touch] Show*)
     if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
+    if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -265,6 +274,7 @@ bool in_mode(int i, bool menu) {
 // whether a menu is open or not; its tabs and Minus go with it)
 bool in_editor(int i) {
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
+    if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
     return i < C_LAID && (in_mode(i, false) || in_mode(i, true));
 }
 const ImVec2 PILL_U(.766f, -.643f);  // the pill's axis on the screen (y down): up and to the right
@@ -461,8 +471,12 @@ struct Geo {
 float mpad_above(void) {  // (how far the menu pad's group reaches above it: the other pair of tabs shown, higher)
     return config_live_touch_show(TB_MENU_ZL) || config_live_touch_show(TB_MENU_ZR) ? MPAD_ABOVE2 : MPAD_ABOVE;
 }
+// an arrow of the item bar's the player has placed (else it follows the bar: arrow_follow, below)
+bool arrow_placed(const Layout &l, int i) { return fabsf(l.x[i] - DEFS[i].x) > 1e-4f || fabsf(l.y[i] - DEFS[i].y) > 1e-4f; }
+Geo arrow_follow(const Layout &l, int i, float w, float h);
 Geo place(const Layout &l, int i, float w, float h) {
     const Def &d = DEFS[i];
+    if ((i == C_ITEML || i == C_ITEMR) && !arrow_placed(l, i)) return arrow_follow(l, i, w, h);
     if (i == C_CORNER) {  // (c: the centre of its bend; a larger band stays against the edges)
         float r = d.r * l.scale[i] * h, in = r * (1 + BAND_T);
         return {ImVec2(w - l.x[i] * h - in, h - l.y[i] * h - in), r};
@@ -1092,11 +1106,44 @@ void art_tap(State &s, int row, uint64_t now) {
 // screen's edge leaves less room beside the bar (both the same size, at least ITEM_ARROW_MIN). The MH4U port's touch.cpp
 // places its own by the same rule
 const float ITEM_ARROW = .052f, ITEM_ARROW_MIN = .03f;
-Geo item_arrow(const Rect &item, int d, float w, float h) {
+Geo item_arrow(const Rect &item, int d, float w, float h, float k = 1.0f) {
     float room = std::min(item.x0, w - item.x1) / 2.2f;  // (a radius and a little gap each side)
-    float r = std::max(std::min(ITEM_ARROW * h, room), ITEM_ARROW_MIN * h);
+    float r = std::max(std::min(ITEM_ARROW * k * h, room), ITEM_ARROW_MIN * h);
     float x = d < 0 ? item.x0 - r * 1.15f : item.x1 + r * 1.15f;
     return {ImVec2(std::clamp(x, r, std::max(r, w - r)), (item.y0 + item.y1) * .5f), r};
+}
+// The item bar its arrows go by while the player hasn't placed them: the hunt's; in the layout editor, the game paused
+// under it, the bar as last drawn, moved and sized as the editor has its box since (part_frame's way)
+Rect arrow_bar(float w, float h) {
+    Rect r = zone_rect(zones(), HP_ITEMS, w, h);
+    int prof = g_hud_edit_prof;
+    if (prof < 0 || g_edit_set.load() < 0 || !r.ok) return r;
+    Seen sn;
+    {
+        std::lock_guard<std::mutex> l(g_zone_lock);
+        sn = g_seen[HP_ITEMS];
+    }
+    if (!sn.ns || sn.prof != prof) return r;
+    float e[4];
+    hud_box(HP_ITEMS, prof, g_hud_arts_top, e);
+    float kx = (e[2] - e[0]) / std::max(.001f, sn.e[2] - sn.e[0]), ky = (e[3] - e[1]) / std::max(.001f, sn.e[3] - sn.e[1]);
+    Pic p = picture(w, h);
+    auto mx = [&](float x) { return p.x0 + (e[0] + ((x - p.x0) * 1280.0f / p.w - sn.e[0]) * kx) * p.w / 1280.0f; };
+    auto my = [&](float y) { return p.y0 + (e[1] + ((y - p.y0) * 720.0f / p.h - sn.e[1]) * ky) * p.h / 720.0f; };
+    return {mx(r.x0), my(r.y0), mx(r.x1), my(r.y1), true};
+}
+// An arrow not placed by the player: beside the bar (its size the layout's, as a placed one's), or while no bar is known
+// where they are beside the bar's usual place, at the bottom in the middle
+Geo arrow_follow(const Layout &l, int i, float w, float h) {
+    Rect bar = arrow_bar(w, h);
+    if (bar.ok) return item_arrow(bar, i == C_ITEML ? -1 : 1, w, h, l.scale[i]);
+    return {ImVec2(w * .5f + (i == C_ITEML ? -.34f : .34f) * h, h * .85f), ITEM_ARROW * l.scale[i] * h};
+}
+// (the editor: an arrow that follows the bar, dragged, keeps the place it had as its own, then moves from there)
+void pin_arrow(State &s, int i) {
+    Geo g = place(s.layout, i, s.w, s.h);
+    s.layout.x[i] = (s.w - g.c.x) / s.h, s.layout.y[i] = (s.h - g.c.y) / s.h;
+    s.layout.scale[i] = std::clamp(g.r / (DEFS[i].r * s.h), .5f, 2.2f);
 }
 
 // The stick is fixed at its place (the layout's: the editor moves it); a thumb on its base or a little past its rim
@@ -1555,6 +1602,7 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         } else if (f->ctl >= ZONE_SEL) {
             part_move(s, f->ctl - ZONE_SEL, dx, dy);
         } else if (f->ctl >= 0) {
+            if ((f->ctl == C_ITEML || f->ctl == C_ITEMR) && !arrow_placed(s.layout, f->ctl)) pin_arrow(s, f->ctl);
             s.layout.x[f->ctl] += (DEFS[f->ctl].right ? -dx : dx) / s.h;
             s.layout.y[f->ctl] -= dy / s.h;
             clamp_place(s, f->ctl);
@@ -1852,7 +1900,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         int arrow = 0;
         if (c < 0 && item.ok && !s.menu && config_live_touch_show(TB_ITEM_ARROWS))
             for (int d = -1; d <= 1; d += 2) {
-                Geo g = item_arrow(item, d, s.w, s.h);
+                Geo g = place(s.layout, d < 0 ? C_ITEML : C_ITEMR, s.w, s.h);
                 if (hypotf(x - g.c.x, y - g.c.y) < g.r * 1.2f) arrow = d;
             }
         if (c >= 0) {
@@ -3438,8 +3486,19 @@ void lock_circle(ImDrawList *dl, ImVec2 c, float cr, float a, bool armed, bool l
     if (locked) dl->AddCircle(c, cr * 1.18f, fade(GLOW, a * (.6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4))), 32, cr * .1f);
 }
 
+// an arrow of the item bar's: a disc with an arrowhead pointing its way, lit as it turns the bar
+void item_arrow_disc(ImDrawList *dl, Geo g, int d, bool lit, float a) {
+    disc(dl, g.c, g.r, lit, a);
+    float ch = g.r * .42f;
+    dl->AddTriangleFilled(ImVec2(g.c.x + d * ch, g.c.y), ImVec2(g.c.x - d * ch * .6f, g.c.y - ch), ImVec2(g.c.x - d * ch * .6f, g.c.y + ch),
+                          fade(lit ? GLOW : INK, a));
+}
 void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
     Geo g = place(l, i, w, h);
+    if (i == C_ITEML || i == C_ITEMR) {  // (the editor's: in a hunt they go with the item bar)
+        item_arrow_disc(dl, g, i == C_ITEML ? -1 : 1, false, a);
+        return;
+    }
     if (i == C_STICK) {
         if ((s.stick_on || s.run_free) && !s.edit) {
             // (a locked run going on by itself: the knob held at the rim, forward)
@@ -4109,11 +4168,7 @@ extern "C" void touch_draw(float w, float h) {
     if (item.ok && config_live_touch_show(TB_ITEM_ARROWS)) {
         for (int d = -1; d <= 1; d += 2) {
             bool lit = now < s.item_flash && s.item_dir == d;
-            Geo g = item_arrow(item, d, w, h);
-            disc(dl, g.c, g.r, lit, a);
-            float ch = g.r * .42f;
-            dl->AddTriangleFilled(ImVec2(g.c.x + d * ch, g.c.y), ImVec2(g.c.x - d * ch * .6f, g.c.y - ch), ImVec2(g.c.x - d * ch * .6f, g.c.y + ch),
-                                  fade(lit ? GLOW : INK, a));
+            item_arrow_disc(dl, place(s.layout, d < 0 ? C_ITEML : C_ITEMR, w, h), d, lit, a);
         }
     } else if (item.ok) {
         float cy = (item.y0 + item.y1) * .5f, ch = .03f * h;

@@ -320,6 +320,8 @@ static inline const char *settings_text(int language, const char *english) {
          "Activado: con el arma desenvainada, un pulgar que se apoya en Guardia (R) y se desliza a los ataques sigue en guardia (R mantenido), para los movimientos que piden R junto con un ataque, como el contraataque de la lanza o el empujón del escudo; deslizado a la barra de objetos, aprieta R e Y juntos. Desactivado: al deslizar se suelta R"},
         {"Next ammo", "Munición siguiente"},
         {"Previous ammo", "Munición anterior"},
+        {"Item bar: previous", "Barra de objetos: anterior"},
+        {"Item bar: next", "Barra de objetos: siguiente"},
         {"Layout: melee", "Diseño: cuerpo a cuerpo"},
         {"Layout: ranged", "Diseño: a distancia"},
         {"Evade (B)", "Evasión (B)"},
