@@ -364,6 +364,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   stripped Mali library shows its own code as `stdlibp_neon_f32x16_to_f16x16`: that is the driver recording draws, not a conversion.
 - The audio renderer had 70 effect slots of 1.7 KB, searched for every order number on every mix: over half the audio thread. `fx_order`
   lists them once after an update (`services/audio.c`). `getenv` walks the whole environment: never call it per frame, cache it.
+  MHGU has 1152 splitter destinations and every frame copied their 96 bytes of volumes (prev <- vol), 200 times a second: a fifth
+  of the mixer in a Moto g06 profile. `MHGU_PERF_AUDIO_SDEST=1` (0.1.9's perf pass, off until measured) copies only those an
+  update changed (`sd_dirty`; in a quest about 1 in 6600); `MHGU_PERF_AUDIO_ADPCM=1` decodes DSP ADPCM a 14-sample frame at a
+  time (`adpcm_block`, the same integer steps). Both give the same samples bit for bit: `MHGU_PERF_AUDIO_CHECK=1` compares them
+  with the old way as the game runs and logs any difference every 10 s (PC, quest 101: 100 s, 5.6 million ADPCM samples,
+  none; the decoder's fuzz test, 400 million samples, none).
 - `gpuprof` shows the window image's pass (the game's picture copied in, the overlay) as its last line. The game's own passes all load
   their attachments; one whose first commands clear an attachment whole begins with `LOAD_OP_CLEAR` and those values instead
   (`noload_clears`, `render_pass`), and the clears it already did are skipped (`pass_skip_clear`). Not `DONT_CARE` plus the clears: an
