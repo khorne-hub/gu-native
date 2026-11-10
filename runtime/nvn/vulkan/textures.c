@@ -1079,6 +1079,13 @@ TexBackend *vk_tex(NvnTexture *t, bool for_render) {
     if (for_render) b->gpu_owned = true;
     else if (!b->gpu_owned) {
         extern uint64_t stat_upload_ns;
+        extern bool vk_perf_textime;  // (exec.c, MHGU_PERF_TEXTIME: upload_texture's first returns, untimed)
+        if (vk_perf_textime) {
+            uint64_t frame = vk_frame_counter();
+            if (!t->addr || t->target == 10 || (b->uploaded && b->checked_frame == frame + 1) ||
+                (b->uploaded && !b->dynamic && ((frame + ((uintptr_t)b >> 6)) & 7)))
+                return b;
+        }
         uint64_t t0 = plat_now_ns();
         upload_texture(t, b);
         stat_upload_ns += plat_now_ns() - t0;

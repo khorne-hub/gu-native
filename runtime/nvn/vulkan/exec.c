@@ -76,6 +76,54 @@ static void job_stat(int kind, uint64_t t0) {
     atomic_max(&stat_job_max[kind], d);
     if (HITCH_ON) hitch_add(HC_JOB_XLATE + kind, d, 0);  // ((debug) MHGU_HITCHLOG: translate, program, pipeline)
 }
+
+// ---- (test) the translator's per-draw work, each cut behind a switch of its own, read once at start (vk_exec_init,
+// which logs them): MHGU_PERF_<NAME>=0|1, off (as before) unless set. MHGU_PERF_DRAWS=1 turns them all on at once
+// (a switch of its own still wins). None changes what is drawn: the same commands, the same data.
+//   GETENV    debug switches read once, not by getenv at every depth clamp command / buffer-to-texture copy
+//   DRVTAB    the driver constants' storage buffer table (256 bytes) compared before the 2 KB block is zeroed and filled
+//   TEXSCAN   a draw's textures looked up once for the movie, MSAA-resolve and feedback checks (each walked them again);
+//             the MSAA check is skipped until some pass has rendered multisampled
+//   TEXTIME   a texture bind that has nothing to upload isn't timed (textures.c vk_tex: two clock reads each)
+//   PIPEMEMO  a draw with the same pipeline key as the last one takes its pipeline without hashing the key and probing
+//   LAZYIDX   a draw's largest index found only when a vertex stream's copy needs it (rarely: bound ranges up to 4 MB
+//             are copied whole, the vertex cache's not at all)
+//   IDXCOPY   16 / 32-bit indices copied once per submission per range (the same mesh drawn in the shadow, depth, mask
+//             and main passes shares the copy, as uniform buffers do)
+static struct { bool getenv, drvtab, texscan, textime, pipememo, lazyidx, idxcopy; } perf;
+static bool perf_dump_verbose, perf_tex_log;  // (GETENV: MHGU_DUMP_VERBOSE, MHGU_TEX_LOG)
+bool vk_perf_textime;                         // (textures.c vk_tex)
+static uint64_t stat_pipememo, stat_idx_bytes, stat_idx_shared, stat_lazy_scans;  // (MHGU_VK_STATS)
+// MHGU_PERF_CHECK=1 (a test of the switches, slower): each cut that is on also does the old work and compares, and the
+// [perf] 2s line counts what differed (always 0 if they are exact): the driver constants' bytes, a draw's textures, the
+// memoised pipeline, the indices' shared copy against guest memory, the vertex data a lazy largest index sizes
+static bool perf_check;
+static uint64_t stat_check_n, stat_check_bad;
+static void check_bad(const char *what) {
+    stat_check_bad++;
+    static int n;
+    if (n++ < 20) LOG("[perf] check: %s differs from the old way\n", what);
+}
+static bool perf_switch(const char *name, bool group) {
+    char k[48];
+    snprintf(k, sizeof k, "MHGU_PERF_%s", name);
+    const char *e = getenv(k);
+    return e ? atoi(e) != 0 : group;
+}
+static void perf_init(void) {
+    const char *g = getenv("MHGU_PERF_DRAWS");
+    bool all = g && atoi(g) != 0;
+    perf.getenv = perf_switch("GETENV", all), perf.drvtab = perf_switch("DRVTAB", all);
+    perf.texscan = perf_switch("TEXSCAN", all), perf.textime = perf_switch("TEXTIME", all);
+    perf.pipememo = perf_switch("PIPEMEMO", all), perf.lazyidx = perf_switch("LAZYIDX", all);
+    perf.idxcopy = perf_switch("IDXCOPY", all);
+    perf_check = perf_switch("CHECK", false);
+    perf_dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL, perf_tex_log = getenv("MHGU_TEX_LOG") != NULL;
+    vk_perf_textime = perf.textime;
+    LOG("[perf] draws: getenv %d drvtab %d texscan %d textime %d pipememo %d lazyidx %d idxcopy %d\n", perf.getenv, perf.drvtab,
+        perf.texscan, perf.textime, perf.pipememo, perf.lazyidx, perf.idxcopy);
+}
+
 // The renderer's own pipelines (resolves, masked clears, FXAA), made on the render thread the first time they are needed
 static VkResult sync_pipeline(const VkGraphicsPipelineCreateInfo *pi, VkPipeline *p) {
     uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
@@ -704,16 +752,27 @@ VkSpan vk_readback(uint64_t size) {
 
 // Guest memory copied once per submission: draws binding the same range share the copy.
 #define GCOPY_TAB 4096
-static struct { uint64_t addr, size, gen; VkSpan span; } gcopy[GCOPY_TAB];
+typedef struct { uint64_t addr, size, gen; VkSpan span; } GCopy;
+static GCopy gcopy[GCOPY_TAB];
 static uint64_t gcopy_gen = 1;  // bumped per submission and when guest memory is written mid-list
 static void guest_copy_new_submission(void) { gcopy_gen++; }
-static VkSpan guest_copy(uint64_t addr, uint64_t size) {
+static VkSpan guest_copy_in(GCopy *tab, uint32_t mask, uint64_t addr, uint64_t size, uint64_t *bytes) {
     uint64_t h = (addr * 0x9E3779B97F4A7C15ull) ^ (size * 0xC2B2AE3D27D4EB4Full);
-    uint32_t slot = (uint32_t)(h ^ (h >> 32)) & (GCOPY_TAB - 1);
-    if (gcopy[slot].gen == gcopy_gen && gcopy[slot].addr == addr && gcopy[slot].size == size) return gcopy[slot].span;
+    uint32_t slot = (uint32_t)(h ^ (h >> 32)) & mask;
+    if (tab[slot].gen == gcopy_gen && tab[slot].addr == addr && tab[slot].size == size) return tab[slot].span;
     VkSpan s = vk_transient_copy(G2H((uint32_t)addr), size, 256);
-    stat_copy_bytes += size;
-    gcopy[slot].addr = addr; gcopy[slot].size = size; gcopy[slot].gen = gcopy_gen; gcopy[slot].span = s;
+    *bytes += size;
+    tab[slot].addr = addr; tab[slot].size = size; tab[slot].gen = gcopy_gen; tab[slot].span = s;
+    return s;
+}
+static VkSpan guest_copy(uint64_t addr, uint64_t size) { return guest_copy_in(gcopy, GCOPY_TAB - 1, addr, size, &stat_copy_bytes); }
+// (MHGU_PERF_IDXCOPY) a draw's indices: a table of their own, so they don't push the uniform buffers' copies out
+#define GCOPY_IDX_TAB 1024
+static GCopy gcopy_idx[GCOPY_IDX_TAB];
+static VkSpan guest_copy_indices(uint64_t addr, uint64_t size) {
+    uint64_t before = stat_idx_bytes;
+    VkSpan s = guest_copy_in(gcopy_idx, GCOPY_IDX_TAB - 1, addr, size, &stat_idx_bytes);
+    if (stat_idx_bytes == before) stat_idx_shared++;
     return s;
 }
 
@@ -1395,6 +1454,7 @@ static void st_defaults(void) {
 }
 
 void vk_exec_init(void) {
+    perf_init();
     st_defaults();
     if (!g_vk.has_timeline) fence_init();
 #ifdef _WIN32
@@ -1936,6 +1996,7 @@ void vk_gpuprof_frame(void) {  // (device.c, after each presented frame's submis
 }
 
 static bool pass_msaa;  // (MSAA, below) the pass renders through multisampled images (resolved when next read)
+static bool ms_ever;     // (MHGU_PERF_TEXSCAN) some pass has: until then no texture has a resolve owed (ms_dirty)
 static TexBackend *pass_att[9];
 static uint32_t pass_natt;
 // (MSAA) colour target 0 is a picture 3D models are drawn into (ms_expand). Its picture is copied into the samples
@@ -1957,7 +2018,7 @@ void vk_end_pass(void) {
                  (unsigned long long)(stat_draws - pass_draws_at), pass_noload ? ", cleared as it began" : "");
         gp_mark(l);
     }
-    if (pass_msaa) for (uint32_t k = 0; k < pass_natt; k++) pass_att[k]->ms_dirty = true;
+    if (pass_msaa) for (uint32_t k = 0; k < pass_natt; k++) pass_att[k]->ms_dirty = true, ms_ever = true;
     pass_msaa = false;
     if (g_dump_active) dump_pass();
 }
@@ -2293,11 +2354,29 @@ static void models_fxaa_track(bool models) {
     if (!mf_tex && models) models_fxaa_begin(t);
 }
 
-// Before a draw / dispatch: the textures it samples up to date (attachments of the pass: resolve_feedback).
+// (MHGU_PERF_TEXSCAN) the draw being set up's textures, its vertex and fragment programs', looked up once (draw_textures):
+// nothing between draw's start and its end changes what is bound
 static NvnTexture *shader_texture_object(int stage, ShaderTexture *t);
+static NvnTexture *dtex[2][64];
+static ShaderInfo *dtex_si[2];
+static void draw_textures(ShaderInfo *vi, ShaderInfo *fi) {
+    ShaderInfo *s[2] = {vi, fi};
+    for (int sg = 0; sg < 2; sg++) {
+        dtex_si[sg] = s[sg];
+        for (int i = 0; i < s[sg]->ntex && i < 64; i++) dtex[sg][i] = shader_texture_object(sg, &s[sg]->tex[i]);
+    }
+}
+static inline NvnTexture *draw_texture(int stage, ShaderInfo *si, int i) {
+    if (!(stage < 2 && dtex_si[stage] == si && i < 64)) return shader_texture_object(stage, &si->tex[i]);
+    if (perf_check && (stat_check_n++, dtex[stage][i] != shader_texture_object(stage, &si->tex[i]))) check_bad("a draw's texture");
+    return dtex[stage][i];
+}
+
+// Before a draw / dispatch: the textures it samples up to date (attachments of the pass: resolve_feedback).
 static void ms_resolve_sampled(int stage, ShaderInfo *si) {
+    if (perf.texscan && !ms_ever) return;
     for (int i = 0; i < si->ntex; i++) {
-        NvnTexture *t = shader_texture_object(stage, &si->tex[i]);
+        NvnTexture *t = draw_texture(stage, si, i);
         if (t && t->backend && ((TexBackend *)t->backend)->ms_dirty) vk_ms_resolve(t->backend);
     }
 }
@@ -3959,7 +4038,7 @@ static void resolve_feedback(Prog *pr) {
     ShaderInfo *infos[2] = {pr->vi, pr->fi};
     for (int sg = 0; sg < 2; sg++)
         for (int i = 0; i < infos[sg]->ntex; i++) {
-            NvnTexture *t = shader_texture_object(sg, &infos[sg]->tex[i]);
+            NvnTexture *t = draw_texture(sg, infos[sg], i);
             if (!is_attachment(t)) continue;
             bool have = false;
             for (int k = 0; k < nfeedback; k++) have |= feedback_tex[k] == t;
@@ -4060,6 +4139,39 @@ static VkDescriptorBufferInfo zero_ubo(uint64_t size) {
 // Constant buffer k of a stage: 0 the driver's (storage buffer table, compute group counts), 1 the compiler constants
 // stored after the shader code, 3.. the game's bound uniform buffers. Copied into transient memory.
 static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32_t gx, uint32_t gy, uint32_t gz) {
+    if (k == 0 && perf.drvtab && stage != 5) {  // (MHGU_PERF_DRVTAB: the same bytes as below, the 2 KB zeroed only for a new copy)
+        uint32_t tab[64];  // (the storage buffer table: 16 entries of {address, 0, size, 0})
+        for (int i = 0; i < 16; i++)
+            tab[4 * i] = (uint32_t)st.sbuf[stage][i].addr, tab[4 * i + 1] = 0, tab[4 * i + 2] = (uint32_t)st.sbuf[stage][i].size,
+            tab[4 * i + 3] = 0;
+        uint32_t base = 0x110 + 0x100 * (stage == 1 ? 4 : 0);
+        uint64_t size = si->cbuf_size[0] > 0x800 ? 0x800 : (si->cbuf_size[0] ? si->cbuf_size[0] : 256);
+        static struct { uint64_t seq, size; uint32_t tab[64]; VkSpan span; } last[2];
+        bool share = (stage == 0 || stage == 1) && shared_on();
+        uint32_t old[0x800 / 4];
+        if (perf_check) {  // (as below)
+            memset(old, 0, sizeof old);
+            for (int i = 0; i < 16; i++) {
+                uint32_t *e = &old[(base + 16 * i) / 4];
+                e[0] = (uint32_t)st.sbuf[stage][i].addr;
+                e[2] = (uint32_t)st.sbuf[stage][i].size;
+            }
+        }
+        if (share) {
+            shared_new_submission();
+            if (last[stage].seq == shared_seq && last[stage].size == size && !memcmp(last[stage].tab, tab, 256)) {
+                if (perf_check && (stat_check_n++, memcmp(last[stage].span.ptr, old, size))) check_bad("driver constants (shared)");
+                return ubo_span(last[stage].span, size);
+            }
+        }
+        uint32_t drv[0x800 / 4];  // (only the bytes copied zeroed; the table may lie past them, as below)
+        memset(drv, 0, size);
+        memcpy(&drv[base / 4], tab, 256);
+        VkSpan sp = vk_transient_copy(drv, size, 256);
+        if (perf_check && (stat_check_n++, memcmp(sp.ptr, old, size))) check_bad("driver constants");
+        if (share) last[stage].seq = shared_seq, last[stage].size = size, memcpy(last[stage].tab, tab, 256), last[stage].span = sp;
+        return ubo_span(sp, size);
+    }
     if (k == 0) {
         uint32_t drv[0x800 / 4] = {0};
         if (stage == 5) {
@@ -4691,6 +4803,14 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
 }
 
 // ================================================================== draws
+// The largest of count 16- or 32-bit indices, the primitive restart index aside
+static uint32_t index_max(const void *src, uint32_t isz, uint32_t count, uint32_t restart) {
+    uint32_t m = 0;
+    if (isz == 2) { const uint16_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > m && s[i] != (uint16_t)restart) m = s[i]; }
+    else { const uint32_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > m && s[i] != restart) m = s[i]; }
+    return m;
+}
+
 // Quads / fans / polygons as a 32-bit triangle index list.
 static uint32_t *expand_indices(uint32_t mode, uint32_t count, const void *indices, int itype, uint32_t first, uint32_t *out_count) {
     uint32_t tris = mode == 7 ? count / 4 * 2 : count >= 3 ? count - 2 : 0;
@@ -4943,7 +5063,7 @@ static void fs_new(Prog *pr, uint32_t count) {
 static NvnTexture *movie_picture(Prog *pr) {
     NvnTexture *y = NULL, *uv = NULL;
     for (int i = 0; i < pr->fi->ntex; i++) {
-        NvnTexture *t = shader_texture_object(1, &pr->fi->tex[i]);
+        NvnTexture *t = draw_texture(1, pr->fi, i);
         if (t && t->format == 0x1) y = t;        // R8
         else if (t && t->format == 0xd) uv = t;  // RG8
     }
@@ -5132,6 +5252,7 @@ static void depth_bias_tell(const float f[3], bool depth_clamp) {
 }
 
 static void draw(CmdRec *r, bool indexed) {
+    dtex_si[0] = dtex_si[1] = NULL;  // (MHGU_PERF_TEXSCAN: the last draw's textures are no longer this one's)
     if (!st.program) { stat_skipped++; return; }
     if (shadow_skipped()) { stat_skipped++; return; }
     ShaderKey vkey = {0}, fkey = {0};
@@ -5150,6 +5271,7 @@ static void draw(CmdRec *r, bool indexed) {
     }
     fs_new(pr, (uint32_t)r->x[2]);
     if (fxaa_skipped(pr) || lowend_skipped(pr)) return;
+    if (perf.texscan) draw_textures(pr->vi, pr->fi);
     NvnTexture *movie = movie_picture(pr);
     uint32_t mode = (uint32_t)r->x[0];
     VkPrimitiveTopology topo;
@@ -5160,7 +5282,7 @@ static void draw(CmdRec *r, bool indexed) {
                       .depth_write = st.ds[0] && st.ds[1], .depth_test = st.ds[0] && st.ds[2] != 8,  // (8: Always)
                       .vubuf = &st.ubuf[0][0].addr, .nvubuf = 18,
                       .vp_w = st.viewport[0][2], .vp_h = st.viewport[0][3]};
-        for (int i = 0; i < pr->fi->ntex && fd.ntex < 16; i++) fd.tex[fd.ntex++] = shader_texture_object(1, &pr->fi->tex[i]);
+        for (int i = 0; i < pr->fi->ntex && fd.ntex < 16; i++) fd.tex[fd.ntex++] = draw_texture(1, pr->fi, i);
         vk_fsr_draw(&fd);
     }
 
@@ -5204,8 +5326,22 @@ static void draw(CmdRec *r, bool indexed) {
         TexBackend *c0 = st.rt.ncolor && st.rt.color[0] ? st.rt.color[0]->backend : NULL;
         if (c0 && (!pass_msaa || c0->ms_models) && full_picture(pass_w, pass_h)) c0->ms_models = g_present_count;
     }
-    bool created;
-    Pipe *pp = pipe_slot(&k, &created);
+    bool created = false;
+    Pipe *pp;
+    // (MHGU_PERF_PIPEMEMO) the same key as the last draw's: the same entry of pipe_tab, which only ever gains entries
+    static PipeKey memo_k;
+    static Pipe *memo_pp;
+    if (perf.pipememo && memo_pp && !memcmp(&memo_k, &k, sizeof k)) {
+        pp = memo_pp, stat_pipememo++;
+        if (perf_check) {
+            bool c;
+            stat_check_n++;
+            if (pipe_slot(&k, &c) != pp || c) check_bad("the memoised pipeline");
+        }
+    } else {
+        pp = pipe_slot(&k, &created);
+        if (perf.pipememo && pp) memo_k = k, memo_pp = pp;
+    }
     if (!pp) { stat_skipped++; return; }
     if (created) {
         pipe_record(pp);
@@ -5284,6 +5420,8 @@ static void draw(CmdRec *r, bool indexed) {
     // ---- indices (copied; the largest index bounds the vertex data copied below)
     uint32_t first = 0, count = (uint32_t)r->x[2], inst, base_inst, max_index = 0;
     int32_t base_vertex = 0;
+    const void *lazy_src = NULL;  // (MHGU_PERF_LAZYIDX) 16 / 32-bit indices whose largest is still to find
+    uint32_t lazy_isz = 0, lazy_restart = 0;
     VkSpan ib = {0};
     VkIndexType itype_vk = VK_INDEX_TYPE_UINT32;
     uint32_t icount = 0;
@@ -5309,9 +5447,10 @@ static void draw(CmdRec *r, bool indexed) {
         if (native && itype != 0) {
             itype_vk = itype == 1 ? VK_INDEX_TYPE_UINT16 : VK_INDEX_TYPE_UINT32;
             icount = count;
-            ib = vk_transient_copy(src, (uint64_t)count * isz + 4, 4);
-            if (isz == 2) { const uint16_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > max_index && s[i] != (uint16_t)restart) max_index = s[i]; }
-            else { const uint32_t *s = src; for (uint32_t i = 0; i < count; i++) if (s[i] > max_index && s[i] != restart) max_index = s[i]; }
+            ib = perf.idxcopy ? guest_copy_indices(iaddr, (uint64_t)count * isz + 4) : vk_transient_copy(src, (uint64_t)count * isz + 4, 4);
+            if (perf_check && perf.idxcopy && (stat_check_n++, memcmp(ib.ptr, src, (size_t)count * isz + 4))) check_bad("indices");
+            if (perf.lazyidx) lazy_src = src, lazy_isz = isz, lazy_restart = restart;  // (found below if a stream needs it)
+            else max_index = index_max(src, isz, count, restart);
         } else if (native) {  // 8-bit indices: widened to 16
             ib = vk_transient((uint64_t)count * 2 + 4, 4);
             uint16_t *w = ib.ptr;
@@ -5327,6 +5466,11 @@ static void draw(CmdRec *r, bool indexed) {
         }
         max_index += 1;
         if (base_vertex > 0) max_index += (uint32_t)base_vertex;
+    }
+    uint32_t chk_max = max_index;  // (MHGU_PERF_CHECK: the largest index as the old way finds it)
+    if (perf_check && lazy_src) {
+        chk_max = index_max(lazy_src, lazy_isz, count, lazy_restart) + 1;
+        if (base_vertex > 0) chk_max += (uint32_t)base_vertex;
     }
     if (use_index && ss_need(SS_IB, ss.ib == ib.buf && ss.io == ib.off && ss.it == itype_vk)) {
         ss.ib = ib.buf; ss.io = ib.off; ss.it = itype_vk;
@@ -5345,8 +5489,22 @@ static void draw(CmdRec *r, bool indexed) {
             uint64_t stride = k.stride[s], need;
             if (!stride) need = 256;
             else if (k.divisor[s]) need = ((uint64_t)base_inst + inst + k.divisor[s] - 1) / k.divisor[s] * stride + 256;
-            else need = (uint64_t)max_index * stride + 256;
+            else if (lazy_src && v.size && v.size <= (4u << 20)) need = v.size;  // (what the line below makes of any index)
+            else {
+                if (lazy_src) {  // (as the copy above would have found it)
+                    max_index = index_max(lazy_src, lazy_isz, count, lazy_restart) + 1;
+                    if (base_vertex > 0) max_index += (uint32_t)base_vertex;
+                    lazy_src = NULL, stat_lazy_scans++;
+                }
+                need = (uint64_t)max_index * stride + 256;
+            }
             if (v.size && (need > v.size || v.size <= (4u << 20))) need = v.size;
+            if (perf_check && perf.lazyidx && stride && !k.divisor[s]) {  // (the old way's)
+                uint64_t old = (uint64_t)chk_max * stride + 256;
+                if (v.size && (old > v.size || v.size <= (4u << 20))) old = v.size;
+                stat_check_n++;
+                if (old != need) check_bad("a vertex stream's copy size");
+            }
             VkBuffer cached;
             if (!v.addr || !guest_range_ok(v.addr, need)) { static const uint8_t zero[256]; sp = vk_transient_copy(zero, 256, 16); }
             else if (v.size && guest_range_ok(v.addr, v.size) && vcache(v.addr, v.size, &cached)) sp = (VkSpan){cached, 0, NULL};
@@ -5503,7 +5661,7 @@ static void copy_buffer_to_texture(uint64_t src, const TexRef *dst) {
     uint64_t row = 0, img = 0;
     copy_region_dims(t, dst, &fi, rg, &level, &row, &img);
     if (!fi || !fi->bpb) return;
-    if (getenv("MHGU_TEX_LOG")) {
+    if (perf.getenv ? perf_tex_log : getenv("MHGU_TEX_LOG") != NULL) {
         static int nlog;
         if (nlog++ < 40) LOG("[copy] buffer %llx -> tex fmt %#x %ux%u region %d,%d %dx%d lv %d row %llu img %llu (strides set %llu/%llu)\n",
                              (unsigned long long)src, t->format, t->width, t->height, rg[0], rg[1], rg[3], rg[4], level,
@@ -5827,7 +5985,7 @@ static void exec_list(uint64_t handle, int depth) {
         case CMD_SET_PRIMITIVE_RESTART: st.prim_restart = r->x[0] != 0; st.restart_index = (uint32_t)r->x[1]; break;
         case CMD_SET_DEPTH_CLAMP:
             st.depth_clamp = r->x[0] != 0;
-            if (getenv("MHGU_DUMP_VERBOSE")) {
+            if (perf.getenv ? perf_dump_verbose : getenv("MHGU_DUMP_VERBOSE") != NULL) {
                 static int n, last = -1;
                 if (st.depth_clamp != last && n++ < 20) LOG("[vk] depth clamp -> %d\n", st.depth_clamp);
                 last = st.depth_clamp;
@@ -5993,5 +6151,13 @@ void backend_execute(uint64_t handle) {
         stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = stat_a2c = 0;
         stat_set_new = stat_set_reused = 0;
         stat_exec_ns = stat_wait_ns = stat_copy_bytes = stat_upload_ns = stat_vc_hits = stat_vc_refresh = 0;
+        if (perf_check)
+            LOG("[perf] 2s check: %llu compared, %llu differed\n", (unsigned long long)stat_check_n, (unsigned long long)stat_check_bad);
+        stat_check_n = 0;
+        if (perf.pipememo || perf.idxcopy || perf.lazyidx)  // (MHGU_PERF_*: what the switches on did)
+            LOG("[perf] 2s: %llu draws took the last draw's pipeline, indices copied %.1f MB (%llu draws shared a copy), the "
+                "largest index found %llu times\n", (unsigned long long)stat_pipememo, stat_idx_bytes / 1048576.0,
+                (unsigned long long)stat_idx_shared, (unsigned long long)stat_lazy_scans);
+        stat_pipememo = stat_idx_bytes = stat_idx_shared = stat_lazy_scans = 0;
     }
 }
