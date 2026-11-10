@@ -2739,10 +2739,13 @@ static VkFormat vertex_format_supported(VkFormat f) {
         VkFormatProperties p;
         vkGetPhysicalDeviceFormatProperties(g_vk.phys, f, &p);
         known[i] = (p.bufferFeatures & VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) ? 1 : 2;
-        // (once per format, so a log tells whether a GPU takes this path: nothing makes the 4th component 1 there, #180)
-        if (known[i] == 2)
-            LOG("[vk] vertex format %d not supported: read as %d (4 components, the 4th from the next bytes)\n", (int)f,
-                (int)vertex_format_wide(f));
+        // (once per format, so a log tells whether a GPU takes this path: nothing makes the 4th component 1 there, #180;
+        // a format without a 4-component twin, such as B10G11R11, is read as R32G32B32A32_SFLOAT: its data misread)
+        if (known[i] == 2) {
+            VkFormat w = vertex_format_wide(f);
+            LOG("[vk] vertex format %d not supported: read as %d (%s)\n", (int)f, (int)w,
+                w == VK_FORMAT_R32G32B32A32_SFLOAT ? "a stand-in: its data misread" : "4 components, the 4th from the next bytes");
+        }
     }
     if (known[i] == 1) return f;
     return vertex_format_wide(f);
