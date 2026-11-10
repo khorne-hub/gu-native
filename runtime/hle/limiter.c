@@ -41,15 +41,18 @@ static struct {
     uint64_t spin0, spin1;   // the loop's first and last tick reads (0: none)
     uint64_t slept_ns;       // its sleep
     bool ours;               // that sleep was this file's
-    uint64_t late;           // how late sleeps woke up, a slow average
-} L = {.late = 300000};
+    uint64_t late, late_hi;  // how late sleeps woke up: a slow average; the latest that sinks back slowly (1/64 a sleep)
+} L = {.late = 300000, .late_hi = 300000};
 static struct {
-    uint64_t t0, frames, sleeps, ours, slept, spin, spin_max, late, late_n;
+    uint64_t t0, frames, sleeps, ours, slept, spin, spin_max, late, late_n, over, over_ns;
     _Atomic uint64_t others;
 } S;
 
+// How much sooner than the frame's time a sleep ends: the loop turns for it. Past the latest wake-ups seen lately, not
+// only their average: a sleep that ends after the frame's time makes the frame late, and the next one starts from there
+// (a desktop's timer, waking 0.2 ms late on average and more now and then, made 144 FPS 141 with the average alone)
 static uint64_t margin(void) {
-    uint64_t m = L.late + 100000;
+    uint64_t a = L.late + 100000, b = L.late_hi + 50000, m = a > b ? a : b;
     return m < 200000 ? 200000 : m > 2000000 ? 2000000 : m;
 }
 
@@ -59,15 +62,21 @@ static float left_ms(const Cpu *c) {
     return k * d;
 }
 
-static void sleep_until(Cpu *c, uint64_t until) {
+// (deadline: the frame's time, as the limiter's sum gives it)
+static void sleep_until(Cpu *c, uint64_t until, uint64_t deadline) {
     uint64_t t0 = plat_now_ns();
     plat_sleep_until_ns(until);
     uint64_t t1 = plat_now_ns(), late = t1 > until ? t1 - until : 0;
-    L.late = (L.late * 15 + (late < 3000000 ? late : 3000000)) / 16;
+    if (late > 3000000) late = 3000000;
+    L.late = (L.late * 15 + late) / 16;
+    L.late_hi = late > L.late_hi ? late : L.late_hi - L.late_hi / 64;
     L.wake = t1, L.slept_ns = t1 - t0, L.ours = true;
     g_blocked_ns += t1 - t0;  // (as the kernel's SleepThread)
     if (HITCH_ON) hitch_kwait(t1 - t0, 5, c);
-    if (g_log) S.late += late, S.late_n++;
+    if (g_log) {
+        S.late += late, S.late_n++;
+        if (t1 > deadline) S.over++, S.over_ns += t1 - deadline;
+    }
 }
 
 // (MHGU_LIMITER_LOG) the frame that ended: its sleep and the loop's turns after it
@@ -84,10 +93,12 @@ static void frame_done(void) {
     if (now - S.t0 < 5000000000ull || !S.frames) return;
     double s = (now - S.t0) / 1e9;
     LOG("[limiter] %.1f s: %llu frames, %llu slept (%llu here) %.2f ms on average, then the loop turned %.3f ms on average "
-        "(longest %.3f); sleeps woke %.0f us late on average, margin %.0f us; %.0f other tick reads a frame (%s)\n",
+        "(longest %.3f); sleeps woke %.0f us late on average, %llu past the frame's time (%.0f us on average), margin %.0f us; "
+        "%.0f other tick reads a frame (%s)\n",
         s, (unsigned long long)S.frames, (unsigned long long)S.sleeps, (unsigned long long)S.ours,
         S.sleeps ? S.slept / 1e6 / S.sleeps : 0.0, S.spin / 1e6 / S.frames, S.spin_max / 1e6,
-        S.late_n ? S.late / 1e3 / S.late_n : 0.0, margin() / 1e3, (double)atomic_load(&S.others) / S.frames,
+        S.late_n ? S.late / 1e3 / S.late_n : 0.0, (unsigned long long)S.over, S.over ? S.over_ns / 1e3 / S.over : 0.0,
+        margin() / 1e3, (double)atomic_load(&S.others) / S.frames,
         g_on ? "MHGU_PERF_LIMITER on" : "off: the game's own");
     memset(&S, 0, sizeof S);  // (others: an atomic of 8 bytes, zero is zero)
     S.t0 = now;
@@ -109,7 +120,7 @@ static void tick_hook(Cpu *c) {
             L.slept = true;
             float ms = left_ms(c);
             uint64_t left = ms > 0.0f && ms < 2.0f ? (uint64_t)((double)ms * 1e6) : 0, m = margin();
-            if (left > m + MIN_SLEEP_NS) sleep_until(c, now + left - m);
+            if (left > m + MIN_SLEEP_NS) sleep_until(c, now + left - m, now + left);
         }
     } else if (g_log) {
         atomic_fetch_add_explicit(&S.others, 1, memory_order_relaxed);
@@ -129,7 +140,7 @@ static void sleep_hook(Cpu *c) {
         uint64_t now = plat_now_ns(), left = (uint64_t)((double)ms * 1e6), m = margin(), want = left > m ? left - m : 0;
         if (want > asked + 2000000) want = asked + 2000000;
         if (want < asked) want = asked;  // (never shorter than the game's own: a margin over 1 ms)
-        sleep_until(c, now + want);
+        sleep_until(c, now + want, now + left);
         return;
     }
     uint64_t t0 = plat_now_ns();  // (the game's own sleep: the switch off, or a sum that is not this one's)
