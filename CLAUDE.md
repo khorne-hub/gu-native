@@ -477,7 +477,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   phones too (listed Hunter, Gold, Blue; the ini keeps `THEME_*`), one FPS preset list (30, 60, 90, 120, 144, 240), the
   titles in the phone's Noto Serif (`overlay.cpp`'s second font, `title_font`; a desktop has its one font), Credits &
   Licenses as lines between the rows (`note`), a chevron on a row that goes on, the hunt buttons at half while a menu of
-  the game's is open and those under the menu pad's tabs faded out with it (`under_mpad`), the item bar's arrows on by
+  the game's is open and those under the menu pad's tabs faded out with it (`under_mpad`), the hunt's d-pad (ShowDpad)
+  too wherever it is, the menu pad taking its place (`hit` skips it meanwhile; 4u-native #25), the picked row's help on
+  Buttons on the screen as on the tabs (`list_and_help`), the item bar's arrows on by
   default, one each side of the bar, as large as the room beside it allows (`item_arrow`; MH4U's `place_raw` has the
   same rule), and the same Spanish words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name,
   a text or a default changed in one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`,

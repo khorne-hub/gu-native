@@ -2396,6 +2396,8 @@ void touch_button_rows(std::vector<Row> &r) {
             r.back().key = TB_KEYS[i];
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
                 r.back().help = tr("The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.");
+            if (i == TB_DPAD)  // (both platforms, the MH4U port's words: the menu pad takes its place, touch.cpp under_mpad)
+                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place.");
 #ifndef __ANDROID__  // (the default ini says nothing of these two; a phone's: PHONE_HELP)
             if (i == TB_MENU_ZL)
                 r.back().help = tr("With the menu pad, a ZL tab above its left one (L when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.");
@@ -3722,6 +3724,25 @@ void touch_panel(bool *open, const Config &before) {
     };
     ImRect list_rect, help_rect;
     bool side_help = false;
+    // the help of the row picked, beside the rows from lx (a wide screen) or under them: on the tabs and on Buttons on
+    // the screen, whose rows say what each does (as in the MH4U port)
+    auto list_and_help = [&](float lx) {
+        float help_w = f * 14;
+        side_help = end - lx - help_w - pad >= f * 25;
+        if (side_help) {
+            list_rect = ImRect(lx, top, end - help_w - pad, bottom);
+            help_rect = ImRect(end - help_w, top, end, bottom);
+        } else {
+            float small = std::floor(f * .8f), hw = end - lx - pad * 2, tall = small * 3.4f;
+            for (const Row &r : rows)  // (as tall as the page's longest help: nothing shows it otherwise on a phone)
+                if (!r.header)
+                    tall = std::max(tall, ImGui::GetFont()->CalcTextSizeA(small, FLT_MAX, std::max(f * 4, hw * .7f), help_text(r).c_str()).y);
+            float box = std::min(tall + f * .55f * 1.7f, (bottom - top) * .45f);  // (touch_help's own padding)
+            list_rect = ImRect(lx, top, end, bottom - box - pad);
+            help_rect = ImRect(lx, bottom - box, end, bottom);
+        }
+    };
+    bool with_help = s.view == View::Main || s.view == View::TouchButtons;
     if (s.view == View::Main) {
         float tw = 0;
         for (const char *name : page_names)
@@ -3752,20 +3773,9 @@ void touch_panel(bool *open, const Config &before) {
             ImVec2 ts = font->CalcTextSizeA(text, FLT_MAX, 0, name);
             shadow_text(dl, text, ImVec2(r.Min.x + f * .95f, cy - ts.y * .5f), active ? bright : k.dim, name);
         }
-        float lx = left + tw + pad * 1.4f, help_w = f * 14;
-        side_help = end - lx - help_w - pad >= f * 25;
-        if (side_help) {
-            list_rect = ImRect(lx, top, end - help_w - pad, bottom);
-            help_rect = ImRect(end - help_w, top, end, bottom);
-        } else {
-            float small = std::floor(f * .8f), hw = end - lx - pad * 2, tall = small * 3.4f;
-            for (const Row &r : rows)  // (as tall as the page's longest help: nothing shows it otherwise on a phone)
-                if (!r.header)
-                    tall = std::max(tall, ImGui::GetFont()->CalcTextSizeA(small, FLT_MAX, std::max(f * 4, hw * .7f), help_text(r).c_str()).y);
-            float box = std::min(tall + f * .55f * 1.7f, (bottom - top) * .45f);  // (touch_help's own padding)
-            list_rect = ImRect(lx, top, end, bottom - box - pad);
-            help_rect = ImRect(lx, bottom - box, end, bottom);
-        }
+        list_and_help(left + tw + pad * 1.4f);
+    } else if (s.view == View::TouchButtons) {
+        list_and_help(left);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)
         ImRect field(left, top, end, top + f * 2.3f);
         dl->AddRectFilled(field.Min, field.Max, IM_COL32(14, 10, 8, 235));
@@ -3825,7 +3835,7 @@ void touch_panel(bool *open, const Config &before) {
         list->DrawList->AddRectFilled(list->Pos, ImVec2(list->Pos.x + list->Size.x, list->Pos.y + list->Size.y),
                                       IM_COL32(0, 0, 0, 150));
     ImGui::EndChild();
-    if (s.view == View::Main)
+    if (with_help)
         touch_help(dl, help_rect, rows, side_help);
     if (later)
         later();
