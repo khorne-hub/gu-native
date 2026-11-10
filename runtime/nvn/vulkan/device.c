@@ -1436,6 +1436,22 @@ bool vk_present_again(void) {
     return true;
 }
 
+// (runtime/overlay.cpp, the settings menu holding the game with MHGU_PERF_MENU_PRESENT=1) the window needs a present
+// whatever the menu shows: back from the background (a new surface to make), no swapchain, the window's size or the
+// VSync setting changed (frame_begin makes it again)
+bool vk_present_needed(void) {
+#ifdef __ANDROID__
+    if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE)) return true;
+#endif
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(ui_window(), &w, &h);
+    vk_lock();
+    bool need = !g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
+                config_live_vsync() != swapchain_vsync;
+    vk_unlock();
+    return need;
+}
+
 // ================================================================== init
 void vk_exec_init(void);
 void vk_shaders_init(void);

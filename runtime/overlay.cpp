@@ -59,6 +59,12 @@ static int g_menu_key;
 static float g_font_size;
 static ImGuiStyle g_base_style;  // (unscaled; scaled copies follow the window's height)
 static float g_scale;
+#ifdef __ANDROID__
+// MHGU_PERF_MENU_PRESENT=1: while the settings menu holds the game, the held picture is presented again only when the
+// menu's frame changed (snap_same), when the window needs one (back from the background, a new size: vk_present_needed)
+// and once a second; the menu is still built 60 times a second, so it moves as before. 0 (the default): every pass
+static bool g_perf_menu_present, g_perf_menu_log;  // (log: the variable set, 0 or 1: the hold's presents counted)
+#endif
 
 // ------------------------------------------------------------------ input (main thread -> game thread)
 struct Ev {
@@ -452,6 +458,13 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
     ImGui::GetStyle().FontSizeBase = g_font_size;
     g_base_style = ImGui::GetStyle();
     g_menu_key = menu_key;
+#ifdef __ANDROID__
+    {
+        const char *e = getenv("MHGU_PERF_MENU_PRESENT");  // (read once: the menu hold's presents, menu_holds_game)
+        g_perf_menu_present = e && atoi(e) == 1, g_perf_menu_log = e != nullptr;
+        if (e) LOG("[perf] MHGU_PERF_MENU_PRESENT=%d\n", (int)g_perf_menu_present);
+    }
+#endif
     g_enabled = true;
     LOG("[forge] ImGui %s overlay: %s opens the menu (font %s, %.0f px)\n", IMGUI_VERSION,
         SDL_GetScancodeName((SDL_Scancode)menu_key), font ? font_path : "ImGui's", g_font_size);
@@ -646,10 +659,40 @@ static void snap_clear(void) {
 }
 
 static void frame_once(void *cpu);
+// (MHGU_PERF_MENU_PRESENT=1, the settings menu holding the game) the frames built since the start whose draw lists
+// differ from the one before (or that uploaded a texture): the hold presents the last picture again only when this
+// moved, so an unchanged menu is not drawn into the window again with the very same pixels
+static uint64_t g_snap_seq;
+static bool g_snap_compare;  // (set by the hold: frame_once compares each new frame with the one before)
+// Every ImDrawList the render thread would draw, byte for byte (the commands, their textures and clip rectangles, the
+// indices and the vertices) and the display's place and size: the same picture
+static bool snap_same(const ImDrawData *dd) {
+    if (!g_snap.Valid || g_snap.CmdListsCount != dd->CmdListsCount || g_snap.TotalVtxCount != dd->TotalVtxCount ||
+        g_snap.TotalIdxCount != dd->TotalIdxCount || g_snap.CmdLists.Size != dd->CmdLists.Size)
+        return false;
+    if (memcmp(&g_snap.DisplayPos, &dd->DisplayPos, sizeof dd->DisplayPos) ||
+        memcmp(&g_snap.DisplaySize, &dd->DisplaySize, sizeof dd->DisplaySize) ||
+        memcmp(&g_snap.FramebufferScale, &dd->FramebufferScale, sizeof dd->FramebufferScale))
+        return false;
+    for (int i = 0; i < dd->CmdLists.Size; i++) {
+        const ImDrawList *a = dd->CmdLists[i], *b = g_snap.CmdLists[i];
+        if (a->CmdBuffer.Size != b->CmdBuffer.Size || a->IdxBuffer.Size != b->IdxBuffer.Size ||
+            a->VtxBuffer.Size != b->VtxBuffer.Size || a->Flags != b->Flags)
+            return false;
+        for (const ImDrawCmd &c : a->CmdBuffer)
+            if (c.UserCallback) return false;  // (a callback's data is not copied with the list: never taken as the same)
+        if (memcmp(a->CmdBuffer.Data, b->CmdBuffer.Data, (size_t)a->CmdBuffer.Size * sizeof(ImDrawCmd)) ||
+            memcmp(a->IdxBuffer.Data, b->IdxBuffer.Data, (size_t)a->IdxBuffer.Size * sizeof(ImDrawIdx)) ||
+            memcmp(a->VtxBuffer.Data, b->VtxBuffer.Data, (size_t)a->VtxBuffer.Size * sizeof(ImDrawVert)))
+            return false;
+    }
+    return true;
+}
 #ifdef __ANDROID__
 extern "C" bool ldn_net_up(void);
 extern "C" void vi_menu_hold(bool on);
 extern "C" bool vk_present_again(void);
+extern "C" bool vk_present_needed(void);
 extern "C" uint64_t vk_last_present_ns(void);
 // The settings menu is open and the player plays alone ([Application] PauseInMenu; never with others: a Local Play or
 // hub network up)
@@ -669,6 +712,8 @@ void overlay_frame(void *cpu) {
     if (menu_holds_game()) {
         vi_menu_hold(true);
         uint64_t next = plat_now_ns();
+        uint64_t shown_seq = ~0ull, shown_ns = 0, skipped = 0, presented = 0;  // (MHGU_PERF_MENU_PRESENT)
+        g_snap_compare = g_perf_menu_present;
         while (menu_holds_game()) {
             next += 16666667;
             uint64_t now = plat_now_ns();
@@ -676,8 +721,20 @@ void overlay_frame(void *cpu) {
             plat_sleep_until_ns(next);
             vi_pause_game();  // (the app went to the background meanwhile)
             frame_once(cpu);
-            if (plat_now_ns() - vk_last_present_ns() > 50000000ull) vk_present_again();
+            now = plat_now_ns();
+            if (now - vk_last_present_ns() > 50000000ull) {
+                if (!g_perf_menu_present || g_snap_seq != shown_seq || now - shown_ns >= 1000000000ull || vk_present_needed()) {
+                    if (vk_present_again()) shown_seq = g_snap_seq, shown_ns = now;
+                    presented++;
+                } else {
+                    skipped++;
+                }
+            }
         }
+        g_snap_compare = false;
+        if (g_perf_menu_log)
+            LOG("[perf] menu hold: %llu presents, %llu unchanged frames not presented again\n", (unsigned long long)presented,
+                (unsigned long long)skipped);
         vi_menu_hold(false);
     }
 #endif
@@ -706,7 +763,7 @@ static void frame_once(void *cpu) {
     bool fading = settings_panel_fading();  // (the settings menu closed a moment ago: fading out, taking no input)
     if (!open && !free_render && !notice && !chat && !touch && !stats && !credits && !fading) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
-        if (g_snap.Valid) snap_clear();
+        if (g_snap.Valid) snap_clear(), g_snap_seq++;
         apply_input(io);  // (keep the queue short)
         g_last_ns = 0;
         return;
@@ -779,6 +836,7 @@ static void frame_once(void *cpu) {
     settings_panel_after_render(ImGui::GetDrawData());
 
     ImDrawData *dd = ImGui::GetDrawData();
+    bool uploaded = false;
     if (dd->Textures)  // (texture uploads: on this thread, between the render thread's submissions)
         for (ImTextureData *tex : *dd->Textures)
             if (tex->Status != ImTextureStatus_OK) {
@@ -787,8 +845,10 @@ static void frame_once(void *cpu) {
                 ImGui_ImplVulkan_UpdateTexture(tex);
                 if (HITCH_ON) hitch_add(HC_OVERLAY_TEX, hitch_now() - t0, (uint64_t)tex->Width * tex->Height * 4);
                 vk_unlock();
+                uploaded = true;
             }
     std::lock_guard<std::mutex> l(g_snap_lock);
+    if (uploaded || !g_snap_compare || !snap_same(dd)) g_snap_seq++;  // (MHGU_PERF_MENU_PRESENT: a new picture)
     snap_clear();
     for (ImDrawList *list : dd->CmdLists) g_snap.CmdLists.push_back(list->CloneOutput());
     g_snap.CmdListsCount = dd->CmdListsCount;
