@@ -1238,6 +1238,8 @@ static uint32_t pass_ncolor, pass_samples = 1, pass_w, pass_h;
 static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out from under the game's scissor
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
                                // and its scissor moves with it
+static bool ui_scissor_mid;    // wider than 16:9: the draw being set up is a piece kept in the middle 16:9 (the Meownster
+                               // Hunters' map), and its scissor narrows about the middle with it
 static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows of layer 100 then sit beside Top-anchored ones)
 // The HUD quads this pass drew last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left /
 // 1 right / 2 centre): a model preview follows the window drawn over it (ui_preview_map)
@@ -2327,6 +2329,16 @@ static VkRect2D scissor_rect(void) {
             float off = ui_scissor_v == 0 ? 0.0f : ui_scissor_v == 2 ? ph * (1.0f - sy) : ph * 0.5f * (1.0f - sy);
             y = (int)floorf(off + y0 * sy);
             sh = (int)ceilf(off + y1 * sy) - y;
+        }
+    }
+    if (ui_scissor_mid && !ui_relax_scissor && g_render_aspect > 16.0f / 9.0f) {
+        float pw, ph;
+        pass_guest_size(&pw, &ph);
+        if (x > 0 || sw < (int)pw) {
+            float k = (16.0f / 9.0f) / g_render_aspect, cx = pw * 0.5f;
+            float x0 = cx + ((float)x - cx) * k, x1 = cx + ((float)(x + sw) - cx) * k;
+            x = (int)floorf(x0);
+            sw = (int)ceilf(x1) - x;
         }
     }
     {
@@ -3773,7 +3785,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
     if (size > r.size && r.size) size = r.size;
     if (size < 16) size = 16;
     if (!guest_range_ok(r.addr, size)) return zero_ubo(size);
-    if (stage == 0 && k == 3) ui_relax_scissor = false, ui_scissor_v = -1;
+    if (stage == 0 && k == 3) ui_relax_scissor = false, ui_scissor_v = -1, ui_scissor_mid = false;
     if (stage == 0 && k == 3 && !st.ds[0] && (pass_h == g_render_size[1] || pass_sy != 1.0f)) {  // (FSR: stand-ins)
         // (touch controls: their HUD parts at 16:9 too. At 16:9 without them nothing moves but a part the player moved,
         // sized or hid (HudPlace.custom), and the touch layer is still told where the hunt's parts are and when a menu is
@@ -3844,6 +3856,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                 float part_k = 1.0f;        // (its size)
                 bool window_piece = false;  // (a menu window's, layer 97 / 98: hud_on_window)
                 bool hud_hidden = false;    // (a part hidden, or on a menu's window: not drawn)
+                bool meownster_mid = false; // (the Meownster Hunters' map and what is on it: kept in the middle 16:9)
                 hud_new_frame();
                 bool grouped = false;
                 int vgroup = 1;
@@ -4005,8 +4018,15 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                     // reward list over it (100), the Reward List header and the prompts at the bottom. Layer 100 went to the
                     // bottom with its rule: the tokens sat too low on the map, the lead Palico below the frame, and the
                     // frame's lower edge slid away from it. All of it but the header and prompts (below y 600) goes top.
+                    // Sideways it is one picture too, in the middle 16:9 (the launch screen as well, with its range circles on
+                    // the map): by layer the frame and the map went Right and the circles and icons Left or by their place, so
+                    // at 21:9 and Edges the circles slid off the map, out of its frame, cut by the map's scissor left where the
+                    // game laid it out (#143). Its scissor narrows about the middle with it (ui_scissor_mid)
                     if (fabsf(pos_z - 105.0f) < 0.5f && pos_x == 215.0f && pos_y == 0.0f) ui_meownster_pass = true;
-                    if (ui_meownster_pass && pos_z > 97.5f && pos_z < 105.5f) vanchor = pos_y > 600.0f ? V_BOTTOM : V_TOP;
+                    if (ui_meownster_pass && pos_z > 97.5f && pos_z < 105.5f) {
+                        vanchor = pos_y > 600.0f ? V_BOTTOM : V_TOP;
+                        if (pos_y <= 600.0f) anchor = ANCHOR_CENTER, meownster_mid = true;
+                    }
                     // The loading backdrop's tiles (x -30, 549, 1128...: one every 579, past 1280) are one picture sideways
                     // too, from the screen's left edge: by place they went Left / Centre / Right, three copies with gaps
                     // between them with Edges / 21:9; centred (or Center), nothing covered the left of the first tile.
@@ -4116,6 +4136,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                     int gv = !grouped ? -1 : ui_group.predict >= 0 ? ui_group.predict : ui_group_vanchor();
                     ui_scissor_v = gv >= 0 ? gv : vgroup;
                 }
+                if (s < 1.0f && meownster_mid) ui_scissor_mid = true;
                 return ubo_span(sp, size);
             }
         }
@@ -4880,9 +4901,9 @@ static void draw(CmdRec *r, bool indexed) {
         ss.sets_layout = pr->layout, memcpy(ss.sets, sets, sizeof sets);
         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pr->layout, 0, 2, sets, 0, NULL);
     }
-    if (ui_relax_scissor || ui_scissor_v >= 0) {  // (set while the constants above were built: for this draw only; the
-        apply_scissor(cb);                         // next draw and any clear before it get the game's scissor again)
-        ui_relax_scissor = false, ui_scissor_v = -1;
+    if (ui_relax_scissor || ui_scissor_v >= 0 || ui_scissor_mid) {  // (set while the constants above were built: for this
+        apply_scissor(cb);                         // draw only; the next draw and any clear before it get the game's scissor again)
+        ui_relax_scissor = false, ui_scissor_v = -1, ui_scissor_mid = false;
     }
 
     // ---- indices (copied; the largest index bounds the vertex data copied below)
