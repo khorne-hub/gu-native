@@ -1417,7 +1417,9 @@ void host_input_update(void) {
     rstick_was = rstick;
     if (rstick && !r3_targets) b &= ~B(BTN_RSTICK);
     b |= touch_lock_buttons(b, mouse_moved || (int64_t)rx * rx + (int64_t)ry * ry > 12000LL * 12000);  // (round: as the game's)
-    b = touch_lock_shot(b);  // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp)
+    // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp; standing still, no stick
+    // past a quarter, as 0.1.8 aimed it)
+    b = touch_lock_shot(b, (int64_t)lx * lx + (int64_t)ly * ly < 8192LL * 8192);
     // (the touch controls' menu pad: what it alone presses the game reads only while a menu takes input, hle/input.c)
     uint64_t menu_only = touch_menu_buttons() & ~b;
     b |= menu_only;

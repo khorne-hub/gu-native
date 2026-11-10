@@ -85,6 +85,7 @@ bool touch_lock_engaged(void); // (the lock-on is on, menus and all: off, the mo
 bool touch_lock_assist(void);  // (a locked shot holds R for its aim now, from any input: touch_lock_shot)
 bool touch_lock_assist_waiting(void);  // (...and waits for that aim to come up)
 bool touch_lock_player_aims(void);     // (a bowgun aimed with the player's own R, from any input: no locked shot)
+bool touch_lock_still(void);          // (a locked shot standing still, 0.1.8's: the hunter turned to the monster)
 #define LOCK_AFTER_TURN 600000000ull  // (a turn the game made: the follow waits this long, as after one by hand)
 static volatile uint64_t g_turn_ns;   // the game's last turn (camera_stick)
 static uint32_t g_cam_seen;
@@ -370,6 +371,11 @@ void mousecam_lock_shot(void) {
         // shot, or before them. Not the player's own R; not during a turn by hand (the aim is theirs); not once B, X or Y
         // ended it: a dodge, a reload, crouching fire, a sheathe go where the player sends them
         armed = fire_was = false;
+        // (a shot standing still: as 0.1.8 turned it, in an aim's actions, the help's aim, or the shot itself)
+        if (touch_lock_still() && touch_lock_active() && !touch_lock_player_aims()) {
+            if (weapon_aim_action(h) || touch_lock_assist() || weapon_moving(h)) aim_at_monster(h);
+            return;
+        }
         if (touch_lock_player_aims() || !touch_lock_assist() || !touch_lock_active()) return;
         if (!touch_lock_assist_waiting() && !weapon_aiming(h) && !weapon_moving(h) && mousecam_hunt_camera()) return;
         aim_at_monster(h);

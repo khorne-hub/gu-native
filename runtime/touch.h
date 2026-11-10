@@ -50,7 +50,7 @@ bool touch_lock_engaged(void);  // the lock-on is on, menus and pauses aside (hl
 uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input);
 // a locked shot, after touch_lock_buttons: given every button pressed now, the ones the game gets (with the lock-on on,
 // a bowgun's shot is aimed first: R held, the fire button held back until the aim; host_input.c)
-uint64_t touch_lock_shot(uint64_t buttons);
+uint64_t touch_lock_shot(uint64_t buttons, bool still);  // (still: no stick from any input)
 // one of the game's menus is open (the item box, a shop, the title...: their cursor moves with the d-pad), as the touch
 // controls tell it for their menu pad, whether they show or not (updated by touch_input, each update)
 bool touch_game_menu(void);
