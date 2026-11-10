@@ -124,8 +124,10 @@ static volatile uint64_t g_followed_ns;  // when the camera last turned to it (m
 
 // Dead or captured: never followed. The game's own test (main 0x27ffb8, by which the Target Cam leaves a monster): the
 // monster's state +0x73e0 is 0xb or 0xe (dead), or 0xc with +0x73e1 0xff (captured), as the MH4U port's INFO_STATE;
-// or, +0xb5f7 0 and +0xb5f4 9, bit 0 of its status block's +0x1bb
+// or, +0xb5f7 0 and +0xb5f4 9, bit 0 of its status block's +0x1bb. And no health left: the status block's +0x370 (+0x374
+// the most; seen falling with each hit in the Arena, 2026-11-09)
 static bool monster_down(uint32_t en, uint32_t info) {
+    if ((int32_t)LD32(info + 0x370) <= 0) return true;
     uint32_t st = LD8(en + 0x73e0);
     if (st == 0xb || st == 0xe || (st == 0xc && LD8(en + 0x73e1) == 0xff)) return true;
     return LD8(en + 0xb5f7) == 0 && LD8(en + 0xb5f4) == 9 && (LD8(info + 0x1bb) & 1);
