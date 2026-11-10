@@ -2323,8 +2323,25 @@ static void models_fxaa_track(bool models) {
     if (!mf_tex && models) models_fxaa_begin(t);
 }
 
+static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, const int *att_index, uint32_t n, VkClearValue cv[9]);
+static TexBackend *depth_clear_pending;
+static void depth_clear_now(void);
+static void at_written(void);
+static struct { TexBackend *dst, *src; } fill;  // (MHGU_PERF_HUDSTART_FUSE & 2) H' to be scaled from H, not done yet
+static int fill_index = -1;                    // the colour target the pass beginning draws it into (begin_pass)
+static void fill_now(void);
+static void fill_draw(VkCommandBuffer cb, TexBackend *src, VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth,
+                      uint32_t samples, uint32_t w, uint32_t h);
+
 // Before a draw / dispatch: the textures it samples up to date (attachments of the pass: resolve_feedback).
 static NvnTexture *shader_texture_object(int stage, ShaderTexture *t);
+static void fill_sampled_stage(int stage, ShaderInfo *si) {
+    for (int i = 0; i < si->ntex && fill.dst; i++) {
+        NvnTexture *t = shader_texture_object(stage, &si->tex[i]);
+        if (t && g_fsr_on) t = vk_fsr_map(t, false);
+        if (t && t->backend == fill.dst) fill_now();
+    }
+}
 static void ms_resolve_sampled(int stage, ShaderInfo *si) {
     for (int i = 0; i < si->ntex; i++) {
         NvnTexture *t = shader_texture_object(stage, &si->tex[i]);
@@ -2361,11 +2378,6 @@ static uint32_t noload_clears(uint32_t w, uint32_t h, bool stencil, VkClearValue
     }
     return got;
 }
-
-static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, const int *att_index, uint32_t n, VkClearValue cv[9]);
-static TexBackend *depth_clear_pending;
-static void depth_clear_now(void);
-static void at_written(void);
 
 static void begin_pass(void) {
     if (in_pass && !st.rt_dirty) return;
@@ -2536,6 +2548,8 @@ static void begin_pass(void) {
         stat_ro_passes++;
         for (uint32_t k = 0; k < nviews && depth_clear_pending; k++)
             if (att[k] == depth_clear_pending) depth_clear_now();
+        for (uint32_t k = 0; k < nviews && fill.dst; k++)
+            if (att[k] == fill.dst) fill_now();
     } else {  // (MHGU_PERF_*: more attachments begun cleared, where what the pass draws first covers them whole anyway)
         VkClearValue pv[9];
         uint32_t more = perf_noload(minw, minh, att, att_index, nviews, pv);
@@ -2555,6 +2569,10 @@ static void begin_pass(void) {
     vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
     ss_forget();
     in_pass = true;
+    if (fill_index >= 0) {  // (MHGU_PERF_HUDSTART_FUSE & 2: H scaled into H' as the pass's first draw)
+        fill_draw(cb, fill.src, pass_rp, (uint32_t)fill_index, pass_ncolor, pass_depth, pass_samples, minw, minh);
+        fill.dst = fill.src = NULL, fill_index = -1;
+    }
     pass_draws_at = stat_draws;
     lost_pass(minw, minh, pass_ncolor ? pass_color[0] : VK_FORMAT_UNDEFINED, pass_ncolor, pass_depth, pass_samples);
     if (g_dump_active) {  // (debug) the pass's targets: texture object, size, NVN format
@@ -4778,6 +4796,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     vk_end_pass();
     st.rt_dirty = true;
     ms_resolve_sampled(5, cp->si);
+    if (fill.dst) fill_sampled_stage(5, cp->si);
     VkCommandBuffer cb = vk_cmd();
     vk_full_barrier(cb);
     nfeedback = 0;
@@ -5529,8 +5548,216 @@ static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, cons
             got |= 1u << 8;
         } else depth_clear_now();
     }
+    for (uint32_t k = 0; k < n && fill.dst; k++) {
+        if (att[k] != fill.dst) continue;
+        int i = att_index[k];
+        if (i >= 0 && ((pass_noload >> i) & 1)) {  // (the game clears it whole as the pass begins: nothing to scale into it)
+            fill.dst = fill.src = NULL;
+        } else if (i >= 0 && w == att[k]->width && h == att[k]->height && !pass_msaa && pass_samples == 1 &&
+                   pass_color[i] == att[k]->format) {
+            fill_index = i;
+            cv[i].color = (VkClearColorValue){{0, 0, 0, 0}};
+            got |= 1u << i;
+        } else fill_now();
+    }
     if (perf.shadow_clear) got |= at_noload(w, h, att, att_index, n, cv);
     return got;
+}
+
+// ---- (MHGU_PERF_HUDSTART_FUSE & 2, fsr.c hud_start) Plain scaling: the 3D picture H is scaled into its output-size stand-in
+// H' as the first draw of the HUD's pass (fill_draw: a full-screen triangle sampling H bilinearly at each pixel's centre,
+// the pass begun cleared under it) instead of by a blit before it, which that pass then read back in. Only once the two
+// were compared on this GPU: the first frame scaled so also draws into a picture of its own, and both are read back
+// (fill_check): every byte the same, or the blit stays. Anything else that reads H' first gets the blit (fill_now).
+enum { FILL_UNKNOWN, FILL_CHECKING, FILL_OK, FILL_OFF };
+static struct {
+    int state;
+    uint32_t sw, sh, dw, dh;  // (the sizes and format it was checked with)
+    VkFormat f;
+    TexBackend scratch;
+    VkBuffer buf;
+    VmaAllocation mem;
+    void *ptr;
+    uint64_t seq;
+} fc;
+static VkDescriptorSetLayout fill_set_layout;
+static VkPipelineLayout fill_layout;
+
+static VkPipeline fill_pipeline(VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth, uint32_t samples) {
+    static struct { VkRenderPass rp; uint32_t index; VkPipeline p; } tab[16];
+    static int n;
+    for (int i = 0; i < n; i++) if (tab[i].rp == rp && tab[i].index == index) return tab[i].p;
+    if (!fill_layout) {
+        VkDescriptorSetLayoutBinding b = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
+        VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 1, .pBindings = &b};
+        VK_CHECK(vkCreateDescriptorSetLayout(g_vk.dev, &li, NULL, &fill_set_layout));
+        VkPushConstantRange r = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16};
+        VkPipelineLayoutCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1,
+                                         .pSetLayouts = &fill_set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &r};
+        VK_CHECK(vkCreatePipelineLayout(g_vk.dev, &ci, NULL, &fill_layout));
+    }
+    char fs[32];
+    snprintf(fs, sizeof fs, "fill.frag.%u", index);
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
+         .module = vk_builtin_shader("resolve.vert"), .pName = "main"},
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+         .module = vk_builtin_shader(fs), .pName = "main"}};
+    VkPipelineVertexInputStateCreateInfo vi = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo ia = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+                                                 .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
+    VkPipelineViewportStateCreateInfo vs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, .viewportCount = 1,
+                                            .scissorCount = 1};
+    VkPipelineRasterizationStateCreateInfo rs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                                                 .polygonMode = VK_POLYGON_MODE_FILL, .lineWidth = 1};
+    VkPipelineMultisampleStateCreateInfo ms = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                                               .rasterizationSamples = (VkSampleCountFlagBits)samples};
+    VkPipelineDepthStencilStateCreateInfo ds = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+    VkPipelineColorBlendAttachmentState att[8] = {{0}};
+    for (uint32_t i = 0; i < ncolor && i < 8; i++) att[i].colorWriteMask = i == index ? 0xF : 0;
+    VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                                              .attachmentCount = ncolor, .pAttachments = att};
+    VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dy = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, .dynamicStateCount = 2,
+                                           .pDynamicStates = dyn};
+    VkGraphicsPipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = 2,
+                                       .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia,
+                                       .pViewportState = &vs, .pRasterizationState = &rs, .pMultisampleState = &ms,
+                                       .pDepthStencilState = depth != VK_FORMAT_UNDEFINED ? &ds : NULL, .pColorBlendState = &cb,
+                                       .pDynamicState = &dy, .layout = fill_layout, .renderPass = rp};
+    VkPipeline p = VK_NULL_HANDLE;
+    if (sync_pipeline(&pi, &p) != VK_SUCCESS) LOG("[vk] scaling pipeline failed\n");
+    if (n < 16) tab[n].rp = rp, tab[n].index = index, tab[n++].p = p;
+    return p;
+}
+
+// (inside a pass of rp's kind, w x h) src scaled over colour target index, as vkCmdBlitImage LINEAR would
+static void fill_draw(VkCommandBuffer cb, TexBackend *src, VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth,
+                      uint32_t samples, uint32_t w, uint32_t h) {
+    static const VkComponentMapping id = {0};
+    VkPipeline p = fill_pipeline(rp, index, ncolor, depth, samples);
+    VkImageView v = vk_image_view(src, VK_IMAGE_VIEW_TYPE_2D, src->format, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    if (!p || !v) return;
+    VkDescriptorSet set = vk_alloc_set(fill_set_layout);
+    VkDescriptorImageInfo ii = {vk_default_sampler(true), v, VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSet wr = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = 0, .descriptorCount = 1,
+                               .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii};
+    vkUpdateDescriptorSets(g_vk.dev, 1, &wr, 0, NULL);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fill_layout, 0, 1, &set, 0, NULL);
+    VkViewport vp = {0, 0, (float)w, (float)h, 0, 1};
+    VkRect2D area = {{0, 0}, {w, h}};
+    vkCmdSetViewport(cb, 0, 1, &vp);
+    vkCmdSetScissor(cb, 0, 1, &area);
+    float pc[4] = {1.0f / (float)w, 1.0f / (float)h, 0, 0};
+    vkCmdPushConstants(cb, fill_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, 16, pc);
+    vkCmdDraw(cb, 3, 1, 0, 0);
+    ss_forget();  // (its own pipeline, set and state: the next draw sets them all again)
+}
+
+// The blit, as fsr.c scale_to_stand does it (outside a pass)
+static void fill_blit(TexBackend *s, TexBackend *d) {
+    VkCommandBuffer cb = vk_cmd();
+    vk_full_barrier(cb);
+    VkImageBlit r = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)s->width, (int32_t)s->height, 1}},
+                     .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)d->width, (int32_t)d->height, 1}}};
+    vkCmdBlitImage(cb, s->image, VK_IMAGE_LAYOUT_GENERAL, d->image, VK_IMAGE_LAYOUT_GENERAL, 1, &r, VK_FILTER_LINEAR);
+    vk_full_barrier(cb);
+}
+
+static void fill_now(void) {  // (H' read before a pass drew it in: the blit, now)
+    if (!fill.dst) return;
+    vk_end_pass();
+    st.rt_dirty = true;
+    fill_blit(fill.src, fill.dst);
+    fill.dst = fill.src = NULL;
+}
+void vk_color_fill_flush(TexBackend *b) { if (fill.dst && (!b || b == fill.dst)) fill_now(); }
+void vk_color_fill_forget(TexBackend *b) { if (fill.dst == b || fill.src == b) fill.dst = fill.src = NULL; }
+
+// (FILL_CHECKING, its copies done) the blit's picture and the draw's: the same bytes
+static void fill_check(void) {
+    vmaInvalidateAllocation(g_vk.vma, fc.mem, 0, VK_WHOLE_SIZE);
+    const uint8_t *a = fc.ptr, *b = a + (size_t)fc.dw * fc.dh * 4;
+    uint64_t n = (uint64_t)fc.dw * fc.dh * 4, ndiff = 0;
+    int mx = 0;
+    for (uint64_t i = 0; i < n; i++)
+        if (a[i] != b[i]) {
+            ndiff++;
+            int d = a[i] > b[i] ? a[i] - b[i] : b[i] - a[i];
+            if (d > mx) mx = d;
+        }
+    vk_defer_buffer(fc.buf, fc.mem);
+    fc.buf = VK_NULL_HANDLE;
+    vk_views_forget(&fc.scratch);
+    vk_defer_image(fc.scratch.image, fc.scratch.mem);
+    fc.scratch.image = VK_NULL_HANDLE;
+    fc.state = ndiff ? FILL_OFF : FILL_OK;
+    LOG("[perf] HUD start %ux%u -> %ux%u: the scaling draw %s the blit%s\n", fc.sw, fc.sh, fc.dw, fc.dh,
+        ndiff ? "differs from" : "gives the same bytes as", ndiff ? ": the blit stays" : ": drawn in the HUD's pass from now on");
+    if (ndiff) LOG("[perf] HUD start: %llu of %llu bytes differ, by %d at most\n", (unsigned long long)ndiff, (unsigned long long)n, mx);
+}
+
+// (fsr.c hud_start, a frame scaled without FSR) true: H' is filled from H in the first pass that draws into it (fill_draw);
+// false: the caller blits, and then calls vk_color_fill_check on the first such frame
+bool vk_color_fill_later(TexBackend *dst, TexBackend *src) {
+    if (fc.state == FILL_CHECKING && vk_completed_seq() >= fc.seq) fill_check();
+    if (fc.state != FILL_OK || g_vk.msaa > 1 || src->width != fc.sw || src->height != fc.sh || dst->width != fc.dw ||
+        dst->height != fc.dh || dst->format != fc.f || src->format != fc.f)
+        return false;
+    if (fill.dst) fill_now();  // (one not drawn yet: as it would have been)
+    fill.dst = dst, fill.src = src;
+    return true;
+}
+
+// (after the blit, the first time) the scaling draw into a picture of its own, and both read back for fill_check
+void vk_color_fill_check(TexBackend *dst, TexBackend *src) {
+    if (fc.state != FILL_UNKNOWN || g_vk.msaa > 1 || src->format != dst->format || src->samples != 1 || dst->samples != 1 ||
+        (dst->format != VK_FORMAT_R8G8B8A8_UNORM && dst->format != VK_FORMAT_R8G8B8A8_SRGB && dst->format != VK_FORMAT_B8G8R8A8_UNORM))
+        return;
+    fc.state = FILL_OFF;  // (until it is made)
+    VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = dst->format,
+                            .extent = {dst->width, dst->height, 1}, .mipLevels = 1, .arrayLayers = 1,
+                            .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+                            .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT};
+    if (vk_create_image(&ci, &fc.scratch.image, &fc.scratch.mem) != VK_SUCCESS) return;
+    TexBackend *t = &fc.scratch;
+    t->format = dst->format, t->width = dst->width, t->height = dst->height;
+    t->depth = t->layers = t->levels = t->samples = 1, t->aspect = VK_IMAGE_ASPECT_COLOR_BIT, t->base_type = VK_IMAGE_VIEW_TYPE_2D;
+    uint64_t one = (uint64_t)dst->width * dst->height * 4;
+    VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = one * 2, .usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+                                  .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
+    VmaAllocationInfo info;
+    if (vmaCreateBuffer(g_vk.vma, &bi, &ai, &fc.buf, &fc.mem, &info) != VK_SUCCESS) {
+        vk_defer_image(t->image, t->mem), t->image = VK_NULL_HANDLE;
+        return;
+    }
+    fc.ptr = info.pMappedData;
+    vk_end_pass();
+    st.rt_dirty = true;
+    VkCommandBuffer cb = vk_cmd();
+    vk_image_init_layout(cb, t->image, t->aspect);
+    vk_full_barrier(cb);
+    static const VkComponentMapping id = {0};
+    VkFormat f = dst->format;
+    VkRenderPass rp = vk_render_pass(&f, 1, VK_FORMAT_UNDEFINED, 1);
+    VkImageView v = vk_image_view(t, VK_IMAGE_VIEW_TYPE_2D, f, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkRenderPassBeginInfo rb = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = rp,
+                                .framebuffer = vk_framebuffer(rp, &v, 1, t->width, t->height), .renderArea = {{0, 0}, {t->width, t->height}}};
+    vkCmdBeginRenderPass(cb, &rb, VK_SUBPASS_CONTENTS_INLINE);
+    fill_draw(cb, src, rp, 0, 1, VK_FORMAT_UNDEFINED, 1, t->width, t->height);
+    vkCmdEndRenderPass(cb);
+    vk_full_barrier(cb);
+    VkBufferImageCopy c = {.bufferOffset = 0, .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {t->width, t->height, 1}};
+    vkCmdCopyImageToBuffer(cb, dst->image, VK_IMAGE_LAYOUT_GENERAL, fc.buf, 1, &c);
+    c.bufferOffset = one;
+    vkCmdCopyImageToBuffer(cb, t->image, VK_IMAGE_LAYOUT_GENERAL, fc.buf, 1, &c);
+    vk_full_barrier(cb);
+    fc.sw = src->width, fc.sh = src->height, fc.dw = dst->width, fc.dh = dst->height, fc.f = f;
+    fc.seq = vk_pending_seq();
+    fc.state = FILL_CHECKING;
+    LOG("[perf] HUD start %ux%u -> %ux%u: the scaling draw compared with the blit\n", fc.sw, fc.sh, fc.dw, fc.dh);
 }
 
 // (clear) the pass's depth cleared: in the atlas's pass, nothing more is left out in it
@@ -5713,6 +5940,7 @@ static void draw(CmdRec *r, bool indexed) {
     if (st.rt_dirty) vk_end_pass();  // (MSAA: the ending pass marks its targets for resolving before they are read)
     ms_resolve_sampled(0, pr->vi);
     ms_resolve_sampled(1, pr->fi);
+    if (fill.dst) fill_sampled_stage(0, pr->vi), fill_sampled_stage(1, pr->fi);  // (MHGU_PERF_HUDSTART_FUSE: H' read first)
     resolve_feedback(pr);
     if (st.rt.depth && st.ds[0] && st.ds[1]) snapshots_invalidate(st.rt.depth);
     for (int i = 0; i < st.rt.ncolor; i++)
