@@ -438,4 +438,16 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the
   presenting, vsync and audio threads waiting (`vi_menu_hold`, `vi_pause_wait`), as in the background. MH4U for Android does the
   same with its clock (`android_main.cpp`, `[Interface] PauseInMenu`).
+- The two ports look and read alike (0.1.9's parity pass): the menu's tabs in the same order and names (Graphics & Audio,
+  Display, Controls, Gameplay, Multiplayer, Mods, Cheats, Menu Options, Credits & Licenses: `GFX_PAGE`... in
+  `settings_panel.cpp`), a phone's 3D resolution by Low-end mode and the frame rate (`scale_row`; a desktop's stays in
+  Display by its Render resolution), the Touch controls / Controller and Your game / The app headers, Menu colours on
+  phones too (listed Hunter, Gold, Blue; the ini keeps `THEME_*`), one FPS preset list (30, 60, 90, 120, 144, 240), the
+  titles in the phone's Noto Serif (`overlay.cpp`'s second font, `title_font`; a desktop has its one font), Credits &
+  Licenses as lines between the rows (`note`), a chevron on a row that goes on, the hunt buttons at half while a menu of
+  the game's is open and those under the menu pad's tabs faded out with it (`under_mpad`), the item bar's arrows on by
+  default, one each side of the bar, as large as the room beside it allows (`item_arrow`; MH4U's `place_raw` has the
+  same rule), and the same Spanish words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name,
+  a text or a default changed in one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`,
+  `settings_locale.h`, `touch.cpp`).
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.

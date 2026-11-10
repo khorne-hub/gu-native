@@ -33,20 +33,20 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 
 #### Cacería con controles táctiles
 
-- **Movimiento:** un pad fijo, que no se mueve con el dedo. Arrastra más allá de su borde para correr; con el arma desenvainada eso se desactiva, para que no salgas corriendo en plena pelea. Desliza hacia arriba hasta el círculo chico con un candado que aparece encima del pad y la carrera se fija: el cazador sigue corriendo hacia adelante al levantar el pulgar, y giras con la cámara, hasta que vuelvas a tocar el pad, desenvaines o abras un menú. Para correr solo mientras mantienes un botón: en el engranaje, **Controles**, **Botones en pantalla**, desactiva **Correr con la palanca**, y aparece un botón **Correr** sobre los ataques
+- **Movimiento:** un pad fijo, que no se mueve con el dedo. Arrastra más allá de su borde para correr; con el arma desenvainada eso se desactiva, para que no salgas corriendo en plena pelea. Desliza hacia arriba hasta el círculo chico con un candado que aparece encima del pad y la carrera se fija: el cazador sigue corriendo hacia adelante al levantar el pulgar, y giras con la cámara, hasta que vuelvas a tocar el pad, desenvaines o abras un menú. Para correr solo mientras mantienes un botón: en el engranaje, **Controles**, **Botones en la pantalla**, desactiva **Correr con la palanca**, y aparece un botón **Correr** sobre los ataques
 - **Cámara:** arrastra en cualquier parte de la pantalla para girarla, como en un juego de teléfono. Con un doble toque se centra
 - **Fijar al monstruo:** toca el candado junto a **L**, o mantén apretado **L**, y la cámara sigue girando hacia el monstruo hasta que lo vuelvas a hacer, como en los Monster Hunter más nuevos y en el port de MH4U. Sigue al monstruo que eligió la cámara objetivo del juego, o al más cercano si no eligió ninguno; el botón de objetivo (**ZL**, o el que use tu opción **Tipos de controles** del juego) lo cambia al otro monstruo. Girar la cámara tú mismo, o apretar **L**, solo la pausa un momento, y solo sigue a un monstruo de tu misma zona. Se puede desactivar en el engranaje, **Controles**, **Fijar objetivo (mantener L)**
-- **Layout propio para arcos y ballestas:** con uno en la mano, en una cacería, los controles cambian solos: un disparo grande bajo el pulgar, recarga, mira con un toque o apuntado rápido si lo mantienes, fuego agachado, y flechas para la munición (mantén una para seguir cambiando). Si arrastras sobre el disparo mientras lo mantienes, también apuntas. Respeta la opción Bow Controls del juego y se acomoda aparte en el editor
-- **Cambiar munición al deslizar:** además de las flechas, desliza hacia arriba o abajo sobre la barra de ítems. La lista del juego ahora se ve completa, con los nombres de cada munición
+- **Diseño propio para arcos y ballestas:** con uno en la mano, en una cacería, los controles cambian solos: un disparo grande bajo el pulgar, recarga, mira con un toque o apuntado rápido si lo mantienes, fuego agachado, y flechas para la munición (mantén una para seguir cambiando). Si arrastras sobre el disparo mientras lo mantienes, también apuntas. Respeta la opción Bow Controls del juego y se acomoda aparte en el editor
+- **Cambiar munición al deslizar:** además de las flechas, desliza hacia arriba o abajo sobre la barra de objetos. La lista del juego ahora se ve completa, con los nombres de cada munición
 - **Disparos con el monstruo fijado:** salen hacia el centro de su cuerpo, también si está más alto o más bajo que tú. Para elevar el tiro, una ballesta entra un momento en apuntado rápido. Sin fijarlo, apuntas como siempre
-- **Objetos:** la barra queda abajo al centro. Tócala para usar el objeto y deslízala para cambiarlo; un deslizamiento rápido ya no lo usa por error. Mantén el dedo sobre ella para ver los objetos anterior y siguiente, como los muestra el juego mientras se mantiene L: desliza mientras tanto para girarla, y levanta el dedo para cerrarla sin usar nada. También puedes activar flechas a sus lados: en el engranaje, **Controles**, **Botones en pantalla**, **Flechas de ítems**. En modo gatador, las flechas y el deslizamiento cambian el movimiento de apoyo
+- **Objetos:** la barra queda abajo al centro. Tócala para usar el objeto y deslízala para cambiarlo; un deslizamiento rápido ya no lo usa por error. Mantén el dedo sobre ella para ver los objetos anterior y siguiente, como los muestra el juego mientras se mantiene L: desliza mientras tanto para girarla, y levanta el dedo para cerrarla sin usar nada. Las flechas a sus lados también la giran (para ocultarlas: en el engranaje, **Controles**, **Botones en la pantalla**, **Flechas de la barra de objetos**). En modo gatador, las flechas y el deslizamiento cambian el movimiento de apoyo
 - **Hunter Arts:** toca el panel de cada una para usarla. Aprieta lo que usa para esa técnica tu opción **Tipos de controles** del juego (tipos 1 a 4, y también **Funciones de los botones L/R** y **Funciones palanca derecha**), y funciona también con un mando conectado
-- **Ataques:** tres disposiciones a elegir: píldora dividida en diagonal, botones separados o una banda en U en la esquina de la pantalla. Con **Seguir en guardia al deslizar** activado (en **Botones en pantalla**), un pulgar que se desliza de la guardia a los ataques sigue en guardia, para movimientos como el contraataque de la lanza
-- **Otros botones:** esquivar, cubrirse y enfundar el arma, cada uno con su ícono
+- **Ataques:** tres disposiciones a elegir: píldora dividida en diagonal, botones separados o una banda en U en la esquina de la pantalla. Con **Seguir en guardia al deslizar** activado (en **Botones en la pantalla**), un pulgar que se desliza de la guardia a los ataques sigue en guardia, para movimientos como el contraataque de la lanza
+- **Otros botones:** evasión, guardia y envainar el arma, cada uno con su ícono
 
 #### Menús y comodidad
 
-- **Menús pensados para el pulgar:** al abrirse un menú del juego el diseño no cambia: aparece un pad chico que mueve el cursor, con los botones de página encima. La palanca de movimiento sigue caminando (donde el cazador no puede caminar, como en la caja de objetos de un pueblo o en una tienda, mueve el cursor; donde el juego muestra un modelo, como en la herrería, la palanca y arrastrar lo giran, como con un mando), A y B quedan donde están, y arrastrar en la pantalla también mueve el cursor. El pad se mueve y se cambia de tamaño en el editor como los demás botones. Para ocultarlo: en el engranaje, **Controles**, **Botones en pantalla**, **Pad de menú**
+- **Menús pensados para el pulgar:** al abrirse un menú del juego el diseño no cambia: aparece un pad chico que mueve el cursor, con los botones de página encima. La palanca de movimiento sigue caminando (donde el cazador no puede caminar, como en la caja de objetos de un pueblo o en una tienda, mueve el cursor; donde el juego muestra un modelo, como en la herrería, la palanca y arrastrar lo giran, como con un mando), A y B quedan donde están, y arrastrar en la pantalla también mueve el cursor. El pad se mueve y se cambia de tamaño en el editor como los demás botones. Para ocultarlo: en el engranaje, **Controles**, **Botones en la pantalla**, **Pad de menú**
 - El teclado del teléfono sirve para escribir el nombre de tu personaje
 - El menú de opciones se usa con el dedo y tiene el estilo visual del juego
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
@@ -61,7 +61,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 - Una parte que moviste queda donde la pusiste: una línea de chat, el apuntado de un arco o de una ballesta y el sello de Quest Complete ya no la devuelven al lugar del juego, y no salta cuando se abre un menú del juego. Una parte que quedaría sobre la ventana de ese menú se oculta hasta que el menú se cierra
 - La interfaz del juego se reacomoda para no quedar bajo los pulgares (**Acomodar el HUD para el táctil**). Desactivado, el HUD es el mismo que con un mando. El botón **HUD: mando** del editor acomoda el HUD que se ve con un mando, sin conectar uno, y la B de un mando cierra el editor sin guardar
 - Opacidad de los controles y velocidad de la cámara ajustables
-- **Botones en pantalla:** en el engranaje, **Controles**, **Botones en pantalla**, elige cuáles se ven. Puedes sumar L, ZL, ZR, -, la cruceta y los clics de las palancas, que vienen ocultos. En el pueblo ZL aparece siempre, porque abre el menú multijugador. En los menús del juego también puedes sumar ZL y ZR (**ZL en los menús**, **ZR en los menús**), que algunos menús usan para cambiar de sección o ver más información
+- **Botones en pantalla:** en el engranaje, **Controles**, **Botones en la pantalla**, elige cuáles se ven. Puedes sumar L, ZL, ZR, -, la cruceta y los clics de las palancas, que vienen ocultos. En el pueblo ZL aparece siempre, porque abre el menú multijugador. En los menús del juego también puedes sumar ZL y ZR (**ZL en los menús**, **ZR en los menús**), que algunos menús usan para cambiar de sección o ver más información
 - **Botones combinados:** en esa misma pantalla, crea hasta 6 botones propios que aprietan varios a la vez, como A+X. Se ubican con el editor y también se pueden asignar a un botón del mando
 
 #### Pantalla y rendimiento
@@ -275,7 +275,7 @@ de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión com
 
 #### Vida de los monstruos y misiones de aldea en sala
 
-La vida de los monstruos ajustable (engranaje, **Varios**) y las misiones de aldea en sala (engranaje, **Multijugador**) vienen de
+La vida de los monstruos ajustable (engranaje, **Juego**) y las misiones de aldea en sala (engranaje, **Multijugador**) vienen de
 MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo en Android.
 
 ### Dónde se guarda cada cosa
@@ -411,7 +411,7 @@ Más en [Gráficos y FPS](#gráficos-y-fps).
 #### Con un mando
 
 - Conéctalo y juega. **F1**, o **+** y **-** juntos, abren los ajustes
-- El clic del stick derecho fija al monstruo
+- El clic de la palanca derecha fija al monstruo
 - **Cualquier mando:** si el juego no lee bien el tuyo, entra a **F1**, **Controles**, **Mapear un mando**, y aprieta cada
   botón una vez. Queda guardado para ese modelo
 - El menú de opciones puede mostrar los botones con el estilo de tu mando (**Controles**, **Iconos del mando**)
@@ -536,7 +536,7 @@ El zip tiene una carpeta con los archivos del programa y nada del juego:
 - **Teclado y mouse:** WASD para moverte (en los menús del juego, como la caja de objetos, una tienda o el mostrador de
   misiones, mueve el cursor), Shift izquierdo corre (R), Ctrl izquierdo camina. Clic izquierdo o R es X, F es A (hablar,
   abrir, recoger, levantar objetos, confirmar), el clic derecho también es A pero solo con el arma desenfundada (un ataque:
-  nunca habla, abre ni recoge), Espacio B, E o el botón del medio Y (enfundar, usar un objeto), Q es L, Tab y T son ZL y ZR,
+  nunca habla, abre ni recoge), Espacio B, E o el botón del medio Y (envainar, usar un objeto), Q es L, Tab y T son ZL y ZR,
   Enter es +, Retroceso −, las flechas son la cruceta, M el minimapa (L3), un toque de Alt el bloqueo en el monstruo (R3) e
   I, J, K, L giran la cámara. La rueda del mouse gira la barra de objetos. Haz clic en la ventana para girar la cámara con el
   mouse; Esc suelta el mouse. Todas las teclas se pueden cambiar: **F1**, **Controles**, **Asignación de teclas**.
@@ -625,7 +625,7 @@ El juego local y las salas por internet funcionan como en el teléfono, con el m
 - La búsqueda pregunta en todas las redes de la PC. Por una VPN, como Tailscale o ZeroTier, también puedes escribir la IP del
   anfitrión en **Buscar servidores** y reiniciar el juego.
 - Una PC y un teléfono juegan en la misma sala (0.1.6 o posterior en los dos).
-- La vida de los monstruos ajustable (**Varios**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
+- La vida de los monstruos ajustable (**Juego**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
   de aldea en sala (**Multijugador**) vienen de MHGURecomp.
 
 Probado en PC: entrar a la sala de un teléfono por el servidor de salas y en la misma Wi-Fi. Todavía no: crear una sala en la

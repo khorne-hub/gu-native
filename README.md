@@ -38,7 +38,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - **A layout of their own for bows and bowguns:** with one in hand, in a hunt, the controls change by themselves: a large fire button under your thumb, reload, the scope with a tap or quick aim if you hold it, crouching fire, and arrows for the ammo (hold one to keep changing). Drag on the fire button while you hold it to aim. It follows the game's Bow Controls option and has its own place in the editor
 - **Change ammo with a swipe:** besides the arrows, swipe up or down on the item bar. The game's list now shows whole, with each ammo's name
 - **Shots with a monster locked on:** they go toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Without the lock you aim as always
-- **Items:** the bar sits at the bottom center. Tap it to use the item and swipe it to change the item; a quick swipe no longer uses it by mistake. Hold your finger on it to see the items before and after the selected one, as the game shows them while L is held: swipe meanwhile to turn it, and lift to close it without using anything. You can also turn on arrows beside it: under the gear, **Controls**, **Buttons on the screen**, **Item arrows**. As a Prowler, the arrows and the swipe change the Support Move
+- **Items:** the bar sits at the bottom center. Tap it to use the item and swipe it to change the item; a quick swipe no longer uses it by mistake. Hold your finger on it to see the items before and after the selected one, as the game shows them while L is held: swipe meanwhile to turn it, and lift to close it without using anything. Arrows on each side of it turn it too (to hide them: under the gear, **Controls**, **Buttons on the screen**, **Item bar arrows**). As a Prowler, the arrows and the swipe change the Support Move
 - **Hunter Arts:** tap each one's panel to use it. It presses what the game's **Control Type** option uses for that art (types 1 to 4, and **L/R Button Controls** and **R Stick Controls** too), and it works with a controller connected as well
 - **Attacks:** three layouts to choose from: a diagonally split pill, separate buttons, or a U-shaped band in the corner of the screen. With **Keep guarding while sliding** on (under **Buttons on the screen**), a thumb that slides from guard onto the attacks keeps guarding, for moves like a lance's counter
 - **Other buttons:** dodge, guard and sheathe, each with its own icon
@@ -272,7 +272,7 @@ on the same Wi-Fi; a full quest together not yet.
 
 #### Monster HP and Village quests in the Hub
 
-Adjustable monster HP (gear, **Misc**) and Village quests in the Hub (gear, **Multiplayer**) come from MHGURecomp, the project this
+Adjustable monster HP (gear, **Gameplay**) and Village quests in the Hub (gear, **Multiplayer**) come from MHGURecomp, the project this
 one is based on. They haven't been fully tested on Android yet.
 
 ### Where things are kept
@@ -611,7 +611,7 @@ Local play and hubs over the internet work as on the phone, with the same code a
 - The search asks every network the PC is on. Over a VPN, such as Tailscale or ZeroTier, you can also enter the host's IP
   under **Search hosts** and restart the game.
 - A PC and a phone play in the same hub (0.1.6 or later on both).
-- Adjustable monster HP (**Misc**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
+- Adjustable monster HP (**Gameplay**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
   (**Multiplayer**) come from MHGURecomp.
 
 Tested on PC: joining a phone's hub through the hub server and on the same Wi-Fi. Not yet: creating a hub on the PC (it

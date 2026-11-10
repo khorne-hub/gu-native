@@ -712,7 +712,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Version", "Versión"},
         {"by", "por"},
         {"Free, made by fans", "Gratis, hecho por fans"},
-        {"Made by khorne-hub. Free, made by fans.", "Hecho por khorne-hub. Gratis, hecho por fans."},
+        {"Made by khorne-hub. Free.", "Hecho por khorne-hub. Gratis."},
         {"Based on MHGURecomp.", "Basado en MHGURecomp."},
         {"Also by khorne-hub: MH4U for Android,", "También de khorne-hub: MH4U para Android,"},
         {"This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N.",

@@ -2281,7 +2281,7 @@ std::vector<Row> main_rows() {
     case ABOUT_PAGE:  // (who made it, where the official one is, the licences and the legal notice: shown, as in the
                       // MH4U port, not in a help)
         header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);
-        note(r, "about.by", tr("Made by khorne-hub. Free, made by fans."));
+        note(r, "about.by", tr("Made by khorne-hub. Free."));
         note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
         note(r, "about.base", tr("Based on MHGURecomp."));
         note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
@@ -2902,6 +2902,10 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     float right = rect.Max.x - font * .6f;
     if (r.current)  // (the picker: the choice the row has now)
         diamond(dl, ImVec2(right - font * .3f, cy), font * .24f, k.glow);
+    // (a tap goes on - to a page, a screen of the app's, a question: a mark at the right, as in the MH4U port)
+    bool goes_on = r.action && r.enabled && r.id != "save" && !plated && !toggle;
+    if (goes_on)
+        chevron(dl, ImVec2(right - font * .35f, cy), font * .28f, 1, lit ? ink : fade(k.rule, .8f), std::max(2.f, s.m.line));
     if (toggle) {
         ImRect slot(right - font * 2.6f, cy - font * .6f, right, cy + font * .6f);
         switch_mark(dl, slot, r.toggle == 1);
@@ -2910,9 +2914,9 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     } else if (!r.value.empty() && !plated) {
         std::string value = r.value + (r.cold ? " *" : "");
         float bs = stepper ? std::min(s.m.row * .84f, font * 2.3f) : 0;
-        fit(value, stepper ? room - bs * 2 - font * .4f : room - font * (r.menu ? 1.4f : .3f));
+        fit(value, stepper ? room - bs * 2 - font * .4f : room - font * (r.menu || goes_on ? 1.4f : .3f));
         ImVec2 size = ImGui::CalcTextSize(value.c_str());
-        float vx = stepper ? right - room * .5f - size.x * .5f : right - size.x - (r.menu && r.enabled ? font * 1.1f : 0);
+        float vx = stepper ? right - room * .5f - size.x * .5f : right - size.x - ((r.menu && r.enabled) || goes_on ? font * 1.1f : 0);
         ImU32 value_ink = r.warn ? IM_COL32(255, 110, 96, 255) : !r.enabled ? t.text_off : lit ? ink : k.rule;
         shadow_text(dl, font, ImVec2(vx, cy - size.y * .5f), value_ink, value.c_str());
         if (r.menu && r.enabled) {  // (a tap lists the choices)
