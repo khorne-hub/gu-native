@@ -232,8 +232,8 @@ static const char DEFAULT_INI[] =
 #ifdef __ANDROID__
     "; Off, On or Toaster. On, for a weak phone: no bloom or depth of field, cheaper and smaller textures, and the HUD stays\n"
     "; sharp over a smaller 3D picture. Toaster: all of that and more, for speed and the battery before looks: the HUD at\n"
-    "; most 540 lines tall and lighter textures still. It does not change the resolution, the frame rate, Shadows, Bloom or\n"
-    "; Reverb by itself: the menu's switch does that\n"
+    "; most 540 lines tall and lighter textures still. It does not change the resolution, the frame rate, Shadows, Grass,\n"
+    "; Bloom or Reverb by itself: the menu's switch does that\n"
 #else  // (a PC's GPU takes the game's BC textures as they are: textures.c makes smaller only those it decodes, a Mali's)
     "; Off, On or Toaster, for a weak GPU such as integrated graphics. On: no MSAA or FSR (FXAA, texture filtering and\n"
     "; the rest stay as set). Toaster, for the weakest: no FXAA either, and cheaper texture filtering. The menu's switch\n"
