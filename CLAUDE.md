@@ -342,11 +342,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   texts in the MH4U port's touch.cpp). A zone farther out that locked by itself was tried and dropped: the old feel stays, the
   thumb past 1.6 stick radii runs (R) and lets go under 1.45, sheathed only, as in 0.1.8, plus Call of Duty Mobile's sprint
   lock: a small circle with a padlock 2.4 radii above the stick (0.02 screen heights below the top at least) fades in as the
-  thumb pushes up past the rim; slid into it (within 0.55 radii of its middle) the run locks with a click and goes on forward
-  (the stick held full up: the camera steers) while the thumb stays past the rim and after it lifts, until the stick is touched
-  again, the thumb comes back inside the rim, the weapon comes out, a menu opens or the hunter isn't played (an area change
-  too: `run_end` logs why under MHGU_TOUCH_LOG). It locks for a thumb that landed anew (not in the circle) or came back
-  inside the rim since a lock ended (`run_armed`). X holds the run's R back for 400 ms: a thumb at the rim through a sheathe started R in the same update
+  thumb pushes up past the rim; the thumb on it (within 0.55 radii of its middle) lights it (armed, `run_over`), and only
+  LIFTED there does the run lock, with a click (the owner, 2026-11-10: it locked as soon as the thumb passed over it, and
+  with the thumb still down the lock held the stick full forward wherever it went, so it seemed never to let go). It goes
+  on forward (the stick held full up: the camera steers) until the stick or the lit circle is touched again, the weapon
+  comes out, a menu opens or the hunter isn't played (an area change too: `run_end` logs why under MHGU_TOUCH_LOG). It locks
+  for a thumb that landed anew (not in the circle) or came back inside the rim since a lock ended (`run_armed`). X holds the run's R back for 400 ms: a thumb at the rim through a sheathe started R in the same update
   as an X + A, and the game read R + X + A (#151). Off: a Run button (`run_button` in touch_layout.txt: the old left-side
   `run` line every saved layout has is dropped), held only, dimmed with the weapon out, hidden in menus; slid onto an attack
   it is that attack; in a corner layout saved before it, it starts in the band's hollow.
@@ -373,8 +374,26 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
     the hunt camera is stopped. After a shot the game leaves the aim (0001:000) with R still held, so each press from the stance aims anew (~440 ms).
   - The hunt camera stops in the quick aim and the scope and runs in crouching fire (0010:026, 028, 029, 033; 053 its dodge). A shot is 0010:005 then
     124, an empty magazine's press 0010:004, a reload 0010:001. No action had bit 15 set.
+- Standing still (no stick from any input) a press of A alone is 0.1.8's locked shot again (`still_wait`, `touch_lock_still`; the
+  owner's call, 2026-11-10): R at once, A once the aim is past going in (0.1.8 fired in 0001:045, where the game drops A: its first shot
+  from the stance never left), the hunter turned to the monster from the press to the shot; in an aim's actions (0001:045-048 with any
+  camera, `weapon_aim_action`) A passes at once. Walking, the stance's shot above. The separate attack buttons' seam (X + A) is hit
+  only where those buttons are: in the ranged layout it could sit under the fire button (the owner's layout: every tap was crouching fire).
+- The aim button: a tap is the game's tap of R (the scope; a bow's aiming mode, 0010:012, which its button toggles); held or slid (the
+  slide is a drag of the view) R is kept down past `aim_hold_ns`, and a bow's button is pressed again once the hunter is back in 012.
+  Measured on a Moto g06 with the hbg and bow test saves: the scope is command table 43, the quick aim 0001:046 with table 0, a bow's
+  shot from its aiming mode 0010:002, 001 and back to 012.
+- The item bar's arrows are controls (`C_ITEML`, `C_ITEMR`, saved as `item_left` / `item_right`): at their default places they follow
+  the bar (`arrow_follow`; in the editor the bar's frame, `arrow_bar`), a drag gives them a place of their own. The layout editor holds
+  the game as the settings menu does (`menu_holds_game`), and the HUD's last picture counts as just drawn meanwhile (`hud_now`).
+- `[Controls] GyroAim` / `GyroSensitivity` (the last fields of `Config`): `host_input.c gyro_update` opens SDL's gyroscope (a
+  controller's if the one read has one) only while `weapon_gyro_aiming`, and adds its turn to the mouse counts. The axes go by
+  `SDL_GetNaturalDisplayOrientation` (an RG406V's is landscape). `gyro <right> <up> <ms>` in control.txt fakes a turn (degrees a second).
 - A menu can't be told from a window over the hunt: no flag in the hunter or the game's globals changes, and the hunt camera runs under menus too. `game_menu`
-  treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before. Without a window,
+  treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before. With a bow or
+  a gun out in a quest only Plus or Minus count (and a cursor running makes a window a menu only after one of them): the aims and
+  the scope draw on layer 97 and outlast the aim (0001:046 with the hunt camera back, not `weapon_aiming` since #177), and the
+  lock-on's target button presses ZL all the time, so a heavy bowgun's hunt on the Galaxy went to the menu layout. Without a window,
   four seconds without the hunter played is a menu only with no hunter of a quest (`weapon_hunter`): a ballista or a cannon aims
   without the hunt camera's handler, and its stick became the d-pad (#169; not yet seen on one: the touch log names the action
   and whether the hunt camera runs each time the hunter is played or not).

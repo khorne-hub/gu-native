@@ -62,12 +62,12 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
 // thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
 // menus, the grass, the lock-on's buttons shown, the notice about playing online not shown yet, the pause in the menu, and
-// no hub server or matchmaking key remembered yet)
+// no hub server or matchmaking key remembered yet; the gyro's aim off, at its usual sensitivity)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -311,6 +311,13 @@ static const char DEFAULT_INI[] =
     "; stick's click does (held, with the game's Control Type 3, whose click changes the target)\n"
     "; Default: On\n"
     "LockOn = On\n"
+    "\n"
+    "; Aiming a bow or a bowgun (a gun's aim, its scope, crouching fire; a bow's aiming mode), turning the phone turns the\n"
+    "; aim too, from where it was as the aim began, with what the fingers or the sticks do; a controller with a gyro is\n"
+    "; read instead of the phone. The gyroscope is read only while aiming. Sensitivity: 0.2 to 3.0\n"
+    "; Default: Off, 1.0\n"
+    "GyroAim = Off\n"
+    "GyroSensitivity = 1.0\n"
 #ifndef __ANDROID__  // (runtime/hle/mousemenu.c)
     "\n"
     "; In the game's menus (the item box, the pouch, the pause menu) and while someone talks to you or the game asks\n"
@@ -356,10 +363,10 @@ static const char DEFAULT_INI[] =
     "ShowR3 = Off\n"
     "ShowStick = On\n"
     "\n"
-    "; On: push the movement stick past its edge to run, as before. Slide it up into the small circle with a padlock that\n"
-    "; shows above it and the run locks: the hunter keeps running forward after you lift your thumb (steer with the\n"
-    "; camera), until you touch the stick again, draw the weapon or open a menu. Off: the stick only walks, and a Run\n"
-    "; button shows above the attacks instead: it runs while held\n"
+    "; On: push the movement stick past its edge to run, as before. Slide it up onto the small circle with a padlock that\n"
+    "; shows above it, which lights up, and lift your thumb there: the run locks and the hunter keeps running forward\n"
+    "; (steer with the camera), until you touch the stick or the circle again, draw the weapon or open a menu. Off: the\n"
+    "; stick only walks, and a Run button shows above the attacks instead: it runs while held\n"
     "; Default: On\n"
     "StickRun = On\n"
     "\n"
@@ -796,6 +803,8 @@ const ConfigSetting g_settings[] = {
     {"Mouse", "MouseSensitivity", SET_FLOAT, F(mouse_sensitivity), 0, 0.1f, 10.0f, NULL, NULL, false, ERR_VIEW},
     ON_OFF("Controls", "PhoneRumble", phone_rumble, false),
     ON_OFF("Controls", "LockOn", lock_on, false),
+    ON_OFF("Controls", "GyroAim", gyro_aim, false),
+    {"Controls", "GyroSensitivity", SET_FLOAT, F(gyro_sensitivity), 0, 0.2f, 3.0f, NULL, NULL, false, ERR_VIEW},
 #ifndef __ANDROID__
     ON_OFF("Controls", "MouseMenus", mouse_menus, false),
 #endif

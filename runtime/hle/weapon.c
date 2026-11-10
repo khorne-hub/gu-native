@@ -87,6 +87,31 @@ bool weapon_aiming(uint32_t h) {
     return (st == 1 && no >= 45 && no <= 48 && !mousecam_hunt_camera()) || (st == 2 && no == 16);
 }
 
+// the hunter in an aim's own actions, whatever camera is up: 0.1.8's weapon_aiming, which its locked shot went by (the
+// one standing still keeps it: runtime/touch.cpp touch_lock_shot)
+bool weapon_aim_action(uint32_t h) {
+    if (!h || !weapon_ranged(h)) return false;
+    uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
+    return (st == 1 && no >= 45 && no <= 48) || (st == 2 && no == 16);
+}
+
+// Aiming a bow or a bowgun, for the gyro (runtime/host_input.c gyro_update): a gun's quick aim and its scope (their own
+// camera up: weapon_aiming), its crouching fire (0010:026, 028, 029, 033); a bow's aiming mode (0010:012 a while: a shot
+// from the stance passes through it for a moment on its way back) and a shot taken from it (its draw 0010:002 and its
+// shot 001, back to 012 after). Seen on a Moto g06 and an RG406V, 2026-11-10
+bool weapon_gyro_aiming(uint32_t h, uint64_t now_ns) {
+    static uint64_t in_012, aim_ns;  // (0010:012 since then; the aiming mode last seen)
+    int ranged = weapon_ranged(h);
+    if (!ranged || !(LD8(h + PL_FLAGS) & 1)) return false;
+    uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
+    if (ranged == WEAPON_BOWGUN) return weapon_aiming(h) || (st == 0x10 && (no == 26 || no == 28 || no == 29 || no == 33));
+    bool mode = st == 0x10 && no == 12;
+    if (!mode) in_012 = 0;
+    else if (!in_012) in_012 = now_ns;
+    if (mode && now_ns - in_012 >= 150000000ull) aim_ns = now_ns;
+    return (mode && now_ns - in_012 >= 150000000ull) || (st == 0x10 && (no == 1 || no == 2 || no == 12) && now_ns - aim_ns < 1500000000ull);
+}
+
 // the local player is a Prowler (a Palico played): its item bar holds Support Moves, chosen with L + Y / A
 bool weapon_prowler(uint32_t h) { return h && LD32(h) == VT_PROWLER; }
 

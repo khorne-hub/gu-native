@@ -22,7 +22,7 @@ static SDL_AtomicInt volume = {100}, confirm_exit = {1}, language = {0}, mute_in
 static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, live_fxaa = {1}, live_msaa = {1},
                      live_vsync = {1}, live_face, live_menu_confirm, live_background = {1}, live_combo, live_chat_key,
                      live_fxaa_mode, live_smooth, live_discord, live_discord_hunter, live_binds[BINDS][BIND_KEYS],
-                     live_touch, live_touch_hud, live_touch_show[TB_COUNT], live_touch_combo[TOUCH_COMBOS], live_touch_combo_pad[TOUCH_COMBOS], live_touch_cam, live_touch_opacity, live_lock_on = {1}, live_mouse_menus = {1},
+                     live_touch, live_touch_hud, live_touch_show[TB_COUNT], live_touch_combo[TOUCH_COMBOS], live_touch_combo_pad[TOUCH_COMBOS], live_touch_cam, live_touch_opacity, live_lock_on = {1}, live_gyro_aim, live_gyro_sens, live_mouse_menus = {1},
                      live_touch_vibration = {1}, live_phone_rumble = {1}, live_show_stats, live_pause_bg = {1}, live_pause_menu = {1},
                      live_shadows = {1}, live_bloom = {1}, live_grass = {1}, live_reverb = {1}, live_online_notice;
 static void set_float(SDL_AtomicInt *slot, float value) {
@@ -63,6 +63,8 @@ static void publish_live(const Config *c, bool all) {
         SDL_SetAtomicInt(&live_touch_combo_pad[i], c->touch_combo_pad[i]);
     }
     if (all || c->lock_on != saved.lock_on) SDL_SetAtomicInt(&live_lock_on, c->lock_on);
+    if (all || c->gyro_aim != saved.gyro_aim) SDL_SetAtomicInt(&live_gyro_aim, c->gyro_aim);
+    if (all || c->gyro_sensitivity != saved.gyro_sensitivity) set_float(&live_gyro_sens, c->gyro_sensitivity);
     if (all || c->mouse_menus != saved.mouse_menus) SDL_SetAtomicInt(&live_mouse_menus, c->mouse_menus);
     if (all || c->touch_camera != saved.touch_camera) set_float(&live_touch_cam, c->touch_camera);
     if (all || c->touch_opacity != saved.touch_opacity) set_float(&live_touch_opacity, c->touch_opacity);
@@ -135,6 +137,8 @@ int config_live_discord_hunter(void) { return SDL_GetAtomicInt(&live_discord_hun
 int config_live_touch_controls(void) { return SDL_GetAtomicInt(&live_touch); }
 int config_live_touch_hud(void) { return SDL_GetAtomicInt(&live_touch_hud); }
 int config_live_lock_on(void) { return SDL_GetAtomicInt(&live_lock_on); }
+int config_live_gyro_aim(void) { return SDL_GetAtomicInt(&live_gyro_aim); }
+float config_live_gyro_sensitivity(void) { return get_float(&live_gyro_sens); }
 #ifdef __ANDROID__
 int config_live_mouse_menus(void) { return 0; }
 #else

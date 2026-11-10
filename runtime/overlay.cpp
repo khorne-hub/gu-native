@@ -708,10 +708,10 @@ extern "C" void vi_menu_hold(bool on);
 extern "C" bool vk_present_again(void);
 extern "C" bool vk_present_needed(void);
 extern "C" uint64_t vk_last_present_ns(void);
-// The settings menu is open and the player plays alone ([Application] PauseInMenu; never with others: a Local Play or
-// hub network up)
+// The settings menu, or the touch controls' layout editor opened from it, is open and the player plays alone
+// ([Application] PauseInMenu; never with others: a Local Play or hub network up)
 static bool menu_holds_game(void) {
-    return g_ready && g_settings_open && !g_modal_open && config_live_pause_menu() && !ldn_net_up();
+    return g_ready && ((g_settings_open && !g_modal_open) || touch_editor_open()) && config_live_pause_menu() && !ldn_net_up();
 }
 #endif
 
@@ -725,10 +725,12 @@ void overlay_frame(void *cpu) {
     // goes on being drawn, over the last picture presented again once the game's own presents have stopped)
     if (menu_holds_game()) {
         vi_menu_hold(true);
+        touch_game_held(true);
         uint64_t next = plat_now_ns();
         uint64_t shown_seq = ~0ull, shown_ns = 0, skipped = 0, presented = 0;  // (MHGU_PERF_MENU_PRESENT)
         g_snap_compare = g_perf_menu_present;
         while (menu_holds_game()) {
+            if (touch_editor_step()) break;  // (a part of the HUD dragged in the editor: a step of the game draws it there)
             next += 16666667;
             uint64_t now = plat_now_ns();
             if (next < now) next = now;
@@ -749,6 +751,7 @@ void overlay_frame(void *cpu) {
         if (g_perf_menu_log)
             LOG("[perf] menu hold: %llu presents, %llu unchanged frames not presented again\n", (unsigned long long)presented,
                 (unsigned long long)skipped);
+        touch_game_held(false);
         vi_menu_hold(false);
     }
 #endif

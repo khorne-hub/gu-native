@@ -38,6 +38,10 @@ void touch_edit_begin(void);  // the layout editor (settings menu: Controls), on
 void touch_edit_cancel(void);  // (the settings menu's unsaved-changes dialog cancelled: it stays open)
 // an editor is open, the touch layout's or a desktop's HUD editor: a controller's B cancels it (host_input.c)
 bool touch_editor_open(void);
+// the game is held (the settings menu or the layout editor open, playing alone: overlay.cpp): the HUD it drew last stays
+void touch_game_held(bool on);
+// the game held for the layout editor: a part of the HUD dragged since its last step, it takes another (overlay.cpp)
+bool touch_editor_step(void);
 void touch_editor_cancel(void);
 #ifndef __ANDROID__
 // The HUD editor (a desktop's, worked with the mouse): every part of the HUD (runtime/hud_parts.h) moved, sized and
@@ -57,7 +61,7 @@ bool touch_lock_engaged(void);  // the lock-on is on, menus and pauses aside (hl
 uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input);
 // a locked shot, after touch_lock_buttons: given every button pressed now, the ones the game gets (with the lock-on on,
 // a bowgun's shot is aimed first: R held, the fire button held back until the aim; host_input.c)
-uint64_t touch_lock_shot(uint64_t buttons);
+uint64_t touch_lock_shot(uint64_t buttons, bool still);  // (still: no stick from any input)
 // one of the game's menus is open (the item box, a shop, the title...: their cursor moves with the d-pad), as the touch
 // controls tell it for their menu pad, whether they show or not (updated by touch_input, each update)
 bool touch_game_menu(void);

@@ -227,6 +227,8 @@ void ui_init(void) {
     // Subsequent saved changes are consumed by the host thread in ui_run().
     SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, g_config.background_input ? "1" : "0");
     if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) FATAL("SDL_InitSubSystem: %s\n", SDL_GetError());
+    // (the gyroscope, for [Controls] GyroAim: opened only while a bow or a bowgun aims, runtime/host_input.c)
+    if (!SDL_InitSubSystem(SDL_INIT_SENSOR)) LOG("[ui] no sensors: %s\n", SDL_GetError());
     win_w = g_config.width, win_h = g_config.height;
 #ifndef __ANDROID__  // (there the window is the screen)
     fit_desktop(&win_w, &win_h);

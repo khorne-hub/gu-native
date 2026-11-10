@@ -85,6 +85,8 @@ bool touch_lock_engaged(void); // (the lock-on is on, menus and all: off, the mo
 bool touch_lock_assist(void);  // (a locked shot holds R for its aim now, from any input: touch_lock_shot)
 bool touch_lock_assist_waiting(void);  // (...and waits for that aim to come up)
 bool touch_lock_player_aims(void);     // (a bowgun aimed with the player's own R, from any input: no locked shot)
+bool touch_lock_still(void);          // (a locked shot standing still, 0.1.8's: the hunter turned to the monster)
+float touch_aim_pitch(void);           // (the touch aim's slide up or down since the last update, degrees: taken)
 #define LOCK_AFTER_TURN 600000000ull  // (a turn the game made: the follow waits this long, as after one by hand)
 static volatile uint64_t g_turn_ns;   // the game's last turn (camera_stick)
 static uint32_t g_cam_seen;
@@ -347,11 +349,26 @@ static void aim_at_monster(uint32_t h) {
 // aim (a gun's R, the scope, a bow's aiming mode), crouching fire, a reload, a dodge, a style's moves (Valor's slide and
 // Sidestep Shot) - writing the heading there turned them toward the monster (#132, #177). A turn by hand meanwhile makes
 // the shot the player's too. (each update of the local hunter: the hunt camera's handler doesn't run while a gun aims)
+// The touch aim's slide up and down, while a gun or a bow aims: the aim's pitch itself (hunter +0x2714 and +0x14b8,
+// as a locked shot writes it), within the aim's own reach, 45 degrees up and 30 down
+static void aim_pitch(uint32_t h) {
+    float deg = touch_aim_pitch();
+    if (deg == 0.0f || !weapon_aiming(h)) return;
+    const float U = 65536.0f / (2.0f * 3.14159265f), UP = 45.0f * 3.14159265f / 180.0f, DOWN = 30.0f * 3.14159265f / 180.0f;
+    float rise = (int16_t)LD16(h + PL_PITCH) / U + deg * 3.14159265f / 180.0f;
+    if (rise > UP) rise = UP;
+    if (rise < -DOWN) rise = -DOWN;
+    float aim = 100.0f * rise / (rise >= 0.0f ? UP : DOWN);
+    STF(h + PL_AIM, aim), STF(h + PL_AIM2, aim);
+    ST16(h + PL_PITCH, (uint16_t)(int16_t)lrintf(rise * U));
+}
+
 void mousecam_lock_shot(void) {
     g_upd++;  // (mousecam_hunt_camera)
     static bool armed, stance_was, fire_was;
     static uint64_t fired, others_was;
     uint32_t h = weapon_hunter();
+    aim_pitch(h);
     int ranged = weapon_ranged(h);
     bool stance = weapon_stance(h);  // (this update's, before the press: the next update's question)
     bool was = stance_was;
@@ -370,6 +387,11 @@ void mousecam_lock_shot(void) {
         // shot, or before them. Not the player's own R; not during a turn by hand (the aim is theirs); not once B, X or Y
         // ended it: a dodge, a reload, crouching fire, a sheathe go where the player sends them
         armed = fire_was = false;
+        // (a shot standing still: as 0.1.8 turned it, in an aim's actions, the help's aim, or the shot itself)
+        if (touch_lock_still() && touch_lock_active() && !touch_lock_player_aims()) {
+            if (weapon_aim_action(h) || touch_lock_assist() || weapon_moving(h)) aim_at_monster(h);
+            return;
+        }
         if (touch_lock_player_aims() || !touch_lock_assist() || !touch_lock_active()) return;
         if (!touch_lock_assist_waiting() && !weapon_aiming(h) && !weapon_moving(h) && mousecam_hunt_camera()) return;
         aim_at_monster(h);

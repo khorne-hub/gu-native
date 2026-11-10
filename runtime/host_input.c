@@ -52,6 +52,7 @@
 #define B(x) (1ull << (x))
 
 static bool keys[SDL_SCANCODE_COUNT];
+static SDL_Gamepad *gyro_pad;  // (the controller whose gyroscope is read while aiming: gyro_update)
 static SDL_Gamepad *pad;  // the controller read: of those open, the one a button was last pressed on
 #define MAX_PADS 8
 static struct { SDL_Gamepad *pad; uint64_t opened_ns; bool real; } pads[MAX_PADS];  // (real: hides the touch controls)
@@ -145,6 +146,8 @@ static uint64_t touch_cam_ns;  // when a finger last turned the camera (runtime/
 // (tests: the control file's "mousemove <x> <y> <ms>", a mouse moving at that many counts a second, captured or not)
 static float test_vx, test_vy;
 static uint64_t test_until;
+static float gyro_test_r, gyro_test_u;  // (control "gyro <right> <up> <ms>": a turn of that many degrees a second)
+static uint64_t gyro_test_until;
 
 // ---- scripted input
 typedef struct { uint64_t start, len; uint64_t buttons; int stick, x, y; } ScriptStep;
@@ -613,6 +616,13 @@ static void control_poll(void) {
                 test_until = plat_now_ns() + (uint64_t)atoi(arg3) * 1000000ull;
                 continue;
             }
+            if (!strcmp(cmd, "gyro")) {  // gyro <right> <up> <ms>: the gyroscope turned that fast (degrees a second)
+                char arg3[16] = "";
+                sscanf(line, "%*s %*s %*s %15s", arg3);
+                gyro_test_r = (float)atof(arg), gyro_test_u = (float)atof(arg2);
+                gyro_test_until = plat_now_ns() + (uint64_t)atoi(arg3) * 1000000ull;
+                continue;
+            }
             if (!strcmp(cmd, "wheel")) {  // wheel <notches>: the mouse wheel turned (< 0 down), captured or not
                 if (atoi(arg)) wheel_turn(atoi(arg));
                 continue;
@@ -711,6 +721,7 @@ static void close_pad(SDL_JoystickID id) {
     const char *name = SDL_GetGamepadName(pads[i].pad);  // (its id is gone already: log_pad would find nothing)
     LOG("[input] gamepad removed%s: %s\n", was ? " (it was in use)" : "", name ? name : "?");
     bool real = pads[i].real;
+    if (pads[i].pad == gyro_pad) gyro_pad = NULL;  // (its gyro was read: gone with it)
     SDL_CloseGamepad(pads[i].pad);
     pads[i] = pads[--npads];
     if (!real) LOG("[input] (it was not a controller for the touch controls)\n");
@@ -1068,6 +1079,67 @@ void host_input_event(const SDL_Event *e) {
 static int32_t clamp_axis(int v) { return v < -32767 ? -32767 : v > 32767 ? 32767 : v; }
 
 // Capture or release the mouse as wanted, and give its movement to the hunt camera or the right stick.
+// ---- Aiming with the gyro ([Controls] GyroAim): while a bow or a bowgun aims (weapon_gyro_aiming; not a locked shot's
+// own aim), the phone's gyroscope - a controller's, if the one read has one - turns the aim as a drag does, added to it:
+// the angle turned since the aim began, times GyroSensitivity, in the mouse's counts (the hunt camera's GYRO_COUNT_DEG
+// each; with a gun's or a bow's own camera up, mouse_update's stick). The sensor is open only while aiming. The
+// phone's axes go by the display's quarter turns from the device's natural orientation (a phone's portrait, an Anbernic
+// RG406V's landscape). The MH4U port's the same (app_native/controls.cpp)
+const float GYRO_COUNT_DEG = 0.08f;   // (hle/mousecam.c: the hunt camera's turn for a count)
+const float GYRO_DEADBAND = 0.01f;    // (radians a second: the gyroscope's own drift, at rest)
+static SDL_Sensor *gyro_dev;
+static bool gyro_on;
+static int gyro_turns;
+static uint64_t gyro_ns;
+bool touch_lock_assist(void);  // (runtime/touch.cpp: a locked shot's own aim)
+static int display_quarter(SDL_DisplayOrientation o) {  // (the device turned this many quarters counterclockwise)
+    return o == SDL_ORIENTATION_LANDSCAPE ? 1 : o == SDL_ORIENTATION_PORTRAIT_FLIPPED ? 2 : o == SDL_ORIENTATION_LANDSCAPE_FLIPPED ? 3 : 0;
+}
+static void gyro_off(void) {
+    if (gyro_dev) SDL_CloseSensor(gyro_dev), gyro_dev = NULL;
+    if (gyro_pad) SDL_SetGamepadSensorEnabled(gyro_pad, SDL_SENSOR_GYRO, false), gyro_pad = NULL;
+    if (gyro_on) LOG("[gyro] off\n");
+    gyro_on = false, gyro_ns = 0;
+}
+static void gyro_update(void) {
+    uint64_t now = plat_now_ns();
+    if (!config_live_gyro_aim() || !weapon_gyro_aiming(weapon_hunter(), now) || touch_lock_assist()) {
+        if (gyro_on) gyro_off();
+        return;
+    }
+    if (!gyro_on) {  // (the aim begins: where it is now is the middle, the phone's pose with it)
+        gyro_on = true, gyro_ns = 0;
+        SDL_Gamepad *p = pad && SDL_GamepadHasSensor(pad, SDL_SENSOR_GYRO) ? pad : NULL;
+        if (p && SDL_SetGamepadSensorEnabled(p, SDL_SENSOR_GYRO, true)) gyro_pad = p;
+        int n = 0;
+        SDL_SensorID *ids = gyro_pad ? NULL : SDL_GetSensors(&n);
+        for (int i = 0; ids && i < n && !gyro_dev; i++)
+            if (SDL_GetSensorTypeForID(ids[i]) == SDL_SENSOR_GYRO) gyro_dev = SDL_OpenSensor(ids[i]);
+        SDL_free(ids);
+        SDL_DisplayID d = SDL_GetPrimaryDisplay();
+        gyro_turns = (display_quarter(SDL_GetCurrentDisplayOrientation(d)) - display_quarter(SDL_GetNaturalDisplayOrientation(d)) + 4) % 4;
+        LOG("[gyro] on: %s (the display %d quarter turns from the device's own orientation)\n",
+            gyro_pad ? SDL_GetGamepadName(gyro_pad) : gyro_dev ? SDL_GetSensorName(gyro_dev) : "no gyroscope", gyro_turns);
+    }
+    float g[3] = {0, 0, 0}, right = 0, up = 0;  // (radians a second: the aim's turn right, up)
+    if (gyro_pad && SDL_GetGamepadSensorData(gyro_pad, SDL_SENSOR_GYRO, g, 3)) {
+        right = -g[1], up = g[0];  // (SDL's: a controller held before you, x right, y up, z toward you)
+    } else if (gyro_dev && SDL_GetSensorData(gyro_dev, g, 3)) {
+        // (the device's natural axes: x right, y up, z out of the screen; the screen's up and right in them, by quarter turn)
+        static const float ux[4] = {0, 1, 0, -1}, uy[4] = {1, 0, -1, 0}, rx[4] = {1, 0, -1, 0}, ry[4] = {0, -1, 0, 1};
+        int k = gyro_turns;
+        right = -(g[0] * ux[k] + g[1] * uy[k]), up = g[0] * rx[k] + g[1] * ry[k];
+    }
+    if (fabsf(right) < GYRO_DEADBAND) right = 0;
+    if (fabsf(up) < GYRO_DEADBAND) up = 0;
+    if (now < gyro_test_until) right = gyro_test_r * 0.0174533f, up = gyro_test_u * 0.0174533f;
+    float dt = gyro_ns ? (float)(now - gyro_ns) * 1e-9f : 0.0f;
+    gyro_ns = now;
+    if (dt > 0.1f) dt = 0.1f;
+    float k = config_live_gyro_sensitivity() * 57.29578f / GYRO_COUNT_DEG * dt;  // (radians -> degrees -> counts)
+    if ((right != 0 || up != 0) && k > 0) mouse_dx += right * k, mouse_dy -= up * k, touch_cam_ns = now;
+}
+
 static void mouse_update(int *rx, int *ry) {
     // (Forge's menu, the chat box, a text the game asks for: the pointer is theirs)
     bool want = mouse_grab && !overlay_menu_open() && !chat_active() && !textinput_active();
@@ -1310,6 +1382,7 @@ void host_input_update(void) {
     touch_input(real_pad_connected(), typing, &b, &lx, &ly, &tdx, &tdy);  // (a real controller open hides them)
     touch_right_stick(&rx, &ry);  // (a Hunter Art tapped that the game's controls put on the right stick)
     if (tdx != 0 || tdy != 0) mouse_dx += tdx, mouse_dy += tdy, touch_cam_ns = plat_now_ns();
+    gyro_update();  // (aiming a bow or a bowgun: the gyroscope's turn, as a drag)
     bool mouse_moved = mouse_dx != 0 || mouse_dy != 0;  // (the mouse or a finger turning the camera: the lock-on waits)
     mouse_update(&rx, &ry);
 
@@ -1427,7 +1500,9 @@ void host_input_update(void) {
     rstick_was = rstick;
     if (rstick && !r3_targets) b &= ~B(BTN_RSTICK);
     b |= touch_lock_buttons(b, mouse_moved || (int64_t)rx * rx + (int64_t)ry * ry > 12000LL * 12000);  // (round: as the game's)
-    b = touch_lock_shot(b);  // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp)
+    // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp; standing still, no stick
+    // past a quarter, as 0.1.8 aimed it)
+    b = touch_lock_shot(b, (int64_t)lx * lx + (int64_t)ly * ly < 8192LL * 8192);
     // (the touch controls' menu pad: what it alone presses the game reads only while a menu takes input, hle/input.c)
     uint64_t menu_only = touch_menu_buttons() & ~b;
     b |= menu_only;
