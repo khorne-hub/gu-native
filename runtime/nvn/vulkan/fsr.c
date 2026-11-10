@@ -1795,8 +1795,8 @@ void vk_fsr_draw(const FsrDraw *d) {
     }
     if (redirect && logging && d->color0 == g_h) {  // (MHGU_FSR_LOG: a draw over the HUD that samples a picture of the render size)
         for (int i = 0; i < d->ntex; i++)
-            if (d->tex[i] && d->tex[i] != g_h && is_rt(d->tex[i]) && d->tex[i]->width == rw && d->tex[i]->height == rh) {
-                draw_note(d, "after the start of the HUD, sampling a render-size target");
+            if (d->tex[i] && (d->tex[i] == g_h || (is_rt(d->tex[i]) && picture_sized(d->tex[i])))) {
+                draw_note(d, "after the start of the HUD, sampling the picture");
                 break;
             }
     }
@@ -1805,13 +1805,15 @@ void vk_fsr_draw(const FsrDraw *d) {
         bool post = d->count <= 6;
         bool reads_rt = false, reads_picture = false;
         for (int i = 0; i < d->ntex; i++) {
-            if (d->tex[i] == g_h || !is_rt(d->tex[i])) continue;
+            NvnTexture *t = d->tex[i];
+            if (t == g_h) { reads_picture = true; continue; }  // (the picture being drawn into: never a HUD sprite)
+            if (!is_rt(t)) continue;
             reads_rt = true;
-            reads_picture |= picture_sized(d->tex[i]);
+            reads_picture |= picture_sized(t);
         }
         if (post && reads_rt) { h_draws++; return; }
         // (a 3D effect drawn into H after the post passes is still the scene's: one tested against the scene's depth -
-        // Astalos' charged wings - or one that samples the picture, a render target of the render size or half of it.
+        // Astalos' charged wings - or one that samples the picture: H itself, or a render target of the render size or half.
         // Taken for the start of the HUD, it and what followed were drawn on the output-size stand-ins: over an empty
         // depth target, so over the hunter and the monster, and sampling render-size images at output-size places, so
         // smeared streaks, with Low-end mode's plain scaling or FSR only: #60)
