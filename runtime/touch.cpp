@@ -905,6 +905,9 @@ struct State {
     bool pinch;
     float pinch_d0, pinch_s0;
     EditPanel epanel, epanel_open;  // the editor's panel: where it is and how big, and as the editor opened
+    int rep_btn;                    // ...its - or + that sized it last (-1 none), when, and where it was then
+    uint64_t rep_ns;
+    Rect rep_at;
 #ifndef __ANDROID__
     // The HUD editor: open, asked for; the panel's button held down, the part being dragged (HP_*; -1 none); the
     // pointer (window pixels); the drag's start: the pointer, the part's offset and its frame; the finger that is the
@@ -1184,6 +1187,7 @@ void to_menu(const SDL_Event *e) {
 // size it, so that it leaves free what is being placed
 enum { E_SMALLER, E_BIGGER, E_HIDE, E_RESET, E_SET, E_STYLE, E_PROF, E_DEFAULTS, E_CANCEL, E_SAVE, E_COUNT };
 const int SEL_PANEL = -2;  // (s.sel / a finger's ctl: the editor's panel, picked by its title strip)
+const uint64_t PANEL_REPEAT = 700 * MS;  // (taps on its - or + this close together: one button's, State::rep_btn)
 bool grabbed(int ctl) { return ctl >= 0 || ctl == SEL_PANEL; }  // (a finger's ctl: something it moves)
 void panel_dims(float w, float h, float k, float *pw, float *ph) { *pw = std::min(w * .94f, 1.9f * h) * k, *ph = .28f * h * k; }
 // The panel, its buttons and its title strip (grab: where a finger picks and drags it), on the screen whole; its measure
@@ -1233,7 +1237,7 @@ void edit_begin(State &s) {
     g_edit_set = g_ranged.load() != 0;  // (the layout in use; the panel's button changes it)
     s.edit_prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;  // (the HUD in use with the touch controls)
     g_hud_edit_prof = s.edit_prof;
-    s.saved = s.layout, s.epanel_open = s.epanel;
+    s.saved = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
     drop_fingers(s);
     rt_logf("[touch] layout editor\n");
 }
@@ -1400,13 +1404,21 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         f->id = e->tfinger.fingerID, f->x = f->x0 = x, f->y = f->y0 = y, f->ctl = -1;
         Rect panel, btn[E_COUNT], grab;
         editor_panel(s.epanel, s.w, s.h, &panel, btn, &grab);
+        // (taps in a row where the panel's - or + was press it again, though the panel it sizes slid at the screen's edge
+        // and put another button there)
+        uint64_t now = SDL_GetTicksNS();
+        int again = s.rep_btn >= 0 && now - s.rep_ns < PANEL_REPEAT && s.rep_at.in(x, y) ? s.rep_btn : -1;
         for (int i = 0; i < E_COUNT; i++)
-            if (btn[i].in(x, y)) {
-                f->kind = F_MENU;  // (held until it lifts: nothing under it moves)
+            if (i == again || (again < 0 && btn[i].in(x, y))) {
+                f->kind = F_MENU, f->ctl = i;  // (held until it lifts: nothing under it moves; the button it lights)
+                bool sizing = s.sel == SEL_PANEL && (i == E_SMALLER || i == E_BIGGER);
                 edit_button(s, i);
+                if (sizing) s.rep_btn = i, s.rep_ns = now, s.rep_at = again < 0 ? btn[i] : s.rep_at;
+                else s.rep_btn = -1;
                 if (!s.edit) f->kind = F_NONE;
                 return;
             }
+        s.rep_btn = -1;
         Finger *drag = nullptr;
         for (Finger &g : s.f)
             if (&g != f && g.kind == F_EDIT && grabbed(g.ctl)) drag = &g;
@@ -3431,6 +3443,29 @@ void draw_part_frames(ImDrawList *dl, ImFont *font, const HudVals *hud, int pick
     }
 }
 
+// A button's word on its plate: on one line, smaller where it is too long; where that would make it much smaller (a small
+// panel, a narrow screen), on two lines split at the space nearest its middle, when those come out larger
+void button_text(ImDrawList *dl, ImFont *font, const Rect &b, float fs, ImU32 col, const char *t) {
+    float room = (b.x1 - b.x0) * .92f, wide = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, one = wide > room ? fs * room / wide : fs;
+    ImVec2 c((b.x0 + b.x1) * .5f, (b.y0 + b.y1) * .5f);
+    int n = (int)strlen(t), cut = -1;
+    for (int k = 1; k < n - 1; k++)
+        if (t[k] == ' ' && (cut < 0 || abs(2 * k - n) < abs(2 * cut - n))) cut = k;
+    if (one < fs * .8f && cut > 0 && n < 64) {
+        char first[64];
+        snprintf(first, sizeof first, "%.*s", cut, t);
+        const char *second = t + cut + 1;
+        float w2 = std::max(font->CalcTextSizeA(fs, FLT_MAX, 0, first).x, font->CalcTextSizeA(fs, FLT_MAX, 0, second).x);
+        float two = std::min(std::min(fs, fs * room / std::max(1.0f, w2)), (b.y1 - b.y0) * .44f);
+        if (two > one * 1.1f) {
+            text_center(dl, font, two, ImVec2(c.x, c.y - two * .52f), col, first);
+            text_center(dl, font, two, ImVec2(c.x, c.y + two * .52f), col, second);
+            return;
+        }
+    }
+    text_center(dl, font, one, c, col, t);
+}
+
 // A grip of the editor's panel: four arrowheads round a cross on a dark plate with a gold edge (its title strip drags it)
 void grip(ImDrawList *dl, const Rect &r, ImU32 col) {
     ImVec2 c((r.x0 + r.x1) * .5f, (r.y0 + r.y1) * .5f);
@@ -3608,12 +3643,9 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
                    (i == E_STYLE && ranged_layout());
         bool lit = false;
         for (const Finger &f : s.f)
-            if (f.kind == F_MENU && btn[i].in(f.x, f.y)) lit = true;
+            if (f.kind == F_MENU && f.ctl == i) lit = true;
         plate(dl, btn[i], line * .8f, off ? .45f : 1.0f, lit && !off);
-        float fs = (i < E_HIDE ? .05f : .028f) * u, room = (btn[i].x1 - btn[i].x0) * .92f, wide = font->CalcTextSizeA(fs, FLT_MAX, 0, T(LABEL[i])).x;
-        if (wide > room) fs *= room / wide;  // (a narrow screen, a long word: on one line, smaller)
-        text_center(dl, font, fs, ImVec2((btn[i].x0 + btn[i].x1) * .5f, (btn[i].y0 + btn[i].y1) * .5f),
-                    fade(i == E_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
+        button_text(dl, font, btn[i], (i < E_HIDE ? .05f : .028f) * u, fade(i == E_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
     }
     // (what the player should know: about the part picked first, else a hidden part a tap no longer works, else why the
     // frames show outside a hunt)
