@@ -647,6 +647,8 @@ static inline const char *settings_text(int language, const char *english) {
          "Con el pad de menú, una pestaña ZR sobre la de la derecha (R si el juego pasa páginas con ZL y ZR). Algunos menús la usan para cambiar de sección o ver más información: la caja de objetos, la herrería."},
         {"The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.",
          "El Menos del juego, en una cacería. Mientras está desactivado, el pad de menú tiene un Menos chico debajo: la caja de objetos abre sus otras secciones con él."},
+        {"The D-pad during a hunt. In the game's menus the menu pad takes its place.",
+         "La cruceta durante una cacería. En los menús del juego la reemplaza el pad de menú."},
         {"The key that opens a line of chat, anywhere (in a quest too): a key's name as the settings menu shows it, or nothing for none",
          "La tecla que abre una línea de chat en cualquier lugar (también en una misión): el nombre de una tecla como lo muestra el menú de opciones, o nada para ninguna"},
         {"Default: /", "Por defecto: /"},

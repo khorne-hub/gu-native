@@ -549,6 +549,7 @@ int hit(const Layout &l, float x, float y, float w, float h, int *part, float sl
     float bd = 1e30f;
     for (int i = 0; i < C_COUNT; i++) {
         if (!(editor ? in_editor(i) : in_mode(i, menu)) || (i == C_STICK && !stick) || (of_mpad(i) && !pad_ready)) continue;
+        if (!editor && i == C_HDPAD && in_mode(C_MPAD, menu)) continue;  // (the menu pad in its place: under_mpad)
         Geo g = place(l, i, w, h);
         float d = i == C_ATTACK ? pill_distance(g, x, y) / (g.r * (slop - .07f))
                 : i == C_CORNER ? band_distance(g, x, y, nullptr) / (g.r * BAND_T * (slop - .07f))
@@ -3624,10 +3625,12 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
 
 // A hunt button under the menu pad's group (its tabs reach ZR, ZL and L at their usual places): it fades out as the pad
 // comes in and back as it goes, as in the MH4U port (its under_mpad); there the pad's group takes the finger first (hit).
-// Never the attacks nor B (a menu's confirm and back)
+// Never the attacks nor B (a menu's confirm and back). The hunt's d-pad (ShowDpad) wherever it is: the menu pad takes its
+// place, so it goes as the pad comes in and comes back as it goes, and no finger takes it meanwhile (hit; 4u-native #25)
 bool under_mpad(const Layout &l, int i, float w, float h) {
     if (of_mpad(i) || i == C_SETTINGS || i == C_ATTACK || i == C_CORNER || i == C_HEAVY || i == C_LIGHT || i == C_DODGE)
         return false;
+    if (i == C_HDPAD) return true;
     Geo g = place(l, i, w, h);
     for (int m : {C_ML, C_MR, C_MZL, C_MZR, C_MMINUS}) {
         if (!mpad_member(m)) continue;

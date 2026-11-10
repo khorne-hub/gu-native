@@ -2395,6 +2395,8 @@ void touch_button_rows(std::vector<Row> &r) {
             r.back().key = TB_KEYS[i];
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
                 r.back().help = tr("The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.");
+            if (i == TB_DPAD)  // (both platforms, the MH4U port's words: the menu pad takes its place, touch.cpp under_mpad)
+                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place.");
 #ifndef __ANDROID__  // (the default ini says nothing of these two; a phone's: PHONE_HELP)
             if (i == TB_MENU_ZL)
                 r.back().help = tr("With the menu pad, a ZL tab above its left one (L when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.");
