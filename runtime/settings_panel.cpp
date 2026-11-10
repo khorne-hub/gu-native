@@ -41,7 +41,7 @@ extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
-                  PadList, PadMap, ImportSave, Licenses, Remove };
+                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite };
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -421,6 +421,45 @@ void sign(ImDrawList *dl, ImVec2 c, float r, bool plus, ImU32 col, float thick) 
     if (plus)
         dl->AddRectFilled(ImVec2(c.x - thick * .5f, c.y - r), ImVec2(c.x + thick * .5f, c.y + r), col);
 }
+// The header's button to the project's page: GitHub's mark, a disc with the cat cut out of it, drawn here in the
+// glyphs' colour (no artwork, no brand colours; the same in the MH4U port). r: the disc's radius
+void github_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
+    // (the cat's outline in the disc's radius, y down: from the right of its body, where it leaves the disc at the
+    // bottom, up over the head and the ears and down the left with its arm; the disc's edge closes it from the left of
+    // the body round to the right, clockwise as ImGui fills: one shape, its edges smoothed)
+    static const float cat[][2] = {
+        {.25f, .72f}, {.244f, .575f}, {.22f, .5f}, {.18f, .44f}, {.263f, .428f}, {.345f, .405f},
+        {.422f, .375f}, {.49f, .33f}, {.55f, .265f}, {.595f, .18f}, {.625f, .077f}, {.635f, -.05f},
+        {.61f, -.2f}, {.53f, -.32f}, {.552f, -.411f}, {.549f, -.49f}, {.52f, -.585f}, {.457f, -.583f},
+        {.371f, -.554f}, {.245f, -.485f}, {.125f, -.51f}, {0, -.52f}, {-.125f, -.51f}, {-.245f, -.485f},
+        {-.371f, -.554f}, {-.457f, -.583f}, {-.52f, -.585f}, {-.549f, -.49f}, {-.552f, -.411f}, {-.53f, -.32f},
+        {-.61f, -.2f}, {-.635f, -.05f}, {-.625f, .077f}, {-.595f, .18f}, {-.55f, .265f}, {-.49f, .33f},
+        {-.422f, .375f}, {-.345f, .405f}, {-.263f, .428f}, {-.18f, .44f}, {-.22f, .5f}, {-.244f, .575f},
+        {-.3f, .594f}, {-.377f, .6f}, {-.46f, .573f}, {-.535f, .49f}, {-.59f, .43f}, {-.69f, .39f},
+        {-.733f, .416f}, {-.6875f, .456f}, {-.624f, .525f}, {-.585f, .598f}, {-.56f, .646f}, {-.5f, .695f},
+        {-.4f, .724f}, {-.25f, .715f}};
+    const float bx = .25f, by = std::sqrt(1 - bx * bx);  // (where the body leaves the disc)
+    dl->PathArcTo(c, r, std::atan2(by, -bx), std::atan2(by, bx) + 2 * IM_PI, 40);
+    for (const auto &p : cat)
+        dl->PathLineTo(ImVec2(c.x + p[0] * r, c.y + p[1] * r));
+    dl->PathFillConcave(col);
+}
+// The project's official page, the only link the project gives: in the phone's browser (SDL_OpenURL: an Android VIEW
+// intent; a desktop's own browser), from the header's GitHub button once View::OpenSite's Open says so (the browser
+// can make Android close the game on a phone with little memory). With nothing to open it (a handheld or a TV box with
+// no browser) the menu says so, as in the MH4U port
+constexpr const char *OFFICIAL_PAGE = "https://github.com/khorne-hub/gu-native";
+constexpr const char *NO_BROWSER = "No app here can open web pages.";
+void open_official_page() {
+    if (SDL_OpenURL(OFFICIAL_PAGE)) {
+        fprintf(stderr, "[settings] the official page went to the browser (%s)\n", OFFICIAL_PAGE);
+        if (s.error == tr(NO_BROWSER))
+            s.error.clear();
+    } else {
+        fprintf(stderr, "[settings] the official page could not be opened (%s): %s\n", OFFICIAL_PAGE, SDL_GetError());
+        s.error = tr(NO_BROWSER);
+    }
+}
 // On / Off: a slot whose stud slides to the right and lights it green when on
 void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
     const Look k = touch_look();
@@ -601,7 +640,7 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
 }
 bool confirmation() {
     return s.view == View::CloseChanges || s.view == View::Exit || s.view == View::Restart ||
-           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove;
+           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove || s.view == View::OpenSite;
 }
 // The guides a desktop's view shows at its bottom (0: none): all four on the tabs, Confirm and Back on a dialog, and
 // Navigation too on a page of rows (the licenses' scroll: no Confirm there). None while a key is being chosen, text
@@ -2754,6 +2793,11 @@ std::vector<Row> rows_for_view(bool *open) {
 #endif
         if (s.view == View::Reset)
             action(r, "dialog.reset", tr("Reset"), []() { reset_section(); });
+        if (s.view == View::OpenSite)  // (back to where the button was, then the browser: a notice there without one)
+            action(r, "dialog.open", tr("Open"), []() {
+                pop();
+                open_official_page();
+            });
         if (s.view == View::CloseChanges) {
             action(r, "dialog.save", tr("Save and close"), [open]() {
                 if (save())
@@ -3047,6 +3091,18 @@ void fit(std::string &value, float available) {
         value.resize(n);
     } while (!value.empty() && ImGui::CalcTextSize((value + "...").c_str()).x > available);
     value += "...";
+}
+// A name cut to fit at a space, never inside a word (room: its width in font at size), "..." at its end; empty when not
+// even its first word fits
+std::string whole_words(ImFont *font, float size, const std::string &name, float room) {
+    if (font->CalcTextSizeA(size, FLT_MAX, 0, name.c_str()).x <= room)
+        return name;
+    for (size_t n = name.rfind(' '); n != std::string::npos && n; n = name.rfind(' ', n - 1)) {
+        std::string cut = name.substr(0, n) + "...";
+        if (font->CalcTextSizeA(size, FLT_MAX, 0, cut.c_str()).x <= room)
+            return cut;
+    }
+    return "";
 }
 // An invisible button over r for a finger (not one of the rows: the controller never lands on it); true when tapped
 bool touch_button(const char *id, const ImRect &r, bool enabled, bool *held) {
@@ -3630,7 +3686,14 @@ std::string view_title() {
                     : s.view == View::KeyCapture ? "Press the key for chat (Esc: cancel)"
                     : s.view == View::ImportSave ? "Import this save? The characters here are replaced by its own and the game restarts; the current save is kept in a copy."
                     : s.view == View::Licenses   ? "Licenses"
+                    : s.view == View::OpenSite   ? "Open the project's page?"
                                                  : "Unsaved changes");
+}
+// What a dialog's question means, under it (empty: the question says it all)
+std::string view_detail() {
+    return s.view == View::OpenSite
+               ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save in the game first.")
+               : "";
 }
 // The tab's notes under its rows (text, a warning)
 std::vector<std::pair<const char *, bool>> page_notes() {
@@ -3886,7 +3949,7 @@ void touch_panel(bool *open, const Config &before) {
     picker_keys(options);
     bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::Move;
     bool picking = s.dropdown.open && !options.empty();  // (the picker over the menu this frame: the menu dimmed)
-    // The header: Back at its left, Save and Close at its right, the title between
+    // The header: Back at its left, the official page (GitHub's mark), Save and Close at its right, the title between
     float x0 = window->Pos.x, y0 = window->Pos.y, x1 = x0 + window->Size.x, y1 = y0 + window->Size.y;
     float band = std::max(.11f * H, f * 2.9f), side = band * .8f, by = y0 + (band - side) * .5f + line * .5f;
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), k.band);
@@ -3924,20 +3987,53 @@ void touch_panel(bool *open, const Config &before) {
         shadow_text(dl, f,
                     ImVec2(save_rect.GetCenter().x - ts.x * .5f, save_rect.GetCenter().y - ts.y * .5f),
                     can ? k.glow : look.text_off, label);
-        right = save_rect.Min.x - pad;
+        // (the project's page, a little apart from Save: GitHub's mark, as in the MH4U port)
+        ImRect site(save_rect.Min.x - pad * 1.6f - side, by, save_rect.Min.x - pad * 1.6f, by + side);
+        if (touch_button("###site", site, true, &held))  // (asks first: the browser can make Android close the game)
+            later = []() { push(View::OpenSite, "dialog.cancel"); };
+        plate(dl, site, line, held, true);
+        github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
+        right = site.Min.x - pad;
     }
-    {  // (the title; the tab's name or the submenu's after it)
+    {  // (the title; the tab's name or the submenu's after it. Where the header's buttons leave less room (a large Menu
+       // size on a 4:3 screen), both smaller to fit, down to .6 of their size; narrower still, the name alone, its last
+       // words left out if need be: never a word cut in two. The same in the MH4U port)
         const char *title = tr("SETTINGS");
-        float size = std::floor(f * 1.1f), cy = by + side * .5f;
-        ImVec2 ts = title_font()->CalcTextSizeA(size, FLT_MAX, 0, title);
+        ImFont *tf = title_font();
+        float size = std::floor(f * 1.1f), cy = by + side * .5f, room = right - title_x;
         std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();
+        auto sized = [](float full, float q) { return q < 1 ? std::floor(full * q) : full; };
+        auto name_w = [&](float q) { return font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str()).x; };
+        auto both_w = [&](float q) {
+            return tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title).x + (sub.empty() ? 0 : f * q * 1.4f + name_w(q));
+        };
+        float q = std::clamp(room / both_w(1), .6f, 1.f);
+        while (q > .6f && both_w(q) > room)
+            q = std::max(.6f, q - .02f);
+        bool alone = !sub.empty() && both_w(q) > room;  // (the name without the title before it)
+        if (alone) {
+            q = std::clamp(room / name_w(1), .6f, 1.f);
+            while (q > .6f && name_w(q) > room)
+                q = std::max(.6f, q - .02f);
+            std::string cut = whole_words(font, sized(f, q), sub, room);
+            if (cut.empty())  // (not even its first word: the title as it was, at its size, clipped at the buttons)
+                alone = false, q = 1;
+            else
+                sub = cut;
+        }
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        shadow_text(dl, title_font(), size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
+        float x = title_x;
+        if (!alone) {
+            ImVec2 ts = tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title);
+            shadow_text(dl, tf, sized(size, q), ImVec2(x, cy - ts.y * .5f), k.glow, title);
+            x += ts.x + f * q * .7f;
+            if (!sub.empty())
+                diamond(dl, ImVec2(x, cy), f * q * .18f, k.rule);
+            x += f * q * .7f;
+        }
         if (!sub.empty()) {
-            float dx = title_x + ts.x + f * .7f;
-            diamond(dl, ImVec2(dx, cy), f * .18f, k.rule);
-            ImVec2 ss = ImGui::CalcTextSize(sub.c_str());
-            shadow_text(dl, f, ImVec2(dx + f * .7f, cy - ss.y * .5f), k.ink, sub.c_str());
+            ImVec2 ss = font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str());
+            shadow_text(dl, sized(f, q), ImVec2(x, cy - ss.y * .5f), k.ink, sub.c_str());
         }
         dl->PopClipRect();
     }
@@ -4029,7 +4125,16 @@ void touch_panel(bool *open, const Config &before) {
         float size = std::floor(f * 1.1f), y = top + pad;
         ImVec2 qs = font->CalcTextSizeA(size, FLT_MAX, cw, question.c_str());
         shadow_text(dl, size, ImVec2(cx - qs.x * .5f, y), k.glow, question.c_str(), cw);
-        y += qs.y + pad * 1.5f;
+        y += qs.y;
+        std::string detail = view_detail();
+        if (!detail.empty()) {  // (smaller, under the question, as the MH4U port's)
+            float ds = std::floor(f * .85f);
+            ImVec2 dz = font->CalcTextSizeA(ds, FLT_MAX, cw, detail.c_str());
+            y += pad * .6f;
+            dl->AddText(font, ds, ImVec2(cx - std::min(cw, dz.x) * .5f, y), k.dim, detail.c_str(), nullptr, cw);
+            y += dz.y;
+        }
+        y += pad * 1.5f;
         y += error_text(y, cx - cw * .5f, cw);
         list_rect = ImRect(cx - cw * .5f, y, cx + cw * .5f, bottom);
     } else {  // (Keybinds, Conflicts: the whole width)
@@ -4929,8 +5034,12 @@ void settings_panel(bool *open) {
         ImGui::PushClipRect(ImVec2(window->ClipRect.Min.x, std::min(body_top, window->ClipRect.Max.y)),
                             window->ClipRect.Max, true);
         clipped_body = true;
-    } else
+    } else {
         ImGui::TextWrapped("%s", view_title().c_str());
+        std::string detail = view_detail();
+        if (!detail.empty())
+            ImGui::TextWrapped("%s", detail.c_str());
+    }
     if (s.view == View::Keyboard) {
         keyboard_keys();
         if (s.view == View::Keyboard) {
