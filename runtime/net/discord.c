@@ -186,6 +186,7 @@ static bool drain(void) {
 
 static void *discord_thread(void *arg) {
     (void)arg;
+    plat_thread_name("discord");
     char sent[sizeof g_want] = "", want[sizeof g_want];
     uint64_t next_try = 0, last_sent = 0;
     unsigned nonce = 0;

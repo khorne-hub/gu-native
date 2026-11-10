@@ -236,6 +236,7 @@ void ui_toggle_fullscreen(void) {
 }
 
 int ui_run(void) {
+    plat_thread_name("ui");  // (the host's main thread: SDL's events, the touch controls' input)
     int background = config_live_background_input();
     for (;;) {
         if (HITCH_ON) hitch_frame(HT_INPUT, 0);  // ((debug) MHGU_HITCHLOG: one pass, runtime/hitchlog.c)

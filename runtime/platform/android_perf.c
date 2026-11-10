@@ -104,6 +104,7 @@ static _Atomic uint32_t presents;  // frames presented so far: the number of the
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static __thread unsigned t_roles;  // the roles this thread has given already
 static __thread int t_slot = -1;   // its entry in thr (-1: none, the table was full)
+static void role_name(unsigned roles, char *buf, size_t size);
 
 void perf_hint_thread(int role) {
     unsigned bit = 1u << role;
@@ -133,6 +134,11 @@ void perf_hint_thread(int role) {
     t_slot = i;
     atomic_fetch_or(&roles_known, bit);
     pthread_mutex_unlock(&lock);
+    if (i >= 0) {  // (MHGU_PERF_THREADNAMES: the thread is named for what it does, "game+render", "submit")
+        char r[32];
+        role_name(atomic_load(&thr[i].roles), r, sizeof r);
+        plat_thread_name(r);
+    }
 }
 
 static void role_name(unsigned roles, char *buf, size_t size) {
@@ -178,6 +184,7 @@ static int64_t frame_target(void) {
 
 static void *make_session(void *arg) {
     (void)arg;
+    plat_thread_name("adpf-session");
     pthread_once(&load_once, load);
     int n = mk.n;
     APerformanceHintManager *m = NULL;

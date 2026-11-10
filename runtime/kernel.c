@@ -256,6 +256,12 @@ static void prio_follow(KThread *t) {
 static void *thread_main(void *arg) {
     KThread *t = arg;
     t_cur = t;
+    {  // (its guest priority and handle, as the [kernel] CreateThread line logs them: "g44-10a"; the update and
+       // translating threads take their role's name once they show it, runtime/platform/android_perf.c)
+        char name[16];
+        snprintf(name, sizeof name, "g%d-%x", t->prio, t->handle);
+        plat_thread_name(name);
+    }
     prio_follow(t);
     void *rec = plat_prio_self();  // (Windows) what the threads waiting on its mutexes lend their priority to: prio_lend
     if (rec) {
@@ -930,6 +936,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint32_t pc) {
 // MHGU_DUMP_THREADS=<seconds>: then (and every 10 s after) every guest thread's state: what it waits for and its
 // last return address (the lr of its most recent call), to find out what a stalled game waits on.
 static void *dump_threads(void *arg) {
+    plat_thread_name("dumpthreads");
     int secs = (int)(intptr_t)arg;
     for (;;) {
         plat_sleep_until_ns(plat_now_ns() + (uint64_t)secs * 1000000000ull);

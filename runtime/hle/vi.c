@@ -180,6 +180,7 @@ void vi_frame_presented(void) {  // (runtime/nvn/vulkan/device.c, per presented 
 // The display's vsync event: 60 Hz, or the frame rate target when that is higher (the game waits for it per frame).
 static void *vsync_thread(void *arg) {
     (void)arg;
+    plat_thread_name("vsync");
     plat_thread_priority(PLAT_PRIO_HIGH);  // (Windows: above normal, a tick late is the game's frame late)
     uint64_t next = plat_now_ns();
     for (;;) {

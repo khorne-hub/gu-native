@@ -167,6 +167,7 @@ static _Atomic uint64_t fence_done;  // the last one finished, its fence ready (
 
 static void *fence_thread(void *arg) {
     (void)arg;
+    plat_thread_name("fence");
     for (uint64_t seq = 1;; seq++) {
         pthread_mutex_lock(&fence_lock);
         while (fence_queued < seq) pthread_cond_wait(&fence_cond, &fence_lock);
@@ -522,6 +523,7 @@ static struct {
 
 static void *spare_thread(void *unused) {
     (void)unused;
+    plat_thread_name("spare-chunk");
     pthread_mutex_lock(&spare.mu);
     for (;;) {
         while (!spare.want) pthread_cond_wait(&spare.cv, &spare.mu);
@@ -1061,6 +1063,13 @@ static void queue_caught_up(JobQueue *q) {
 
 static void *worker(void *a) {
     JobQueue *q = a;
+    {
+        static _Atomic int nc, nt;
+        char name[16];
+        snprintf(name, sizeof name, q == &compile_q ? "shader-%d" : "prewarm-%d",
+                 atomic_fetch_add(q == &compile_q ? &nc : &nt, 1));
+        plat_thread_name(name);
+    }
 #ifdef _WIN32
     if (q == &compile_q) plat_thread_below_normal();
 #elif defined(__ANDROID__)
