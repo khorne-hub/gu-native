@@ -65,6 +65,11 @@ typedef struct {
     uint32_t fmt, w, h;  // what it stands in for: NVN format, size
 } Stand;
 static Stand st_h, st_p, st_d;  // the full-screen image H, the window texture P, the depth target
+// (MHGU_PERF_HUDSTART_FUSE=1, a test until measured: read in vk_fsr_init) the HUD's depth stand-in is cleared as the first
+// pass that renders into it begins, not by a clear of its own before it (exec.c vk_depth_clear_later)
+static int hud_fuse;
+void vk_depth_clear_later(TexBackend *b);
+void vk_depth_clear_forget(TexBackend *b);
 
 static TexBackend *stand_image(NvnTexture *of, uint32_t w, uint32_t h, bool storage) {
     TexBackend *src = of->backend;
@@ -114,6 +119,7 @@ static NvnTexture *stand(Stand *s, NvnTexture *of, uint32_t w, uint32_t h, bool 
     if (same) return &s->fake;
     if (s->fake.backend) {
         TexBackend *old = s->fake.backend;
+        vk_depth_clear_forget(old);
         vk_views_forget(old);
         vk_defer_image(old->image, old->mem);
         free(old);
@@ -1725,10 +1731,14 @@ static void hud_start(const char *why) {
         // the HUD's depth target starts empty (the game clears its own when it needs one; a depth format the GPU can't
         // copy into can't be cleared this way: stand_image)
         TexBackend *b = st_d.fake.backend;
-        VkClearDepthStencilValue far = {1.0f, 0};
-        VkImageSubresourceRange rg = {b->aspect, 0, 1, 0, 1};
-        vkCmdClearDepthStencilImage(vk_cmd(), b->image, VK_IMAGE_LAYOUT_GENERAL, &far, 1, &rg);
-        vk_full_barrier(vk_cmd());
+        if (hud_fuse & 1) {
+            vk_depth_clear_later(b);
+        } else {
+            VkClearDepthStencilValue far = {1.0f, 0};
+            VkImageSubresourceRange rg = {b->aspect, 0, 1, 0, 1};
+            vkCmdClearDepthStencilImage(vk_cmd(), b->image, VK_IMAGE_LAYOUT_GENERAL, &far, 1, &rg);
+            vk_full_barrier(vk_cmd());
+        }
     }
     if (logging) snprintf(why_last, sizeof why_last, "%s, %u post draws before it, depth draws %u", why, h_draws, dn);
 }
@@ -1987,6 +1997,8 @@ void vk_fsr_init(void) {
 #endif
     rw = g_render_size[0], rh = g_render_size[1], ow = g_fsr_output[0], oh = g_fsr_output[1];
     logging = getenv("MHGU_FSR_LOG") != NULL;  // (plain scaling too: where the HUD starts)
+    hud_fuse = getenv("MHGU_PERF_HUDSTART_FUSE") ? atoi(getenv("MHGU_PERF_HUDSTART_FUSE")) : 0;
+    if (hud_fuse) LOG("[perf] MHGU_PERF_HUDSTART_FUSE=%d\n", hud_fuse);
     if (!g_config.fsr) {  // (RenderScale below 100: config.c)
         plain_only = true;
         g_fsr_on = true;
