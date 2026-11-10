@@ -642,6 +642,18 @@ static void create_device(void) {
     g_vk.has_timeline = g_vk.api12 && f12_have.timelineSemaphore;
     g_vk.mirror_clamp = g_vk.api12 ? f12_have.samplerMirrorClampToEdge : mirror_ext;
     maxwell_no_int64 = !have.features.shaderInt64 || getenv("MHGU_VK_NO_INT64");  // (the env: tests)
+    // The translator's performance switches, read once here, before any program is translated; off unless asked for.
+    // NMin / NMax / NClamp only on Vulkan 1.2 drivers but a PowerVR's, until others are checked (old Adreno drivers are 1.1)
+    {
+        const char *e;
+        bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) && atoi(e) > 0;
+        maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) && atoi(e) > 0;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) && atoi(e) > 0;
+        if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
+            LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
+                nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
+    }
     if (!g_vk.has_timeline) {
         VkPhysicalDeviceSubgroupProperties sg = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
         VkPhysicalDeviceProperties2 p2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &sg};

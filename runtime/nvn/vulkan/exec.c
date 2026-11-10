@@ -3103,6 +3103,7 @@ static bool translate_core(Prog *p, bool quiet) {
         if (n++ < 10) LOG("[shader] program %llx/%llx reads global memory (not available: zeros)\n",
                           (unsigned long long)p->code[0], (unsigned long long)p->code[1]);
     }
+    if (maxwell_vs_trim) maxwell_trim_outputs(p->vi, p->fi->attr_mask);  // (what the fragment shader reads)
     save_glsl(p->vi->msl, p->code[0], "vs");
     char fsuf[16] = "fs";
     if (p->fkey.alpha_func)  // (alpha-test variants)
@@ -3223,6 +3224,9 @@ static void progcache_open(void) {
     // (the sources depend on 64-bit integers: translated with them, a program asks for a capability a driver without
     // them must not be given - the validation layer said so after a switch from one driver to another)
     hdr.stamp = hash_words(hdr.stamp, (uint64_t[]){maxwell_no_int64 ? 0x6e6f3634ull : 0x69363400ull}, 8);
+    // (the translator's performance switches give other sources: a run with other ones translates anew)
+    uint64_t sw = (maxwell_nminmax ? 1u : 0u) | (maxwell_ipa_fold ? 2u : 0u) | (maxwell_vs_trim ? 4u : 0u);
+    if (sw) hdr.stamp = hash_words(hdr.stamp, &sw, 8);
 #ifdef SHADER_ID
     hdr.stamp = hash_words(hdr.stamp, SHADER_ID, sizeof SHADER_ID - 1);
 #else  // (built without the Makefile's id: tied to this executable, size + time stamp)
