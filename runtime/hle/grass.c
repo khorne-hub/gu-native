@@ -50,5 +50,7 @@ static void grass2_render(Cpu *c) {
 void grass_init(void) {
     const char *e = getenv("MHGU_GRASS_LOG");
     g_log = e && *e == '1';
-    fnhook_set(FN_GRASS2_RENDER, hle_register("grass:uGrass2::draw", grass2_render));
+    bool hooked = fnhook_set(FN_GRASS2_RENDER, hle_register("grass:uGrass2::draw", grass2_render));
+    if (g_log) LOG("[grass] uGrass2's draw (0x%08x) %s; Grass %s\n", FN_GRASS2_RENDER, hooked ? "hooked" : "NOT hooked",
+                   config_live_grass() ? "On" : "Off");
 }
