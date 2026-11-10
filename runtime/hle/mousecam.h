@@ -18,3 +18,6 @@ void mousecam_lock_shot(void);         // (each update of the hunter, hle/itemba
 void mousecam_init(void);              // hooks the quest camera's stick handler
 bool mousecam_active(void);            // the hunt camera takes the mouse now (its stick handler ran just now)
 void mousecam_add(float dx, float dy);  // counts the mouse moved (x right, y down; any thread)
+bool mousecam_lock_following(void);    // the lock-on turned the camera to its monster just now (any thread)
+int mousecam_control_type(void);       // the game's Control Type: 0 Type 1 .. 2 Type 3 (3: the fourth, as Type 3)
+uint64_t mousecam_target_buttons(void);  // the buttons that change the target now, by the Control Type (BTN_* bits)

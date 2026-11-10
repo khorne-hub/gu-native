@@ -1401,13 +1401,21 @@ void host_input_update(void) {
         if (st->stick == 1) rx = st->x, ry = st->y;
     }
 
-    // The right stick's click in a hunt turns the lock-on on or off (the camera kept on the target, as in the newer
-    // games: runtime/touch.cpp); elsewhere it is the game's
+    // The right stick's click in a hunt turns the lock-on on or off (the camera kept on the monster, as in the newer
+    // games: runtime/touch.cpp); elsewhere it is the game's. With the game's Control Type 3, whose click changes the
+    // target (hle/mousecam.c mousecam_target_buttons), the click stays the game's and holding it turns the lock-on
     static bool rstick_was;
+    static uint64_t rstick_hold;  // (Control Type 3: when the click held turns the lock-on; 0 none)
     bool rstick = (b & B(BTN_RSTICK)) && mousecam_active() && config_live_lock_on();
-    if (rstick && !rstick_was) touch_lock_toggle();
+    bool r3_targets = rstick && (mousecam_target_buttons() & B(BTN_RSTICK)) != 0;
+    if (rstick && !rstick_was) {
+        if (r3_targets) rstick_hold = plat_now_ns() + 600000000ull;  // (as the touch controls' long press on L)
+        else touch_lock_toggle(), rstick_hold = 0;
+    }
+    if (!rstick) rstick_hold = 0;
+    if (rstick_hold && plat_now_ns() >= rstick_hold) touch_lock_toggle(), rstick_hold = 0;
     rstick_was = rstick;
-    if (rstick) b &= ~B(BTN_RSTICK);
+    if (rstick && !r3_targets) b &= ~B(BTN_RSTICK);
     b |= touch_lock_buttons(b, mouse_moved || (int64_t)rx * rx + (int64_t)ry * ry > 12000LL * 12000);  // (round: as the game's)
     b = touch_lock_shot(b);  // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp)
     // (the touch controls' menu pad: what it alone presses the game reads only while a menu takes input, hle/input.c)

@@ -44,6 +44,7 @@ void touch_hud_pad(bool read);     // a controller is read, any (host_input.c): 
 bool touch_edit_mouse(const SDL_Event *e);
 #endif
 void touch_lock_toggle(void);  // the lock-on (a controller's right stick click in a hunt: runtime/host_input.c)
+bool touch_lock_engaged(void);  // the lock-on is on, menus and pauses aside (hle/mousecam.c keeps its monster meanwhile)
 // the lock-on, each update, given every button pressed now (of every input: a press that can open one of the game's
 // menus counts for the menu check) and whether the camera is being turned (host_input.c); no buttons of its own: 0
 uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input);
@@ -64,11 +65,11 @@ void touch_test_window(int ms);  // (tests, the control file's fakewindow) a men
 // the top right (nvn/vulkan/exec.c); else the plain one (HUD_PLAIN: a controller's, a keyboard's)
 extern volatile int g_touch_hud;
 // Where the HUD's parts (HP_*) are drawn, so a finger on them works them and the editors frame them: a tap on the item
-// bar uses the item and a swipe turns it, a tap on a Hunter Art's panel performs it, a tap on the target camera's icon
-// turns the lock-on on or off. The render thread passes each piece of a part (the game's position, where it went on
-// the 1280x720 canvas that covers the screen, the part's size, and flags: 1 a finger works it, 2 hidden: no finger;
-// nvn/vulkan/exec.c cbuf_info), and closes each presented frame (device.c). Not moved (the controls hidden), the parts
-// are passed where they are: the lock-on's padlock goes by the target camera's icon.
+// bar uses the item and a swipe turns it, a tap on a Hunter Art's panel performs it (the target camera's icons take no
+// taps). The render thread passes each piece of a part (the game's position, where it went on the 1280x720 canvas that
+// covers the screen, the part's size, and flags: 1 a finger works it, 2 hidden: no finger; nvn/vulkan/exec.c cbuf_info),
+// and closes each presented frame (device.c). Not moved (the controls hidden), the parts are passed where they are: the
+// lock-on's padlock goes by the target camera's icons then.
 void touch_hud_piece(int part, float game_x, float game_y, float canvas_x, float canvas_y, float k, int flags);
 void touch_hud_frame(void);
 void touch_hud_menu(void);  // (render thread) a menu window of the game's was drawn this frame: the menu pad, the

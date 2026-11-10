@@ -202,6 +202,13 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   (`weapon_aiming`), and the multiplayer menu and the hub form are on layer 100, as stretched panels, which the HUD's parts there are not.
 - The hunter: heading at +0x14a0, in the camera's units, (x, z) = (sin, cos); written, the hunter turns at once. Place at +0xa0, zone at
   +0x1054, which monsters have too. The classes are `uPlayerQuest00..15` in weapon order, no 05: 04 and 06 the bowguns, 10 the bow.
+  Writing the place does nothing: the game puts it back. Each zone of a map has its own coordinates.
+- The lock-on follows the Target Cam's monster, as the MH4U port's (`hle/mousecam.c lock_target`): the hunt camera's +0xa6c, 0 none, n the
+  n-th large monster (+0xb5f7 0) of sEnemy's slots. Measured in two sessions in the Arena (quest 630, two large monsters: its camp is zone 0,
+  the floor zone 1): ZL took it 0, 1, 2, 0, and the game's L turned the camera to the first, then the second. Until the hunter has seen the
+  monsters their icons read Hidden and ZL does nothing. The Control Type, and so the change-target button, is `sUserInfo` +0x446c (0 Type 1
+  ZL, 1 Type 2 the d-pad, 2 Type 3 R3: `mousecam_target_buttons`). The target camera's icons: one monster at x 1200 (y 42 and 57, the
+  button's hint at 82), two at x 1170 and 1230 (y 42) with the hint still at 1200 (`target_piece`, nvn/vulkan/exec.c).
 - In towns the game's camera does not turn, with any stick: it isn't a controller problem.
 - SDL makes an Android controller a gamepad mapping only if its button mask has a face button, and the mask comes from
   `InputDevice.hasKeys`. A pad whose A, B, X, Y Android doesn't list (though it sends them) was a joystick never opened: SDL
