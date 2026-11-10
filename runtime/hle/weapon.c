@@ -96,16 +96,20 @@ bool weapon_aim_action(uint32_t h) {
 }
 
 // Aiming a bow or a bowgun, for the gyro (runtime/host_input.c gyro_update): a gun's quick aim and its scope (their own
-// camera up: weapon_aiming), its crouching fire (0010:026, 028, 029, 033); a bow's aiming mode (0010:012) and a shot
-// taken from it (its draw 0010:002 and its shot 001, back to 012 after: seen on a Moto g06, 2026-11-10)
+// camera up: weapon_aiming), its crouching fire (0010:026, 028, 029, 033); a bow's aiming mode (0010:012 a while: a shot
+// from the stance passes through it for a moment on its way back) and a shot taken from it (its draw 0010:002 and its
+// shot 001, back to 012 after). Seen on a Moto g06 and an RG406V, 2026-11-10
 bool weapon_gyro_aiming(uint32_t h, uint64_t now_ns) {
-    static uint64_t bow_aim_ns;  // (the bow's aiming mode last seen)
+    static uint64_t in_012, aim_ns;  // (0010:012 since then; the aiming mode last seen)
     int ranged = weapon_ranged(h);
     if (!ranged || !(LD8(h + PL_FLAGS) & 1)) return false;
     uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
     if (ranged == WEAPON_BOWGUN) return weapon_aiming(h) || (st == 0x10 && (no == 26 || no == 28 || no == 29 || no == 33));
-    if (st == 0x10 && no == 12) bow_aim_ns = now_ns;
-    return st == 0x10 && (no == 12 || ((no == 1 || no == 2) && now_ns - bow_aim_ns < 1500000000ull));
+    bool mode = st == 0x10 && no == 12;
+    if (!mode) in_012 = 0;
+    else if (!in_012) in_012 = now_ns;
+    if (mode && now_ns - in_012 >= 150000000ull) aim_ns = now_ns;
+    return (mode && now_ns - in_012 >= 150000000ull) || (st == 0x10 && (no == 1 || no == 2 || no == 12) && now_ns - aim_ns < 1500000000ull);
 }
 
 // the local player is a Prowler (a Palico played): its item bar holds Support Moves, chosen with L + Y / A
