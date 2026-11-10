@@ -1944,10 +1944,11 @@ std::vector<Row> main_rows() {
             }
 #ifdef __ANDROID__
             add_bool(r, "lock.on", "Lock-on (hold L)", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
+            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
 #else
             add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));
+            r.back().help = tr("The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
 #endif
-            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
             if (fingers) {
                 action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
                 r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");

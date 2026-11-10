@@ -266,6 +266,8 @@ static inline const char *settings_text(int language, const char *english) {
         {"Buttons on the screen", "Botones en pantalla"},
         {"Lock-on", "Fijar objetivo"},
         {"Lock-on (hold L)", "Fijar objetivo (mantener L)"},
+        {"The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.",
+         "El clic de la palanca derecha (R3) deja la cámara girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo vuelvas a hacer (mantenlo apretado con el Tipo de control 3, donde el clic cambia el objetivo). El botón de objetivo cambia el monstruo, y los arcos y ballestas disparan hacia él. Girar la cámara tú mismo la pausa un momento."},
         {"Camera (L)", "Cámara (L)"},
         {"Target (ZL)", "Objetivo (ZL)"},
         {"Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.",

@@ -240,8 +240,8 @@ bool in_mode(int i, bool menu) {
                                                               i == C_R || i == C_DODGE || i == C_SHEATHE))
         return false;
     if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
-    // (ZL in a town, whatever the settings say: it is the way to the multiplayer menu, and a hunt's ZL stays off; it
-    // stays while a menu opened in the town is open, whether the town's update runs under it or not)
+    // (ZL in a town, whatever the settings say: it is the way to the multiplayer menu; in a hunt it is the target button,
+    // ShowZL. It stays while a menu opened in the town is open, whether the town's update runs under it or not)
     if (i == C_ZL && (plat_now_ns() - g_town_ns < 500 * 1000000ull || (menu && g_menu_town.load()))) return true;
     int show = show_setting(i);
     if (show >= 0 && !config_live_touch_show(show)) return false;
