@@ -75,11 +75,16 @@ int weapon_ranged(uint32_t h) {
 }
 
 // the hunter is in the common actions of aiming with a gun or a bow (R held: 0001:045 going in, 046 held, 048 back from
-// walking; 0002:016 walking so)
+// walking; 0002:016 walking so). 046 stays the hunter's action after the aim or the scope is over, standing, until the
+// next action (an RG406V with a heavy bowgun, 2026-11-10: the hunt camera's handler ran again, the view was the hunt's,
+// for minutes): standing, it counts only while the gun's or the bow's own camera is up, the hunt camera's stopped. No
+// action of a quick aim, the scope (046 with the weapon's command table 43), a shot (0010:005 then 124; an empty
+// magazine's 0010:004), a reload (0010:001) or crouching fire (0010:026, 028, 029, 033; 053 its dodge) had bit 15 set
+// there
 bool weapon_aiming(uint32_t h) {
     if (!h || !weapon_ranged(h)) return false;
     uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
-    return (st == 1 && no >= 45 && no <= 48) || (st == 2 && no == 16);
+    return (st == 1 && no >= 45 && no <= 48 && !mousecam_hunt_camera()) || (st == 2 && no == 16);
 }
 
 // the local player is a Prowler (a Palico played): its item bar holds Support Moves, chosen with L + Y / A
@@ -90,6 +95,14 @@ unsigned weapon_action(uint32_t h) { return h ? (unsigned)LD16(h + PL_ACT_ST) <<
 
 // the hunter is in a move of the weapon's own (a shot, a reload), not a roll or a stagger
 bool weapon_moving(uint32_t h) { return h && (LD16(h + PL_ACT_ST) & 0x7fff) == 0x10; }
+
+// A bow or a bowgun out in a normal stance, standing or walking: in no move of the weapon's own (a shot, a reload,
+// crouching fire, a style's move), not aiming, and the hunt camera's handler still running (a gun aimed, a bow drawn,
+// the scope have a camera of their own: an aim of a style's that weapon_aiming doesn't know stops it too). Only a press
+// from here is a locked shot's (runtime/touch.cpp touch_lock_shot, hle/mousecam.c mousecam_lock_shot)
+bool weapon_stance(uint32_t h) {
+    return weapon_ranged(h) && (LD8(h + PL_FLAGS) & 1) && !weapon_moving(h) && !weapon_aiming(h) && mousecam_hunt_camera();
+}
 
 // The local player's place in the world, x and z (its slot's object, as the control file's plpos: a town's walker too,
 // which is no hunter of weapon_hunter's), false if there is none

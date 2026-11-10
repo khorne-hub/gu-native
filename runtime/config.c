@@ -305,8 +305,9 @@ static const char DEFAULT_INI[] =
     "PhoneRumble = On\n"
     "\n"
     "; The lock-on, as in the newer games: the camera keeps turning to the monster the game's Target Cam has chosen (or\n"
-    "; the nearest), and a bow's or a bowgun's shots go to it. The padlock by L or a long press on L turn it on and off,\n"
-    "; as the right stick's click does (held, with the game's Control Type 3, whose click changes the target)\n"
+    "; the nearest), and a bow's or a bowgun's shot from a normal stance goes to it (the player's own aim, crouching fire\n"
+    "; and the styles' moves are left alone). The padlock by L or a long press on L turn it on and off, as the right\n"
+    "; stick's click does (held, with the game's Control Type 3, whose click changes the target)\n"
     "; Default: On\n"
     "LockOn = On\n"
 #ifndef __ANDROID__  // (runtime/hle/mousemenu.c)

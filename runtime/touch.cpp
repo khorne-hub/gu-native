@@ -659,10 +659,19 @@ bool game_menu(uint32_t hunter) {
     }
     return (!p || now - p > PLAY_HOLD) && !hunter;
 }
+// A bow or a gun aimed in a way weapon_aiming doesn't know (a style's aim): the weapon out, its own camera up (the hunt
+// camera's handler stopped) and the player's A, R or X down just now (touch_lock_shot, every input's buttons). Not a
+// cutscene, a carve or a window that comes with the weapon out: the hunt camera stops there too, without those (#177)
+std::atomic<uint64_t> g_ranged_press_ns;  // (plat_now_ns: the last update with A, R or X down and a bow or a gun out)
+bool ranged_aim(uint32_t hunter) {
+    uint64_t p = g_ranged_press_ns.load();
+    return p && plat_now_ns() - p < 1500 * 1000000ull && weapon_ranged(hunter) && weapon_drawn() == 1 && !mousecam_hunt_camera();
+}
 // (a bow drawn or a gun aimed has a camera of its own: the hunt camera's handler doesn't run then)
 void play_seen(uint32_t hunter) {  // (the SDL main thread, each input update)
     uint64_t now = plat_now_ns(), town = g_town_ns;
-    if (mousecam_active() || (town && now - town < 400 * 1000000ull) || weapon_moving(hunter) || weapon_aiming(hunter))
+    if (mousecam_active() || (town && now - town < 400 * 1000000ull) || weapon_moving(hunter) || weapon_aiming(hunter) ||
+        ranged_aim(hunter))
         g_play_ns = now, g_play_upd = menu_updates();
 }
 // The hunter is being played just now: the hunt camera, a town walked (both run under the game's menus too: the pause
@@ -872,10 +881,13 @@ struct State {
     uint64_t lit_until;
     uint64_t ammo_ready, ammo_hold;  // the next press of the ammo may start then; L held for it until then
     uint64_t assist_until, assist_fire;  // a locked shot: R held so far (the aim), A until then
-    uint64_t assist_t0;                  // (when it began to wait for the aim)
+    uint64_t assist_t0;                  // (when its R began: it waits for the aim from then)
+    uint64_t combo_t0;                   // (its press of A, held back for the game's two-button window: 0 none)
+    uint64_t keep_r;                     // (it ended by B, X or Y: its R kept down until then, so it is no tap: the scope)
+    uint64_t keep_buttons, replay_until; // (...those B, X, Y, held back meanwhile and pressed for the game until then)
     bool assist_wait, fired;             // it waits for the aim; the fire button was down
     bool assist_off;                     // a dodge, a reload or a sheathe pressed since the fire button: no aim until it is up
-    uint64_t shot_others;                // (B, X, Y at the last locked-shot update: their presses)
+    uint64_t shot_others, others_ns;     // (B, X, Y at the last locked-shot update: their presses; the last one's time)
     int drawn_known, weapon_known;       // the last weapon_drawn that was known (0 / 1), the last weapon in hand...
     uint64_t hunter_ns;                  // ...and when the hunter was last found (SDL ticks)
     bool prowler;                        // the player is a Prowler (its item bar: Support Moves), at the last touch_input
@@ -1869,7 +1881,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     uint32_t hunter = weapon_hunter();
     play_seen(hunter);
     // (a bow or a gun being aimed draws on the layer of the game's menus, and it is the hunt's controls that it needs)
-    bool game = game_menu(hunter) && !weapon_aiming(hunter);
+    bool game = game_menu(hunter) && !weapon_aiming(hunter) && !ranged_aim(hunter);
     static int dbg = -1;  // (MHGU_TOUCH_LOG: the menu, the hunter played or not, the menu pad's presses, as they change)
     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
     // (a menu opened in a town, the item box, a shop, the smithy, its windows drawn: no Hunter Art comes of the d-pad
@@ -2320,37 +2332,127 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
     return 0;  // (no L presses: the hunt camera follows the monster itself, hle/mousecam.c)
 }
 
-// With the lock-on on, a gun's shot aims first: only an aimed shot takes the monster's height (hle/mousecam.c). Its aim
-// stays a moment, for the next shot; the scope, opened by hand, is left alone. On every input's fire button (the touch
-// controls', a key, a mouse button, a controller's: host_input.c gives them all, once each update)
-// The aim is known by the hunter's actions (weapon_aiming): some styles' aims are other actions, and a shot that
-// waited for them never left (seen: a light and a heavy bowgun). So after a moment of R it fires anyway: R is the aim
+// With the lock-on on, a bowgun's shot from a normal stance aims first: only an aimed shot takes the monster's height
+// (hle/mousecam.c). A press of A in the stance (weapon_stance: the gun out, standing or walking, in no move of its own,
+// not aiming) is held back for the game's own two-button window (hle/combowin.c: 67 ms, or two updates with
+// ComboInputWindow Strict): X joining it is crouching fire, B or Y another move, and they pass together as pressed. Then R
+// aims (held: the quick aim) and A fires once the aim is up; a press while the hunter is still in that aim fires at once,
+// and after a shot (the game leaves the aim then) the next press from the stance aims anew.
+// Everything else is the player's and passes untouched: their own R (the quick aim, the scope), crouching fire, a reload, a
+// dodge, a sheathe, the styles' moves (Valor's slide, its sheathing stance), and any press out of the stance (#132, #177),
+// with L, ZL or ZR (the item bar, Control Type 3's Hunter Arts), with no monster to aim at (mousecam_lock_aimable) or
+// while the camera is turned by hand (the follow paused: no shot is turned then).
+// On every input's fire button (the touch controls', a key, a mouse button, a controller's: host_input.c gives them all,
+// once each update). The aim is known by the hunter's actions (weapon_aiming) or by the hunt camera's handler stopping (a
+// gun aimed has a camera of its own: so any style's aim is seen); a moment of R without either fires anyway: R is the aim
+extern "C" uint64_t combowin_ns(void);         // (hle/combowin.c: how long the game waits for a second button now)
+extern "C" uint64_t combowin_update_ns(void);  // (...and one of its updates)
+const uint64_t SHOT_AIM = 1300 * MS;  // (a locked shot's aim stays this long after its last press)
+const uint64_t SHOT_A = 110 * MS;     // (its A, pressed for the game this long)
+// The game's R: let go within about 250 ms of its own time it is a tap, the scope; held longer, the quick aim, whose
+// camera then comes up (the hunt camera's stops). Meanwhile (0001:045) the game takes no A, B, X or Y. Measured on the
+// RG406V with a heavy bowgun: at 60 FPS 14 frames of R the scope, 15 the aim; at 30 FPS 8 frames the scope, 9 the aim
+uint64_t aim_hold_ns(void) { return 250 * MS + 3 * combowin_update_ns(); }  // (R held this long: never the scope)
+// (no aim seen this long after its R began: it fires anyway. The aim was seen after 375 ms at 60 FPS)
+uint64_t shot_late_ns(void) { return std::max<uint64_t>(600 * MS, 250 * MS + 10 * combowin_update_ns()); }
+std::atomic<bool> g_assist_waiting, g_player_aims;  // (touch_lock_assist_waiting, touch_lock_player_aims)
 extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
     std::lock_guard<std::mutex> l(g_lock);
     State &s = g_s;
     uint64_t now = SDL_GetTicksNS();
+    static int dbg = -1;
+    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+    bool player_aims = false;
+    if (s.weapon && s.drawn == 1 && (buttons & (B(BTN_A) | B(BTN_R) | B(BTN_X)))) g_ranged_press_ns = plat_now_ns();
     if (s.weapon == WEAPON_BOWGUN && s.drawn == 1 && g_lock_shots.load()) {
         uint32_t hunter = weapon_hunter();
-        bool fire = (buttons & B(BTN_A)) != 0, aiming = weapon_aiming(hunter);
-        // A dodge, a reload, a sheathe pressed ends the aim at once, and none begins again until the fire button is let
-        // go: R held with the fire button's A and then B is R + A + B, a Hunter Art with Control Type 2 (#89)
-        uint64_t others = buttons & (B(BTN_B) | B(BTN_X) | B(BTN_Y));
-        if (others & ~s.shot_others) s.assist_wait = false, s.assist_until = s.assist_fire = 0, s.assist_off = true;
-        s.shot_others = others;
-        if (!fire) s.assist_off = false;
-        // (the aim held for a moment after the press that fired, not for as long as the button is down: a press whose aim
-        // is never seen held R for as long as the thumb stayed)
-        if (fire && !s.fired && !aiming && !s.assist_off) s.assist_wait = true, s.assist_t0 = now, s.assist_until = now + 1300 * MS;
+        unsigned act = weapon_action(hunter);
+        bool fire = (buttons & B(BTN_A)) != 0, press = fire && !s.fired;
         s.fired = fire;
-        if (now < s.assist_until) buttons |= B(BTN_R);
+        player_aims = (buttons & B(BTN_R)) != 0;  // (the player's own: nothing of the help's is in yet)
+        uint64_t others = buttons & (B(BTN_B) | B(BTN_X) | B(BTN_Y)), joined = others & ~s.shot_others;
+        s.shot_others = others;
+        if (joined) s.others_ns = now;
+        // (L, ZL or ZR with it: L + A turns the item bar, ZL + A is a Hunter Art with Control Type 3 - L + A with the L / R
+        // Button Controls swapped -: held at the press or joining it in the window, no locked shot)
+        uint64_t mods = buttons & (B(BTN_L) | B(BTN_ZL) | B(BTN_ZR));
+        uint64_t window = combowin_ns();
+        bool helping = s.combo_t0 || s.assist_wait || now < s.assist_until;
+        if (player_aims && helping) {  // (the player's R: the aim is theirs, and the press held back fires with it)
+            if (s.combo_t0 || s.assist_wait) s.assist_fire = now + SHOT_A;
+            s.combo_t0 = s.assist_until = s.keep_r = 0, s.assist_wait = false;
+            if (dbg) rt_logf("[touch] a locked shot ended: the player aims\n");
+        } else if (s.combo_t0 && mods) {  // (a shoulder joined the press in the window: it passes with it, as pressed)
+            if (!fire) s.assist_fire = now + SHOT_A;
+            s.combo_t0 = 0, s.assist_off = true;
+            if (dbg) rt_logf("[touch] a locked shot ended by L, ZL or ZR, its A passed with it\n");
+        } else if (joined && helping) {
+            // A dodge, a reload, crouching fire, a sheathe: the help ends, and none begins until A is let go. In the game's
+            // window, before any R, the press held back passes with them as pressed (X + A crouching fire; a tap already let
+            // go gets its A back for X). Once its R began, R stays down until it can't be a tap of R (aim_hold_ns: the
+            // scope), and B, X or Y wait meanwhile (the game takes none while its aim starts) and reach it then as a press
+            // of their own, a tap let go meanwhile too; A not with them: R + A + B is a Hunter Art with Control Type 2 (#89)
+            uint64_t r_min = s.assist_t0 + aim_hold_ns();
+            s.assist_fire = s.combo_t0 && !fire && (joined & B(BTN_X)) ? now + SHOT_A : 0;
+            if (!s.combo_t0 && now < s.assist_until && now < r_min) s.keep_r = r_min;
+            if (dbg)
+                rt_logf("[touch] a locked shot ended by %s (action %04x:%03u)%s\n", joined & B(BTN_X) ? "X" : joined & B(BTN_B) ? "B" : "Y",
+                        act >> 16, act & 0xffff, s.combo_t0 ? ", its A passed with it" : now < s.keep_r ? ", its R kept a moment" : "");
+            s.combo_t0 = s.assist_until = 0, s.assist_wait = false, s.assist_off = true;
+        }
+        if (now < s.keep_r) s.keep_buttons |= joined;  // (B, X, Y pressed while the help's R finishes: they wait)
+        if (!fire && !s.combo_t0) s.assist_off = false;
+        if (press && !player_aims && !s.assist_off) {
+            if (s.assist_wait) {
+                // (another press while it waits for the aim: it fires with the first; the wait isn't begun again)
+            } else if (now < s.assist_until && weapon_aiming(hunter)) {
+                s.assist_until = now + SHOT_AIM;  // (the hunter in its aim: this one passes at once, and the aim stays)
+            } else if (!s.combo_t0) {
+                bool stance = weapon_stance(hunter), alone = !others && !mods && now - s.others_ns >= window && !s.keep_r &&
+                                                             now >= s.replay_until;
+                // (and a monster to aim at, the camera not turned by hand just now - the mouse, a finger, the right stick, L:
+                // hle/mousecam.c turns no shot then -: else the help would only hold the shot back)
+                bool target = mousecam_lock_aimable() && g_lock_follow.load();
+                if (stance && alone && target) {
+                    // (after a shot the game leaves the aim, R held or not: the next press from the stance aims anew, its
+                    // R let go through the window first, so the game takes it as a new press of R; held that long, its
+                    // letting go is no tap of R)
+                    s.combo_t0 = now, s.assist_until = 0;
+                    if (dbg) rt_logf("[touch] a locked shot from the stance (action %04x:%03u)\n", act >> 16, act & 0xffff);
+                } else if (dbg) {
+                    rt_logf("[touch] fire passed: %s (action %04x:%03u)\n",
+                            !alone ? "another button with it" : weapon_aiming(hunter) ? "aiming" : weapon_moving(hunter) ? "a weapon move"
+                            : !mousecam_hunt_camera() ? "no hunt camera (an aim, crouching fire)"
+                            : !stance ? "not in the stance" : !g_lock_follow.load() ? "the camera turned by hand" : "no monster to aim at",
+                            act >> 16, act & 0xffff);
+                }
+            }
+        }
+        // the game's two-button window over, nothing joined: the aim begins, if the hunter is still in the stance
+        if (s.combo_t0 && now - s.combo_t0 >= window) {
+            if (weapon_stance(hunter)) {
+                s.assist_wait = true, s.assist_t0 = now, s.assist_until = now + SHOT_AIM;
+            } else {
+                if (!fire) s.assist_fire = now + SHOT_A;  // (the press passes as it came)
+                s.assist_off = fire;
+            }
+            s.combo_t0 = 0;
+        }
         if (s.assist_wait) {
-            buttons &= ~B(BTN_A);
-            bool late = now - s.assist_t0 >= 450 * MS;
-            if (aiming || late) {
-                s.assist_wait = false, s.assist_fire = now + 110 * MS;
-                if (!aiming) {
+            // The aim seen: the hunter's aiming actions, or the hunt camera stopped since R began (the gun's own camera: a
+            // style's aim too), but not while it is still going in (0001:045, about 22 updates at 60 FPS): the game drops an
+            // A there early on, and the camera stops some updates before the aim's own action (0001:046) comes. Measured on
+            // the RG406V with a heavy bowgun, 2026-11-10: the press, its window and the aim, about 440 ms to the shot
+            bool going_in = act == (1u << 16 | 45);
+            bool aimed = !going_in && (weapon_aiming(hunter) || (now > s.assist_t0 && !mousecam_hunt_camera()));
+            bool late = now - s.assist_t0 >= shot_late_ns();
+            if (aimed || late) {
+                s.assist_wait = false, s.assist_fire = now + SHOT_A;
+                if (dbg) rt_logf("[touch] a locked shot: aim %s after %llu ms (action %04x:%03u)\n", aimed ? "up" : "not seen",
+                                 (unsigned long long)((now - s.assist_t0) / MS), act >> 16, act & 0xffff);
+                if (!aimed) {
                     static unsigned said[8];
-                    unsigned act = weapon_action(hunter), k = 0;
+                    unsigned k = 0;
                     while (k < 8 && said[k] && said[k] != act) k++;
                     if (k < 8 && !said[k]) {
                         said[k] = act;
@@ -2358,15 +2460,22 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
                                 act >> 16, act & 0xffff);
                     }
                 }
-            } else if (now >= s.assist_until) {
-                s.assist_wait = false;
             }
         }
+        if (s.combo_t0 || s.assist_wait) buttons &= ~B(BTN_A);  // (held back: the window, then the aim)
+        if (now < s.assist_until) buttons |= B(BTN_R);
+        if (s.keep_r && now >= s.keep_r) s.keep_r = 0, s.replay_until = now + SHOT_A;  // (R lets go, the presses come)
+        if (now < s.keep_r) buttons = (buttons & ~(B(BTN_A) | B(BTN_B) | B(BTN_X) | B(BTN_Y))) | B(BTN_R);
+        else if (now < s.replay_until) buttons |= s.keep_buttons;
+        else s.keep_buttons = 0;
         if (now < s.assist_fire && !(buttons & B(BTN_B))) buttons |= B(BTN_A);
     } else {
-        s.assist_wait = s.fired = s.assist_off = false, s.assist_until = 0;
+        s.assist_wait = s.fired = s.assist_off = false, s.assist_until = s.combo_t0 = s.keep_r = s.assist_fire = 0;
+        s.keep_buttons = s.replay_until = 0;
     }
     g_assist_until = s.assist_until;
+    g_assist_waiting = s.assist_wait;
+    g_player_aims = player_aims;
     return buttons;
 }
 
@@ -2375,6 +2484,8 @@ extern "C" bool touch_lock_active(void) { return g_lock_follow.load(); }
 extern "C" bool touch_lock_on(void) { return g_lock_shots.load(); }
 extern "C" bool touch_lock_engaged(void) { return g_lock_engaged.load(); }
 extern "C" bool touch_lock_assist(void) { return g_lock_shots.load() && SDL_GetTicksNS() < g_assist_until.load(); }
+extern "C" bool touch_lock_assist_waiting(void) { return touch_lock_assist() && g_assist_waiting.load(); }
+extern "C" bool touch_lock_player_aims(void) { return g_lock_shots.load() && g_player_aims.load(); }
 
 // The app goes to the background (Android): every finger is gone (their ups will not come)
 extern "C" void touch_reset(void) {

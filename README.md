@@ -37,7 +37,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - **Monster lock-on:** tap the padlock by **L**, or hold **L**, and the camera keeps turning to the monster until you do it again, as in the newer Monster Hunter games and the MH4U port. It follows the monster the game's Target Cam has chosen, or the nearest one if none is chosen; the target button (**ZL**, or whatever your **Control Type** uses) moves it to the other monster. With the game's **L/R Button Controls** swapped, the target button and **L**'s button swap as the game does: their badges show what each presses. Turning the camera yourself, or pressing **L**, only pauses it for a moment, and it only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on (hold L)**
 - **A layout of their own for bows and bowguns:** with one in hand, in a hunt, the controls change by themselves: a large fire button under your thumb, reload, the scope with a tap or quick aim if you hold it, crouching fire, and arrows for the ammo (hold one to keep changing). Drag on the fire button while you hold it to aim. It follows the game's Bow Controls option and has its own place in the editor
 - **Change ammo with a swipe:** besides the arrows, swipe up or down on the item bar. The game's list now shows whole, with each ammo's name
-- **Shots with a monster locked on:** they go toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Without the lock you aim as always
+- **Shots with a monster locked on:** a shot from a normal stance goes toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Your own aim, crouching fire and the styles' moves are left to you, and without the lock you aim as always
 - **Items:** the bar sits at the bottom center. Tap it to use the item and swipe it to change the item; a quick swipe no longer uses it by mistake. Hold your finger on it to see the items before and after the selected one, as the game shows them while L is held: swipe meanwhile to turn it, and lift to close it without using anything. Arrows on each side of it turn it too (to hide them: under the gear, **Controls**, **Buttons on the screen**, **Item bar arrows**). As a Prowler, the arrows and the swipe change the Support Move
 - **Hunter Arts:** tap each one's panel to use it. It presses what the game's **Control Type** option uses for that art (types 1 to 4, and **L/R Button Controls** and **R Stick Controls** too), and it works with a controller connected as well
 - **Attacks:** three layouts to choose from: a diagonally split pill, separate buttons, or a U-shaped band in the corner of the screen. With **Keep guarding while sliding** on (under **Buttons on the screen**), a thumb that slides from guard onto the attacks keeps guarding, for moves like a lance's counter
@@ -348,8 +348,9 @@ The same game folder plays on a Windows PC: `MHGU.exe` runs your game natively.
 - **The right click is a second attack (A), only with the weapon out:** it never talks to people, opens or gathers by mistake
 - **Every key can be changed,** up to two per button, mouse buttons included: **F1**, **Controls**, **Keybinds**. The camera
   and your combined buttons can go on keys too
-- **Monster lock-on:** a tap on Alt (R3) keeps the camera on the monster, and a padlock shows by the target icon. A bowgun's
-  shots then aim at the monster's body. It can be turned off: **F1**, **Controls**, **Lock-on**
+- **Monster lock-on:** a tap on Alt (R3) keeps the camera on the monster, and a padlock shows by the target icon. A shot
+  from a normal stance then aims at the monster's body; your own aim, crouching fire and the styles' moves are left to you.
+  It can be turned off: **F1**, **Controls**, **Lock-on**
 - **Type with your keyboard:** your character's name, and a chat line in a hub with **/**, in a quest too
 - **A touch screen:** on a PC with one, the phone's touch controls show when you touch it (**Controls**, **Touch controls**),
   and **Customize controls and HUD** places them

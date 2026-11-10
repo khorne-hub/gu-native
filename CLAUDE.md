@@ -258,6 +258,21 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - The aim's pitch: hunter +0x14b8 (a float, -100 down to 100 up) and +0x2714 (16-bit units, 45 degrees up, 30 down). A shot that isn't aimed ignores them, so a
   locked shot from a bowgun goes through quick aim (`touch.cpp`, `assist_*`). With a gun aimed or a bow drawn the hunt camera's handler does not run: per-update
   work goes in the item bar's hook (`hle/itembar.c`).
+- Locked shots come only from a normal stance (#177, #132): `weapon_stance`, the weapon out, no weapon move, no aim, and `mousecam_hunt_camera` (the hunt
+  camera's handler ran in one of the hunter's last two updates, counted: `mousecam_active` stays true 200 ms after it stops), and a monster to aim at
+  (`mousecam_lock_aimable`). A press of A there, with no L, ZL or ZR held (the item bar, Control Type 3's Hunter Arts), waits the game's own
+  two-button window (`combowin_ns`), so X, B, Y or a shoulder joining it pass with it as pressed, and only then holds R; the aim counts as up by
+  `weapon_aiming` or by the hunt camera stopping (any style's aim), never while still going in (0001:045). The player's own R, crouching fire, reloads,
+  dodges and the styles' moves pass untouched, and `mousecam_lock_shot` writes a bowgun's heading and pitch only during the help's own aim; a bow's only
+  for a draw from the stance (or one chained in its shot), never in its aiming mode. `ranged_aim` keeps an aim weapon_aiming doesn't know (the camera
+  stopped, A, R or X down just now) from being a menu. Measured on the RG406V with a heavy bowgun (2026-11-10, `MHGU_LOG_MOVES`, `MHGU_CAMLOG`):
+  - R is a tap (the scope: 0001:046 with the weapon's command table 43) when let go within about 250 ms of the game's time: 14 frames at 60 FPS, 8 at
+    30; 15 and 9 are the quick aim. While it goes in (0001:045, about 22 updates at 60 FPS) the game drops A, B, X and Y early on, and its camera stops
+    some updates before 0001:046. So the help's R, ended by B, X or Y, stays down for `aim_hold_ns` and those buttons reach the game after it.
+  - 0001:046 stays the action after the aim or the scope is over, standing, with the hunt camera running again: `weapon_aiming` counts it only while
+    the hunt camera is stopped. After a shot the game leaves the aim (0001:000) with R still held, so each press from the stance aims anew (~440 ms).
+  - The hunt camera stops in the quick aim and the scope and runs in crouching fire (0010:026, 028, 029, 033; 053 its dodge). A shot is 0010:005 then
+    124, an empty magazine's press 0010:004, a reload 0010:001. No action had bit 15 set.
 - A menu can't be told from a window over the hunt: no flag in the hunter or the game's globals changes, and the hunt camera runs under menus too. `game_menu`
   treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before. Without a window,
   four seconds without the hunter played is a menu only with no hunter of a quest (`weapon_hunter`): a ballista or a cannon aims

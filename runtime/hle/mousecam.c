@@ -25,14 +25,15 @@
 //
 // A shot with the lock-on on goes to the monster: arrows and shells leave along the hunter's heading (hunter +0x14a0, in
 // the camera's units; (x, z) = (sin, cos); written, the hunter turns at once; +0xfec and +0x2ee4 are copies of it; its
-// place is at +0xa0; measured on a Motorola g06). So with a bow or a bowgun, while the fire button is held and a moment
-// after, the heading is set toward the monster; aiming (R held) keeps it there while the camera is not being turned by
-// hand, and the camera follows the hunter's heading then.
+// place is at +0xa0; measured on a Motorola g06). So for a shot from a normal stance (weapon_stance: the weapon out, no
+// move of its own, no aim), a bow's draw and a moment after it is let go, and a bowgun's locked shot's own aim, the heading
+// is set toward the monster while the camera is not being turned by hand; the gun's camera follows the hunter's heading
+// then. The player's own aim, crouching fire, reloads, dodges and the styles' moves are never turned (#132, #177).
 //
 // The height: aiming, the shot leaves along the aim's pitch: hunter +0x14b8 (a float, -100 down .. 100 up; +0x14bc a copy),
 // from which the game makes +0x2714 (16-bit units: 100 is 45 degrees up, -100 is 30 down). A shot that isn't aimed ignores
 // them, it leaves level whatever they say (a Motorola g06: a shell in the same place at 0 and at -30 degrees), so with the
-// lock-on on a gun's fire button aims first, from any input (runtime/touch.cpp touch_lock_shot).
+// lock-on on a gun's fire button, pressed in the stance, aims first, from any input (runtime/touch.cpp touch_lock_shot).
 #include <math.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -55,6 +56,8 @@
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static float g_dx, g_dy;           // counts moved since the handler last ran (x right, y down)
 static volatile uint64_t g_seen_ns;  // when the handler last ran
+static volatile uint32_t g_upd;      // the local hunter's updates (mousecam_lock_shot, from the item bar's hook)...
+static volatile uint32_t g_cam_upd;  // ...and their count when the handler last ran
 
 static bool sane(uint32_t a) { return a >= 0x08000000u && a < 0xF0000000u && !(a & 3); }
 
@@ -62,6 +65,11 @@ bool mousecam_active(void) {
     uint64_t seen = g_seen_ns;
     return seen && plat_now_ns() - seen < ACTIVE_NS;
 }
+
+// The handler ran in one of the hunter's last two updates, counted, not timed: a gun aimed, the scope, a bow drawn stop it
+// at once, where mousecam_active stays true for ACTIVE_NS after (a locked shot's question: the hunter in a normal stance,
+// and its aim up, whatever actions a style aims with)
+bool mousecam_hunt_camera(void) { return mousecam_active() && g_upd - g_cam_upd <= 2; }
 
 void mousecam_add(float dx, float dy) {
     pthread_mutex_lock(&g_lock);
@@ -75,6 +83,8 @@ bool touch_lock_active(void);  // (runtime/touch.cpp: the lock-on is on and the 
 bool touch_lock_on(void);      // (the lock-on is on, in a hunt, no menu open: whatever the camera is doing)
 bool touch_lock_engaged(void); // (the lock-on is on, menus and all: off, the monster it followed is forgotten)
 bool touch_lock_assist(void);  // (a locked shot holds R for its aim now, from any input: touch_lock_shot)
+bool touch_lock_assist_waiting(void);  // (...and waits for that aim to come up)
+bool touch_lock_player_aims(void);     // (a bowgun aimed with the player's own R, from any input: no locked shot)
 #define LOCK_AFTER_TURN 600000000ull  // (a turn the game made: the follow waits this long, as after one by hand)
 static volatile uint64_t g_turn_ns;   // the game's last turn (camera_stick)
 static uint32_t g_cam_seen;
@@ -207,6 +217,12 @@ bool mousecam_lock_following(void) {
     return t && plat_now_ns() - t < 300000000ull;
 }
 
+// (any thread) a bowgun out with the lock-on on, and a monster its locked shot can aim at, at the hunter's last update:
+// none (another zone, too far, none left), and a press of the fire button is the player's own shot (runtime/touch.cpp
+// touch_lock_shot: holding it back for an aim with nothing to aim at only delayed it)
+static volatile bool g_aimable;
+bool mousecam_lock_aimable(void) { return g_aimable; }
+
 // The game's Control Type, and with it the button that changes the target (sUserInfo *0x1a97f78: the options, copied
 // there from the save; read by the Target Cam's update, main 0x21fec4): +0x446c the type, 0 Type 1 (ZL; on L with the
 // L / R and ZL / ZR buttons swapped, +0x446e), 1 Type 2 (the d-pad: down turns the Target Cam on and off, right and left
@@ -307,25 +323,8 @@ static void lock_follow(uint32_t cam, float dt) {
     }
 }
 
-// A bow's or a bowgun's shot, with the lock-on on: the hunter turned to the monster, and its aim raised to it (see the top)
-void mousecam_lock_shot(void) {
-    static uint64_t fired;
-    uint32_t h = weapon_hunter();
-    int ranged = weapon_ranged(h);
-    if (!ranged || !touch_lock_on()) return;
-    uint64_t b, now = plat_now_ns();
-    int32_t sticks[4];
-    input_get(&b, sticks);
-    // (a bowgun: A fires; a bow: what draws it, by the game's Bow Controls; A is its melee attack)
-    bool fire = (b & (ranged != WEAPON_BOW ? 1ull << BTN_A : weapon_bow_type() ? 1ull << BTN_R : 1ull << BTN_X)) != 0;
-    if (fire) fired = now;
-    // (the touch controls' locked shot holds R for the aim: an aim whose actions weapon_aiming doesn't know, another
-    // style's, counts too)
-    bool aiming = weapon_aiming(h) || (ranged != WEAPON_BOW && touch_lock_assist());
-    // (aiming while the player turns the camera by hand - the lock-on waiting for it: the aim is theirs, a bow's drawn shot
-    // included, whose draw button counts as fire; the shot's path could not be corrected under the lock-on: #132)
-    if (aiming && !touch_lock_active()) return;
-    if (!(aiming && touch_lock_active()) && !((fire || now - fired < SHOT_NS) && (aiming || weapon_moving(h)))) return;
+// The hunter turned to the monster, and its aim raised to it (see the top)
+static void aim_at_monster(uint32_t h) {
     float x = LDF(h + PL_PLACE), y = LDF(h + PL_PLACE + 4), z = LDF(h + PL_PLACE + 8), t[3];
     if (!isfinite(x) || !lock_target(x, y, z, t)) return;
     float body[3], aim_y = t[1] + LOCK_HEIGHT;  // (no skeleton to read: a fixed height over its feet)
@@ -334,7 +333,6 @@ void mousecam_lock_shot(void) {
     if (dist < LOCK_NEAR0) return;  // (under it: the bearing swings)
     const float U = 65536.0f / (2.0f * 3.14159265f);
     ST32(h + PL_HEADING, (uint32_t)lrintf(atan2f(dx, dz) * U) & 0xffffu);
-    if (!aiming && ranged != WEAPON_BOW) return;
     float rise = atan2f(aim_y - (y + MUZZLE_Y), dist);  // (radians; up is positive)
     const float UP = 45.0f * 3.14159265f / 180.0f, DOWN = 30.0f * 3.14159265f / 180.0f;
     if (rise > UP) rise = UP;
@@ -342,6 +340,64 @@ void mousecam_lock_shot(void) {
     float aim = 100.0f * rise / (rise >= 0.0f ? UP : DOWN);
     STF(h + PL_AIM, aim), STF(h + PL_AIM2, aim);
     ST16(h + PL_PITCH, (uint16_t)(int16_t)lrintf(rise * U));
+}
+
+// A bow's or a bowgun's shot, with the lock-on on, from a normal stance only (weapon_stance): the hunter turned to the
+// monster and its aim raised to it. What the player aims, and the weapon's other moves, are left alone: the player's own
+// aim (a gun's R, the scope, a bow's aiming mode), crouching fire, a reload, a dodge, a style's moves (Valor's slide and
+// Sidestep Shot) - writing the heading there turned them toward the monster (#132, #177). A turn by hand meanwhile makes
+// the shot the player's too. (each update of the local hunter: the hunt camera's handler doesn't run while a gun aims)
+void mousecam_lock_shot(void) {
+    g_upd++;  // (mousecam_hunt_camera)
+    static bool armed, stance_was, fire_was;
+    static uint64_t fired, others_was;
+    uint32_t h = weapon_hunter();
+    int ranged = weapon_ranged(h);
+    bool stance = weapon_stance(h);  // (this update's, before the press: the next update's question)
+    bool was = stance_was;
+    stance_was = stance;
+    if (!ranged || !touch_lock_on()) {
+        armed = fire_was = g_aimable = false;
+        return;
+    }
+    if (ranged == WEAPON_BOWGUN) {
+        // (a monster to aim at, for touch_lock_shot: asked as the shot asks it, the monster followed left as it was)
+        float x = LDF(h + PL_PLACE), y = LDF(h + PL_PLACE + 4), z = LDF(h + PL_PLACE + 8), t[3];
+        uint32_t followed = g_lock_en;
+        g_aimable = isfinite(x) && lock_target(x, y, z, t);
+        g_lock_en = followed;
+        // Only the locked shot's own aim (touch_lock_shot: R held for it after a press of A in the stance), in its aim, its
+        // shot, or before them. Not the player's own R; not during a turn by hand (the aim is theirs); not once B, X or Y
+        // ended it: a dodge, a reload, crouching fire, a sheathe go where the player sends them
+        armed = fire_was = false;
+        if (touch_lock_player_aims() || !touch_lock_assist() || !touch_lock_active()) return;
+        if (!touch_lock_assist_waiting() && !weapon_aiming(h) && !weapon_moving(h) && mousecam_hunt_camera()) return;
+        aim_at_monster(h);
+        return;
+    }
+    // A bow: what draws it (held; let go, the arrow leaves a little later, in the shot's own action: SHOT_NS) and what
+    // enters its aiming mode, by the game's Bow Controls; A its melee attack (X + A its coating), Y the sheathe, B a dodge
+    g_aimable = false;
+    uint64_t b, now = plat_now_ns();
+    int32_t sticks[4];
+    input_get(&b, sticks);
+    bool type2 = weapon_bow_type() != 0;
+    uint64_t draw = type2 ? 1ull << BTN_R : 1ull << BTN_X, aim_mode = type2 ? 1ull << BTN_X : 1ull << BTN_R;
+    uint64_t others = b & ((1ull << BTN_A) | (1ull << BTN_B) | (1ull << BTN_Y) | aim_mode);
+    // (L, ZL or ZR held with the draw: ZL + X is a Hunter Art with Control Type 3, L + X with the L / R Button Controls
+    // swapped - no locked shot)
+    uint64_t shoulders = b & ((1ull << BTN_L) | (1ull << BTN_ZL) | (1ull << BTN_ZR));
+    bool fire = (b & draw) != 0, active = touch_lock_active();
+    // a draw from the stance, or one more that chains a locked shot (pressed again in its shot's move), is a locked shot
+    if (fire && !fire_was) armed = active && !shoulders && (was || (armed && weapon_moving(h)));
+    fire_was = fire;
+    if (fire) fired = now;
+    // (another button - the aiming mode's among them -, or a turn by hand. Not weapon_aiming: what the draw itself does
+    // isn't known, and a draw from the aiming mode is no stance's anyway)
+    if ((others & ~others_was) || !active) armed = false;
+    others_was = others;
+    if (armed && !fire && now - fired >= SHOT_NS && !weapon_moving(h)) armed = false;  // (the shot over)
+    if (armed && (fire || now - fired < SHOT_NS) && weapon_moving(h)) aim_at_monster(h);
 }
 
 // (debug) MHGU_CAMLOG=1: twice a second, the hunt camera (eye, target, its angles) and the large monsters' places
@@ -387,6 +443,7 @@ static void camera_stick(Cpu *c) {
     camlog(cam);
     uint64_t now = plat_now_ns(), seen = g_seen_ns;
     g_seen_ns = now;
+    g_cam_upd = g_upd;
     if (sane(cam)) {
         g_cam = cam;
         uint32_t yaw_out = LD32(cam + QC_YAW_TO) & 0xffffu;
