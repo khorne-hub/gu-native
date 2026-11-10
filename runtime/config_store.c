@@ -32,6 +32,7 @@ static void set_float(SDL_AtomicInt *slot, float value) {
 static float get_float(SDL_AtomicInt *slot) {
     int bits = SDL_GetAtomicInt(slot); float value; memcpy(&value, &bits, sizeof value); return value;
 }
+static SDL_AtomicInt live_gen;  // (each publish: config_live_generation)
 static SDL_SpinLock live_ldn_lock;  // [Multiplayer] Server / Key: read by the network threads (runtime/net/ldn.c)
 static char live_ldn_server[sizeof saved.ldn_server], live_ldn_key[sizeof saved.ldn_key];
 // A save updates changed hot fields only. Saving the volume must not silently
@@ -84,7 +85,10 @@ static void publish_live(const Config *c, bool all) {
         if (all || strcmp(c->ldn_key, saved.ldn_key)) memcpy(live_ldn_key, c->ldn_key, sizeof live_ldn_key);
         SDL_UnlockSpinlock(&live_ldn_lock);
     }
+    SDL_AddAtomicInt(&live_gen, 1);
 }
+// Counts the live settings' publishes (a save, the start): what is drawn from them may change when it moves
+int config_live_generation(void) { return SDL_GetAtomicInt(&live_gen); }
 void config_store_loaded(const Config *c) {
     publish_live(c, !have_saved);
     saved = *c; have_saved = true;

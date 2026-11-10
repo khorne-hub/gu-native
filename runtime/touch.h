@@ -27,6 +27,10 @@ bool touch_visible(void);
 // icon while it is on, whatever the player plays with; or the HUD editor)
 bool touch_drawn(void);
 void touch_draw(float display_w, float display_h);
+// (MHGU_PERF_OVERLAY_REUSE, runtime/overlay.cpp) touch_draw keeps what each frame is made of from now on; and whether the
+// controls would draw the very same lists as in the frame drawn last (nothing of theirs moving by itself)
+void touch_reuse_begin(void);
+bool touch_draw_unchanged(float display_w, float display_h);
 void touch_edit_begin(void);  // the layout editor (settings menu: Controls), once the menu is closed
 void touch_edit_cancel(void);  // (the settings menu's unsaved-changes dialog cancelled: it stays open)
 // an editor is open, the touch layout's or a desktop's HUD editor: a controller's B cancels it (host_input.c)

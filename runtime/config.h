@@ -267,6 +267,7 @@ float config_live_touch_opacity(void);
 int config_live_touch_vibration(void);  // [Touch] Vibration
 int config_live_phone_rumble(void);     // [Controls] PhoneRumble
 int config_live_show_stats(void);       // [Performance] ShowStats
+int config_live_generation(void);      // counts the live settings' publishes (runtime/touch.cpp: a frame's key)
 int config_live_pause_background(void); // [Application] PauseInBackground
 int config_live_pause_menu(void);       // [Application] PauseInMenu
 int config_live_shadows(void);          // [Performance] Shadows

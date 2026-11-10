@@ -59,6 +59,13 @@ static int g_menu_key;
 static float g_font_size;
 static ImGuiStyle g_base_style;  // (unscaled; scaled copies follow the window's height)
 static float g_scale;
+// MHGU_PERF_OVERLAY_REUSE (read once, overlay_init): 1 frames of the touch controls alone that would come out the same
+// are not built again; 2 they are, and compared (a check); 0 (the default) every frame built
+static int g_perf_overlay_reuse;
+static bool g_reuse_last;  // (the frame built last had the touch controls alone, and uploaded no texture)
+static uint32_t g_reuse_w, g_reuse_h;
+static uint64_t g_reuse_built_ns, g_reuse_log_ns, g_reuse_n[2];
+static int g_reuse_bad;
 #ifdef __ANDROID__
 // MHGU_PERF_MENU_PRESENT=1: while the settings menu holds the game, the held picture is presented again only when the
 // menu's frame changed (snap_same), when the window needs one (back from the background, a new size: vk_present_needed)
@@ -465,6 +472,12 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
         if (e) LOG("[perf] MHGU_PERF_MENU_PRESENT=%d\n", (int)g_perf_menu_present);
     }
 #endif
+    {
+        const char *e = getenv("MHGU_PERF_OVERLAY_REUSE");  // (read once: frame_once)
+        g_perf_overlay_reuse = e ? std::clamp(atoi(e), 0, 2) : 0;
+        if (g_perf_overlay_reuse) touch_reuse_begin();
+        if (e) LOG("[perf] MHGU_PERF_OVERLAY_REUSE=%d\n", g_perf_overlay_reuse);
+    }
     g_enabled = true;
     LOG("[forge] ImGui %s overlay: %s opens the menu (font %s, %.0f px)\n", IMGUI_VERSION,
         SDL_GetScancodeName((SDL_Scancode)menu_key), font ? font_path : "ImGui's", g_font_size);
@@ -770,6 +783,27 @@ static void frame_once(void *cpu) {
     }
     uint32_t w = g_disp_w, h = g_disp_h;
     if (!w || !h) return;
+    // MHGU_PERF_OVERLAY_REUSE=1: a frame with the touch controls alone (no menu, notice, chat, stats, credits or plugin's
+    // drawing) whose controls would draw the very same lists as the frame built last (touch_draw_unchanged: nothing of
+    // theirs moving, nothing they show changed) is not built again: the render thread draws the copy it has (g_snap), as
+    // it does every frame. Once a second it is built anyway. =2, a check: such frames are built, compared with the copy
+    // (snap_same) and a difference logged
+    bool alone = touch && !open && !free_render && !notice && !chat && !stats && !credits && !fading && !g_modal_open &&
+                 !g_settings_open && !g_forge_open && !settings_panel_confirming();
+    bool same = g_perf_overlay_reuse && alone && g_reuse_last && g_snap.Valid && w == g_reuse_w && h == g_reuse_h &&
+                now - g_reuse_built_ns < 1000000000ull && touch_draw_unchanged((float)w, (float)h);
+    if (g_perf_overlay_reuse && now - g_reuse_log_ns >= 60000000000ull) {
+        if (g_reuse_log_ns)
+            LOG("[perf] overlay: %llu frames built, %llu %s (a minute)\n", (unsigned long long)g_reuse_n[0],
+                (unsigned long long)g_reuse_n[1], g_perf_overlay_reuse == 1 ? "drawn again unbuilt" : "checked");
+        g_reuse_n[0] = g_reuse_n[1] = 0, g_reuse_log_ns = now;
+    }
+    g_reuse_n[same]++;
+    if (same && g_perf_overlay_reuse == 1) {
+        apply_input(io);  // (keep the queue short: nothing reaches it with no menu open)
+        g_last_ns = now;
+        return;
+    }
     io.DisplaySize = ImVec2((float)w, (float)h);
     io.DisplayFramebufferScale = ImVec2(1, 1);
     float scale = std::max(1.0f, h / 720.0f);  // (Forge's sizes are for the console's 720p screen)
@@ -849,6 +883,10 @@ static void frame_once(void *cpu) {
             }
     std::lock_guard<std::mutex> l(g_snap_lock);
     if (uploaded || !g_snap_compare || !snap_same(dd)) g_snap_seq++;  // (MHGU_PERF_MENU_PRESENT: a new picture)
+    if (same && !snap_same(dd) && g_reuse_bad++ < 20)  // (MHGU_PERF_OVERLAY_REUSE=2: the frame drawn again would differ)
+        LOG("[perf] overlay reuse check: a frame the key took as unchanged differs (%d lists, %d vertices; before %d, %d)\n",
+            dd->CmdListsCount, dd->TotalVtxCount, g_snap.CmdListsCount, g_snap.TotalVtxCount);
+    g_reuse_last = alone && !uploaded, g_reuse_w = w, g_reuse_h = h, g_reuse_built_ns = now;
     snap_clear();
     for (ImDrawList *list : dd->CmdLists) g_snap.CmdLists.push_back(list->CloneOutput());
     g_snap.CmdListsCount = dd->CmdListsCount;
