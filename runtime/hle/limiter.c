@@ -146,6 +146,10 @@ static void sleep_hook(Cpu *c) {
     uint64_t t0 = plat_now_ns();  // (the game's own sleep: the switch off, or a sum that is not this one's)
     fnhook_call_original(c, FN_SLEEP);
     L.wake = plat_now_ns(), L.slept_ns = L.wake - t0, L.ours = false;
+    // (MHGU_LIMITER_LOG, the switch off: how often the game's own sleep ends past the frame's time, to set against this
+    // file's)
+    if (g_log && ms >= 2.0f && ms < 1e6f && L.wake > t0 + (uint64_t)((double)ms * 1e6))
+        S.over++, S.over_ns += L.wake - t0 - (uint64_t)((double)ms * 1e6);
 }
 
 void limiter_init(void) {
