@@ -52,6 +52,7 @@
 // 100 at x 1200, y 42..82) left of them
 
 static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_snapshots;
+static uint64_t stat_grass;  // (MHGU_VK_STATS) draws with alpha to coverage: the tall grass and foliage ([Performance] Grass)
 // (MHGU_VK_STATS) time spent: translating command lists, waiting for the GPU, guest memory copied per submission
 uint64_t stat_exec_ns, stat_wait_ns, stat_copy_bytes, stat_upload_ns;
 static _Atomic int stat_compiles;
@@ -771,15 +772,20 @@ typedef struct {
     pthread_cond_t cond;
     bool started;
     int threads;  // (0: compile_workers)
+    // (the log's "caught up" line: when the builds queued at the start are done; 1 watching, 2 still being queued)
+    int busy, watch;
+    uint64_t watch_t0, watch_jobs;
 } JobQueue;
 static JobQueue compile_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 0};
 static JobQueue translate_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 1};
 
 // The compile workers (SPIR-V, modules, pipelines): 3. A desktop has cores to spare: half its logical processors, 3 to
 // 6, so a burst of new pipelines ends sooner; on Windows below the game's threads' priority, so they don't compete.
+// A PowerVR: one, its driver compiling one thing at a time anyway (device.c one_compiler_install).
 static int compile_workers(void) {
     const char *e = getenv("MHGU_COMPILE_WORKERS");
     if (e && atoi(e) > 0) return atoi(e) < 16 ? atoi(e) : 16;
+    if (vk_gpu_powervr()) return 1;
 #ifdef __ANDROID__
     return 3;
 #else
@@ -790,6 +796,14 @@ static int compile_workers(void) {
 #endif
     return n < 3 ? 3 : n > 6 ? 6 : (int)n;
 #endif
+}
+
+// (under q->lock) the builds queued at the start all done (progcache_open): logged once, with how long they took
+static void queue_caught_up(JobQueue *q) {
+    if (q->watch != 1 || q->head || q->lhead || q->busy) return;
+    q->watch = 0;
+    LOG("[shader] the builds queued at the start are done: %llu in %.1f s\n", (unsigned long long)q->watch_jobs,
+        (plat_now_ns() - q->watch_t0) / 1e9);
 }
 
 static void *worker(void *a) {
@@ -814,17 +828,24 @@ static void *worker(void *a) {
             q->lhead = j->next;
             if (!q->lhead) q->ltail = NULL;
         }
+        q->busy++;
         pthread_mutex_unlock(&q->lock);
         j->fn(j->arg);
         free(j);
+        pthread_mutex_lock(&q->lock);
+        q->busy--;
+        if (q->watch) q->watch_jobs++, queue_caught_up(q);
+        pthread_mutex_unlock(&q->lock);
     }
     return NULL;
 }
 
+// (not for a PowerVR any more: built on the render thread, its start built every saved program and pipeline before the
+// first picture, a black screen for minutes on a Helio G35, #157; it gets one worker and one compile at a time instead)
 static bool sync_shaders(void) {
     static int v = -1;
-    if (v < 0) {  // (PowerVR too: its shader compiler crashes building on several threads at once, issues #73, #99)
-        v = getenv("MHGU_SYNC_SHADERS") != NULL || strstr(g_vk.props.deviceName, "PowerVR") != NULL;
+    if (v < 0) {
+        v = getenv("MHGU_SYNC_SHADERS") != NULL;
         if (v) LOG("[vk] shaders and pipelines built on one thread, when first needed\n");
     }
     return v;
@@ -1239,6 +1260,7 @@ static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out fr
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
                                // and its scissor moves with it
 static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows of layer 100 then sit beside Top-anchored ones)
+static bool ui_window_pass;  // and one of a menu's windows (not the chat's log or the Quest Complete stamp, drawn there too)
 // The HUD quads this pass drew last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left /
 // 1 right / 2 centre): a model preview follows the window drawn over it (ui_preview_map)
 #define UI_RECENT 256
@@ -2114,6 +2136,7 @@ static void begin_pass(void) {
     ui_results_pass = false;
     ui_meownster_pass = false;
     ui_menu_pass = false;
+    ui_window_pass = false;
     ui_menu_open = touch_game_menu();
     ui_nrecent = 0;
     pass_msaa = false;
@@ -2958,6 +2981,9 @@ static void progcache_open(void) {
     plist_export_finish();
     // Programs a draw has used (each has recorded pipelines) are built now; the others (the prewarm's) stay dormant
     // until a draw wants one (prog_want)
+    pthread_mutex_lock(&compile_q.lock);
+    compile_q.watch = 2, compile_q.watch_t0 = t0, compile_q.watch_jobs = 0;
+    pthread_mutex_unlock(&compile_q.lock);
     for (int i = 0; i < PROG_TAB; i++) {
         Prog *p = progcache_tab[i].prog;
         if (!p || !p->prewarm) continue;
@@ -2966,6 +2992,10 @@ static void progcache_open(void) {
         run_job(load_program, p);
         used++;
     }
+    pthread_mutex_lock(&compile_q.lock);
+    compile_q.watch = used && !sync_shaders() ? 1 : 0;
+    queue_caught_up(&compile_q);
+    pthread_mutex_unlock(&compile_q.lock);
     LOG("[shader] program cache: %d programs (%d used before: building on the workers), read in %.0f ms\n", n, used,
         (plat_now_ns() - t0) / 1e6);
 }
@@ -3107,10 +3137,10 @@ static void prewarm_translate(void *arg) {
 // (game thread) nvnProgramSetShaders
 void backend_program_created(const NvnProgram *np) {
     static int on = -1;
-    // (not on PowerVR: its shader compiler crashes building many pipelines at once, so a phone that played once closed at
-    // every later start, the saved pipelines being built on the workers (issues #73, #99; the MH4U port saw the same))
-    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders() &&
-                     !strstr(g_vk.props.deviceName, "PowerVR");
+    // (not on PowerVR: its shader compiler crashed building many pipelines at once, so a phone that played once closed at
+    // every later start, the saved pipelines being built on the workers (issues #73, #99; the MH4U port saw the same).
+    // Its one worker has the saved programs and pipelines to build first)
+    if (on < 0) on = g_config.shader_prewarm && !getenv("MHGU_NO_PREWARM") && !sync_shaders() && !vk_gpu_powervr();
     if (!on || !(np->stage_mask & 1) || !(np->stage_mask & 2)) return;
     PrewarmReq *r = malloc(sizeof *r);
     for (int i = 0; i < 2; i++) {
@@ -3896,7 +3926,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                             // stays a few seconds after a line is sent or comes, and kept a menu believed open under the
                             // player. Measured on a Motorola g06, a village)
                             bool chat_log = pos_x < 620.0f && pos_y >= 540.0f;
-                            if (!ui_stamp_pass && !chat_log) ui_menu_drawn();
+                            if (!ui_stamp_pass && !chat_log) ui_window_pass = true, ui_menu_drawn();
                         }
                         if (ui_stamp_pass) anchor = ANCHOR_CENTER;
                     } else if (fabsf(pos_z - 100.0f) < 0.5f) {
@@ -3912,6 +3942,11 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // of layer 97: one anchor for the whole window, or it splits. Without a menu in the pass (the results screen, whose
                         // labels on the left and numbers on the right are one table) they stay Bottom like the rest of the layer.
                         vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f || (ui_menu_pass && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
+                        // and sideways those left windows keep the middle 16:9 with the menu's own (layer 97, since 0.1.8):
+                        // Right, at 21:9 / Edges they slid over the window beside them (the canteen's dish and its Meal
+                        // Effects over the Felyne skills, #167). Not a cinematic's bar, nor the Meownster screen's frame
+                        if (ui_window_pass && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
+                            anchor = ANCHOR_CENTER;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (x 1200, y < 100) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's)
@@ -4616,29 +4651,32 @@ static bool movie_viewport(NvnTexture *y, const float *vp, float out[4]) {
 // drawn into it: its pass never even begins. Every lookup finds nothing in the way: no shadow anywhere.
 static void clear(int index, int kind, const void *color, uint32_t mask, bool depth, float dval, bool stencil, uint32_t sval,
                   uint32_t smask);
+// Which atlases are cleared is kept in each one's own TexBackend (shadow_off_gen, shadow_off_image), so every atlas the game
+// makes is cleared once, however many: a list of the first 8 kept the 9th and later - new ones after some areas or a
+// quest, the village again - uncleared, their garbage putting the whole scene in shadow, dark (#165, as #88, #105). A new
+// atlas has a new TexBackend (0: not cleared), even where its NvnTexture's memory, or its image's handle, was another's.
+// And the same atlas again when its image was made anew. Shadows turned On then Off again: all of them cleared again.
 static bool shadow_skipped(void) {
-    static NvnTexture *cleared[8];
-    static VkImage cleared_image[8];  // (the image the atlas had then: the game may give it a new one, after a quest)
+    static uint32_t off_gen = 1;
+    static bool was_on = true;
     if (config_live_shadows()) {
-        memset(cleared, 0, sizeof cleared);  // (turned on again: cleared again when it next goes off)
+        was_on = true;
         return false;
     }
+    if (was_on) was_on = false, off_gen++;
     if (st.rt.ncolor) return false;
     NvnTexture *d = st.rt.depth;
     if (!d || (d->width < 512 && d->height < 512) || (d->width == g_render_size[0] && d->height == g_render_size[1])) return false;
-    int i = 0;
-    while (i < 8 && cleared[i] && cleared[i] != d) i++;
-    VkImage image = d->backend ? ((TexBackend *)d->backend)->image : VK_NULL_HANDLE;
-    // (the first time: the far depth, once; a new atlas - another zone's - once too; and the same atlas again when its
-    // image was made anew: left as it was, its garbage put the whole scene in shadow, dark after a quest - #88, #105)
-    if (i < 8 && (!cleared[i] || cleared_image[i] != image)) {
+    TexBackend *b = d->backend;
+    if (!b || b->shadow_off_gen != off_gen || b->shadow_off_image != b->image) {
         bool relaxed = ui_relax_scissor;  // (the whole atlas, not the cascade the scissor is set for)
         ui_relax_scissor = true;
-        clear(-1, 0, NULL, 0, true, 1.0f, false, 0, 0);
+        clear(-1, 0, NULL, 0, true, 1.0f, false, 0, 0);  // (makes its image, the first time)
         ui_relax_scissor = relaxed;
-        cleared[i] = d;
-        cleared_image[i] = image;
-        LOG("[vk] shadows off: the %ux%u shadow atlas cleared once, its draws left out\n", d->width, d->height);
+        if ((b = d->backend)) {
+            b->shadow_off_gen = off_gen, b->shadow_off_image = b->image;
+            LOG("[vk] shadows off: the %ux%u shadow atlas cleared once, its draws left out\n", d->width, d->height);
+        }
     }
     renderer_mark_gpu_owned(d);  // (not to be uploaded from the guest's memory when sampled)
     return true;
@@ -4792,7 +4830,8 @@ static void draw(CmdRec *r, bool indexed) {
     pass_skip_clear = 0;  // (drawn into: later clears are clears again)
     VkCommandBuffer cb = vk_cmd();
     // ([Performance] Grass Off: the tall grass and foliage, drawn with alpha to coverage, are left out: #85, #121)
-    if (!g_config.grass && st.ms[0xC]) { stat_skipped++; return; }
+    // (the live value: Off applies once saved, as the menu's row says; the start's value took a restart, #159)
+    if (st.ms[0xC] && (stat_grass++, !config_live_grass())) { stat_skipped++; return; }
     int af = fkey.alpha_func;
     // One sample on an Adreno: the game's alpha to coverage became nothing at all for partly transparent texels (the
     // tall grass missing on an Adreno 640, #70; Mali keeps those at alpha 0.5 and up): done as an alpha test at 0.5
@@ -5517,9 +5556,10 @@ void backend_execute(uint64_t handle) {
     }
     if (stats && now - last > 2000000000ull) {
         last = now;
-        LOG("[vk] 2s: vcache %llu hits %llu copies | %llu draws, %llu skipped, %llu passes (%llu cleared as they began), %llu sets (%llu reused), %llu dispatches, %llu snapshots, %d compiles | exec %.0f ms (uploads %.0f) gpu wait %.0f ms, copied %.1f MB\n",
+        LOG("[vk] 2s: vcache %llu hits %llu copies | %llu draws, %llu skipped, %llu grass (%s), %llu passes (%llu cleared as they began), %llu sets (%llu reused), %llu dispatches, %llu snapshots, %d compiles | exec %.0f ms (uploads %.0f) gpu wait %.0f ms, copied %.1f MB\n",
             (unsigned long long)stat_vc_hits, (unsigned long long)stat_vc_refresh,
-            (unsigned long long)stat_draws, (unsigned long long)stat_skipped, (unsigned long long)stat_passes, (unsigned long long)stat_noload,
+            (unsigned long long)stat_draws, (unsigned long long)stat_skipped, (unsigned long long)stat_grass,
+            config_live_grass() ? "drawn" : "left out", (unsigned long long)stat_passes, (unsigned long long)stat_noload,
             (unsigned long long)(stat_set_new + stat_set_reused), (unsigned long long)stat_set_reused,
             (unsigned long long)stat_dispatches, (unsigned long long)stat_snapshots, atomic_exchange(&stat_compiles, 0),
             stat_exec_ns / 1e6, stat_upload_ns / 1e6, stat_wait_ns / 1e6, stat_copy_bytes / 1048576.0);
@@ -5556,7 +5596,7 @@ void backend_execute(uint64_t handle) {
                 (unsigned long long)atomic_load(&stat_pw_left));
         }
         stat_prog_cached = stat_skip_prog = stat_skip_pipe = stat_skip_frames = stat_waited_ns = stat_waits = stat_rescued = stat_frame_max = 0;
-        stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = 0;
+        stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = stat_grass = 0;
         stat_set_new = stat_set_reused = 0;
         stat_exec_ns = stat_wait_ns = stat_copy_bytes = stat_upload_ns = stat_vc_hits = stat_vc_refresh = 0;
     }

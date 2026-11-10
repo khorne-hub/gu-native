@@ -72,6 +72,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - **Low-end mode:** for weak phones. It turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture
 - **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
 - **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**): switches of their own. Off, the GPU or the processor does less
+- **Grass** (gear, **Graphics & Audio**): off, the tall grass and foliage of the maps are left out, faster where there is a lot of it (the Marshland's area 8)
 - Optional FPS and temperature counter
 - Uses less memory on devices with Mali GPUs and on phones with little RAM
 - The screen follows your FPS limit: at 60 fps it runs at 60 Hz even if it can do 120
@@ -304,7 +305,8 @@ dots, **Add games**.
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 
 If it still fails, open an [issue](../../issues) with your device model and the log. If the game closes because of an error, a screen lets you
-share it; if not, it's under the gear, **Menu Options**, **Share log**. Don't attach game files.
+share it; if not, it's under the gear, **Menu Options**, **Share log**. If the screen stays black and you can't reach the gear, a long
+press on the app's icon offers **Share log** too. Don't attach game files.
 
 ## PC (Windows)
 

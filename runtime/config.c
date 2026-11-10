@@ -251,6 +251,11 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "Bloom = On\n"
     "\n"
+    "; The tall grass and the foliage of the maps (drawn with alpha to coverage). Off: faster where there is a lot of\n"
+    "; it (the Marshland's area 8) on a weak GPU\n"
+    "; Default: On\n"
+    "Grass = On\n"
+    "\n"
     "; An Adreno GPU with a Vulkan 1.1 driver can show the 3D picture repeated in a grid below 720 lines without MSAA.\n"
     "; Auto keeps 2x MSAA there; Off leaves MSAA as set (faster, and some of those drivers look better without it)\n"
     "; Auto, Off\n"
@@ -1338,9 +1343,10 @@ void config_load(void) {
     e = getenv("MHGU_RENDER");
     if (e && parse_size(e, &w, &h)) render_auto = false, g_config.render_w = w, g_config.render_h = h;
     // (test runs, the device's own settings left as they are: MHGU_LOWEND=0|1|2 (Toaster), MHGU_SCALE=<percent>,
-    // MHGU_SHADOWS=0|1, MHGU_BLOOM=0|1, MHGU_FPS_LIMIT=<fps>; not saved)
+    // MHGU_SHADOWS=0|1, MHGU_BLOOM=0|1, MHGU_GRASS=0|1, MHGU_FPS_LIMIT=<fps>; not saved)
     if ((e = getenv("MHGU_LOWEND"))) g_config.low_end = atoi(e) < 0 ? 0 : atoi(e) > 2 ? 2 : atoi(e);
     if ((e = getenv("MHGU_BLOOM"))) g_config.bloom = atoi(e) != 0, config_live_test(&g_config);
+    if ((e = getenv("MHGU_GRASS"))) g_config.grass = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FPS_LIMIT")) && atoi(e) >= 30 && atoi(e) <= FPS_MAX) g_config.fps = atoi(e), config_live_test(&g_config);
     if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= 100) g_config.render_scale = atoi(e);
     if ((e = getenv("MHGU_SHADOWS"))) g_config.shadows = atoi(e) != 0, config_live_test(&g_config);

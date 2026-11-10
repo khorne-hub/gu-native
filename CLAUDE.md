@@ -27,7 +27,9 @@ Follow `README.md`. In short:
 4. Install the APK from Releases. For Samsung's Game Booster: `adb install -r -i com.mhgu.recomp <apk>`.
 5. The person opens the app, grants file access and chooses the folder.
 
-To diagnose a device: `adb logcat -s MHGU`, or `Android/data/com.mhgu.recomp/files/log.txt`.
+To diagnose a device: `adb logcat -s MHGU`, or `Android/data/com.mhgu.recomp/files/log.txt`. A player whose game stays black can
+still share the log: a long press on the app's icon offers Share log (`res/xml/shortcuts.xml`). The log's `[vk] limits` line says
+what the GPU allows (vertex streams, a stage's buffers and textures...).
 
 ## Layout
 
@@ -213,6 +215,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   place, or every later field moves (two added once turned most touch buttons off).
 - The shadow maps are one 1024x3072 depth atlas (three cascades), the first pass of a hunt's frame: 47 draws, 2.8 ms of a Moto g06's 18.6.
   The game clears it with three full-size draws, not a clear. `[Performance] Shadows = Off` clears it once and skips its pass (`shadow_skipped`).
+  The game makes a new atlas at every town and quest load: which are cleared is kept in each one's TexBackend (`shadow_off_gen`). A list
+  of the first 8 left the 9th and later uncleared, the scene dark after a few quests (#165; checked on the Moto g06 through 10 loads).
 - The chat's log is a layer 97 window at the bottom left (x 30..605, y 547..708 of the 1280x720 canvas) that stays seconds after a line: it
   must not count as a menu (`touch_hud_menu`), or the menu pad shows over the hunt.
 - A model's skeleton: +0x490 the joint count, +0x494 the array, 0xa0 bytes each, world position at +0x40 (w 1.0), parent at +0x91 (0xff the
@@ -224,6 +228,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `ImportActivity` copies there; imported cheats start off (`cheats/_off.txt` in the app's folder).
 - Every minute the log has a `[mem]` line: memory map entries, resident memory and VMA's blocks. Games on PowerVR closed after 5 to 15
   minutes out of map entries; there VMA is told Vulkan 1.0 so images share its blocks (`MHGU_VMA_DEDICATED=1`: the old way).
+- PowerVR's shader compiler crashed building several pipelines at once (#73, #99): there the builds run on one worker and every call
+  into the driver's compiler takes one lock, from any thread (`one_compiler_install`, `device.c`: volk's `vkCreateShaderModule`,
+  `vkCreateGraphicsPipelines`, `vkCreateComputePipelines` and `vkGetPipelineCacheData` replaced; the `[mem]` line counts them). Not on the
+  render thread: 0.1.8 did that, and the start built every saved program and pipeline before its first picture, a black screen on a
+  Helio G35 (#157). `MHGU_VK_POWERVR=1` gives any GPU what a PowerVR gets (this, no prewarm, VMA as Vulkan 1.0). The log's `[shader]
+  the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s).
 - A player's driver is checked once the device is made (`gpu_driver_check`): no library from its folder loaded means the system's runs,
   and the choice moves to `failed`. `DriverActivity` renames a library named as the system's (`vulkan.adreno.so`) to `vulkan.player.so`.
 - The Khronos validation layer: put `libVkLayer_khronos_validation.so` (Android binaries of Vulkan-ValidationLayers) in `jniLibs` for a
@@ -263,7 +273,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   scaling sets `g_fsr_on` too, so test `g_config.fsr`) and `[Audio] Reverb` are switches for everyone. A file with LowEnd on and no
   Bloom key gets Bloom off, as before.
 - Test runs can override the device's settings without touching its ini: `MHGU_LOWEND=0|1|2`, `MHGU_SCALE`, `MHGU_SHADOWS`, `MHGU_BLOOM`,
-  `MHGU_FPS_LIMIT`, `MHGU_NO_REVERB=1`. A phone on its charger reads charging current: unplug it to measure watts. At 30 FPS the GPU runs at
+  `MHGU_GRASS`, `MHGU_FPS_LIMIT`, `MHGU_NO_REVERB=1`, `MHGU_UI_ANCHOR=Edges`. A phone on its charger reads charging current: unplug it to measure watts. At 30 FPS the GPU runs at
   lower clocks, so `gpuprof` times are longer: compare frame rates or watts, not milliseconds, across FPS limits.
 - Internet hubs (`net/ldn.c`, the `server/` hub server): the Network page shows Hub server, Matchmaking key and Check hub server on
   Android too; empty Server is None (`LDN_DEFAULT_SERVER` is empty: the project runs no server). Players type any server they want.

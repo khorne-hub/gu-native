@@ -73,6 +73,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 - **Modo gama baja:** para teléfonos débiles. Apaga el bloom, el desenfoque de profundidad y las sombras, usa texturas más livianas y mantiene el HUD nítido sobre una imagen 3D más chica
 - **Modo tostadora:** la tercera opción del modo gama baja, para los teléfonos más débiles y para la batería: resolución 3D al 25 %, 30 fps, sin reverberación, y el HUD y las texturas todavía más livianos. En un Moto g06 se mantuvo en 30 fps y gastó cerca de un tercio menos de energía que el modo gama baja a 60 fps
 - **Bloom y desenfoque de profundidad** y **Reverberación** (engranaje, **Gráficos y audio**): interruptores propios. Apagados, la GPU o el procesador trabajan menos
+- **Pasto** (engranaje, **Gráficos y audio**): apagado, se omiten el pasto alto y el follaje de los mapas; más rápido donde hay mucho (la zona 8 del Pantano)
 - Contador opcional de FPS y temperatura
 - Usa menos memoria en dispositivos con GPU Mali y en teléfonos con poca RAM
 - La pantalla sigue tu límite de FPS: a 60 FPS corre a 60 Hz aunque admita 120
@@ -305,7 +306,8 @@ puntos, **Añadir juegos**.
 | En un teléfono débil va lento | Activa el modo gama baja, apaga **Sombras** y prueba la resolución 3D al 33 % o al 25 %. Si sigue lento: modo gama baja, **Tostadora** |
 
 Si sigue fallando, abre un [issue](../../issues) y adjunta el registro. Si el juego se cierra por un error, aparece una pantalla para
-compartirlo; si no, está en el engranaje, **Opciones del menú**, **Compartir registro**. No adjuntes archivos del juego.
+compartirlo; si no, está en el engranaje, **Opciones del menú**, **Compartir registro**. Si la pantalla se queda en negro y no llegas al
+engranaje, mantén pulsado el ícono de la app: también ofrece **Compartir registro**. No adjuntes archivos del juego.
 
 ## PC (Windows)
 
