@@ -359,6 +359,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Built for API 28, every `__thread` variable is emulated TLS: a call to `__emutls_get_address` and a `pthread_getspecific` per access.
   `rt_dispatch`'s cache was one, on every indirect jump of the game (a tenth of a game thread on a Moto g06): it is now per `Cpu`, through a
   pointer in `Cpu._pad` (`dispatch.c`, bytes the game's code never touches; `cpu.h` itself must not change). Keep `__thread` out of hot paths.
+  That cache never kept HLE functions, so every call of one went through `dispatch_slow` (PC, quest 101's camp at 30 FPS: 266,000 a
+  second on the render thread, its NVN calls, and 56,000 on the update thread), and addresses 16 KB apart evict each other, each
+  miss a binary search over all the game's functions (2,500 a second on the update thread). `MHGU_PERF_DISPATCH=1` (0.1.9's perf
+  pass, off until measured) keeps the hit path and changes the miss: a second way of 4096 entries indexed by a hash (a hit there
+  swaps the two), HLE functions cached too (their `rt_unwind_point` does nothing: nothing sets `g_rt_unwind`; a reboot that sets
+  it would have to empty the caches), and a lookup searches only its 4 KB page's functions (`page_first`, the same lower bound).
+  The same function for each address; then about 2,700 misses a second on the update thread, all found in the second way.
+  `MHGU_PERF_DISPATCH_STATS=1` logs each thread's misses every 10 s, either way.
 - Profiling: a test APK with `<profileable android:shell="true"/>` (put it in, build, take it out), NDK `simpleperf record --app` on the
   device, `binary_cache_builder.py -lib native/build/arm64-v8a`. `--call-graph fp` stops at the Mali driver; `dwarf` gets through. The
   stripped Mali library shows its own code as `stdlibp_neon_f32x16_to_f16x16`: that is the driver recording draws, not a conversion.
