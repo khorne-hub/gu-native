@@ -141,6 +141,12 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
+The app's own files there (`mhgurecomp.ini`, `touch_layout.txt`, the saves) belong to its user: the shell can't read the saves, so
+they can't be copied over adb (a test that may write them needs another way back). A file the shell makes anew (`sed -i`, `adb push`, `rm`
+and `cp`) belongs to the shell, and the app can't read it: an `mhgurecomp.ini` made so runs the game on the defaults and saves nothing.
+Change one with `cp` onto the existing file (it keeps its owner); if one was made anew, delete it, start the app once (it writes the
+defaults) and `cp` the copy over that.
+
 Empty `control.txt` before starting: old commands replay. `3D resolution` needs a restart: until then the menu says so and the old
 one is still running.
 
