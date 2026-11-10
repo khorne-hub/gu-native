@@ -72,8 +72,8 @@ static Stand st_h, st_p, st_d;  // the full-screen image H, the window texture P
 static int hud_fuse;
 void vk_depth_clear_later(TexBackend *b);
 void vk_depth_clear_forget(TexBackend *b);
-bool vk_color_fill_later(TexBackend *dst, TexBackend *src);
-void vk_color_fill_check(TexBackend *dst, TexBackend *src);
+bool vk_color_fill_later(TexBackend *dst, TexBackend *src, int kind);
+void vk_color_fill_check(TexBackend *dst, TexBackend *src, int kind);
 void vk_color_fill_flush(TexBackend *b);
 void vk_color_fill_forget(TexBackend *b);
 
@@ -1723,9 +1723,9 @@ static void hud_start(const char *why) {
                  (unsigned long long)g_present_count + 1, (void *)shot_taken);
         shot_taken = NULL;
     }
-    if (!frame_fsr && !((hud_fuse & 2) && vk_color_fill_later(hs->backend, vk_tex(g_h, true)))) {
+    if (!frame_fsr && !((hud_fuse & 2) && vk_color_fill_later(hs->backend, vk_tex(g_h, true), 0))) {
         scale_to_stand(g_h, hs);
-        if (hud_fuse & 2) vk_color_fill_check(hs->backend, vk_tex(g_h, true));  // (the first time: the draw compared with it)
+        if (hud_fuse & 2) vk_color_fill_check(hs->backend, vk_tex(g_h, true), 0);  // (the first time: the draw compared with it)
     }
     {  // every change between FSR and plain scaling, with the reason (always logged; at most 500 lines)
         static int last = -1, nlog;

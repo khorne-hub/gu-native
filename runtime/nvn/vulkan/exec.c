@@ -66,12 +66,12 @@ static struct {
     int rodepth;       // MHGU_PERF_RODEPTH=1: a draw sampling the pass's own depth target, without writing depth or stencil,
                        // reads it where it is (the pass goes on with it read-only) instead of a copy of it (resolve_feedback)
     int shadow_clear;  // MHGU_PERF_SHADOW_CLEAR=1: the shadow atlas's pass begins cleared, not read in, once its clearing draws
-                       // are seen to overwrite all of it (shadow_atlas_*); 2 also leaves out those draws where they would
-                       // write that value over itself
-    int noload_fs;     // MHGU_PERF_NOLOAD_FS=1: a one-draw full-target pass begins cleared once that draw is seen to cover
-                       // every pixel (fs_cover_*)
+                       // are seen to overwrite all of it (at_*); 2 also leaves out those draws where they would write
+                       // that value over itself
+    int fxaa_copydraw; // MHGU_PERF_FXAA_COPYDRAW=1: FXAA Off, the game's FXAA pass's copy of its input drawn as the first draw
+                       // of the pass that draws into its target next (fill_draw), once checked to give the copy's bytes
 } perf;
-static uint64_t stat_ro_passes, stat_ro_left, stat_atlas_clear, stat_atlas_skipped, stat_fs_noload;  // (MHGU_VK_STATS)
+static uint64_t stat_ro_passes, stat_ro_left, stat_atlas_clear, stat_atlas_skipped, stat_fills;  // (MHGU_VK_STATS)
 static int perf_env(const char *name) {
     const char *e = getenv(name);
     int v = e ? atoi(e) : 0;
@@ -1416,7 +1416,7 @@ void vk_exec_init(void) {
     st_defaults();
     perf.rodepth = perf_env("MHGU_PERF_RODEPTH");
     perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR");
-    perf.noload_fs = perf_env("MHGU_PERF_NOLOAD_FS");
+    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW");
     if (!g_vk.has_timeline) fence_init();
 #ifdef _WIN32
     ready_event = plat_event_new();  // (NULL: the draws wait on winpthreads' condition variable)
@@ -2327,11 +2327,17 @@ static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, cons
 static TexBackend *depth_clear_pending;
 static void depth_clear_now(void);
 static void at_written(void);
-static struct { TexBackend *dst, *src; } fill;  // (MHGU_PERF_HUDSTART_FUSE & 2) H' to be scaled from H, not done yet
+// (MHGU_PERF_HUDSTART_FUSE & 2, MHGU_PERF_FXAA_COPYDRAW) dst to be filled from src - kind 0 scaled (H' from H), 1 copied (the
+// FXAA pass's target from its input) - not done yet
+static struct { TexBackend *dst, *src; int kind; } fill;
+static bool fill_used;
 static int fill_index = -1;                    // the colour target the pass beginning draws it into (begin_pass)
 static void fill_now(void);
+static void fill_copy_flush(void);
+bool vk_color_fill_later(TexBackend *dst, TexBackend *src, int kind);
+void vk_color_fill_check(TexBackend *dst, TexBackend *src, int kind);
 static void fill_draw(VkCommandBuffer cb, TexBackend *src, VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth,
-                      uint32_t samples, uint32_t w, uint32_t h);
+                      uint32_t samples, uint32_t w, uint32_t h, int kind);
 
 // Before a draw / dispatch: the textures it samples up to date (attachments of the pass: resolve_feedback).
 static NvnTexture *shader_texture_object(int stage, ShaderTexture *t);
@@ -2569,9 +2575,10 @@ static void begin_pass(void) {
     vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
     ss_forget();
     in_pass = true;
-    if (fill_index >= 0) {  // (MHGU_PERF_HUDSTART_FUSE & 2: H scaled into H' as the pass's first draw)
-        fill_draw(cb, fill.src, pass_rp, (uint32_t)fill_index, pass_ncolor, pass_depth, pass_samples, minw, minh);
+    if (fill_index >= 0) {  // (H scaled into H', or the FXAA pass's copy, as the pass's first draw)
+        fill_draw(cb, fill.src, pass_rp, (uint32_t)fill_index, pass_ncolor, pass_depth, pass_samples, minw, minh, fill.kind);
         fill.dst = fill.src = NULL, fill_index = -1;
+        stat_fills++;
     }
     pass_draws_at = stat_draws;
     lost_pass(minw, minh, pass_ncolor ? pass_color[0] : VK_FORMAT_UNDEFINED, pass_ncolor, pass_depth, pass_samples);
@@ -4797,6 +4804,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     st.rt_dirty = true;
     ms_resolve_sampled(5, cp->si);
     if (fill.dst) fill_sampled_stage(5, cp->si);
+    fill_copy_flush();
     VkCommandBuffer cb = vk_cmd();
     vk_full_barrier(cb);
     nfeedback = 0;
@@ -4949,7 +4957,24 @@ static bool fxaa_skipped(Prog *pr) {
     if (fxaa_311_on) return fxaa_311(src);
     TexRef s = {.tex = (uint64_t)(uintptr_t)src}, d = {.tex = (uint64_t)(uintptr_t)st.rt.color[0]};
     if (st.rt.has_cview[0]) d.view = st.rt.cview[0], d.has_view = 1;
-    copy_texture(&s, &d, 0);
+    // (MHGU_PERF_FXAA_COPYDRAW: the whole picture, one level, the same size and format as its input: drawn in the next pass)
+    TexBackend *sb = src->backend, *db = st.rt.color[0]->backend;
+    bool whole = perf.fxaa_copydraw && sb && db && !(d.has_view && (d.view.setmask & 3) && (d.view.base_level || d.view.min_layer)) &&
+                 !g_fsr_on && sb->width == db->width && sb->height == db->height && sb->format == db->format && sb->levels == 1 &&
+                 db->levels == 1 && sb->layers == 1 && db->layers == 1 && !sb->mip_skip && !db->mip_skip;
+    if (whole) {
+        vk_end_pass();
+        st.rt_dirty = true;
+        vk_ms_resolve(sb);
+        vk_ms_resolve(db);
+        db->ms_valid = false;
+        renderer_mark_gpu_owned(st.rt.color[0]);
+        snapshots_invalidate(NULL);
+    }
+    if (!whole || !vk_color_fill_later(db, sb, 1)) {
+        copy_texture(&s, &d, 0);
+        if (whole) vk_color_fill_check(db, sb, 1);
+    }
     stat_draws++;
     return true;
 }
@@ -5548,6 +5573,9 @@ static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, cons
             got |= 1u << 8;
         } else depth_clear_now();
     }
+    bool has_fill = false;
+    for (uint32_t k = 0; k < n && fill.dst; k++) has_fill |= att[k] == fill.dst;
+    if (fill.dst && fill.kind == 1 && !has_fill) fill_now();  // (a copy: done before any other pass, which may draw into its input)
     for (uint32_t k = 0; k < n && fill.dst; k++) {
         if (att[k] != fill.dst) continue;
         int i = att_index[k];
@@ -5569,6 +5597,9 @@ static uint32_t perf_noload(uint32_t w, uint32_t h, TexBackend *const *att, cons
 // the pass begun cleared under it) instead of by a blit before it, which that pass then read back in. Only once the two
 // were compared on this GPU: the first frame scaled so also draws into a picture of its own, and both are read back
 // (fill_check): every byte the same, or the blit stays. Anything else that reads H' first gets the blit (fill_now).
+// (MHGU_PERF_FXAA_COPYDRAW, fxaa_skipped) The same for FXAA Off's copy of the FXAA pass's input into its target (kind 1:
+// each texel fetched), drawn first in the very next pass when that pass draws into the target (the game's next draw, with
+// Bloom On, adds the bloom there), compared once with vkCmdCopyImage; any other pass or copy gets the copy first.
 enum { FILL_UNKNOWN, FILL_CHECKING, FILL_OK, FILL_OFF };
 static struct {
     int state;
@@ -5579,14 +5610,14 @@ static struct {
     VmaAllocation mem;
     void *ptr;
     uint64_t seq;
-} fc;
+} fcs[2];
 static VkDescriptorSetLayout fill_set_layout;
 static VkPipelineLayout fill_layout;
 
-static VkPipeline fill_pipeline(VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth, uint32_t samples) {
-    static struct { VkRenderPass rp; uint32_t index; VkPipeline p; } tab[16];
+static VkPipeline fill_pipeline(VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth, uint32_t samples, int kind) {
+    static struct { VkRenderPass rp; uint32_t index; int kind; VkPipeline p; } tab[16];
     static int n;
-    for (int i = 0; i < n; i++) if (tab[i].rp == rp && tab[i].index == index) return tab[i].p;
+    for (int i = 0; i < n; i++) if (tab[i].rp == rp && tab[i].index == index && tab[i].kind == kind) return tab[i].p;
     if (!fill_layout) {
         VkDescriptorSetLayoutBinding b = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
         VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 1, .pBindings = &b};
@@ -5597,7 +5628,7 @@ static VkPipeline fill_pipeline(VkRenderPass rp, uint32_t index, uint32_t ncolor
         VK_CHECK(vkCreatePipelineLayout(g_vk.dev, &ci, NULL, &fill_layout));
     }
     char fs[32];
-    snprintf(fs, sizeof fs, "fill.frag.%u", index);
+    snprintf(fs, sizeof fs, kind ? "copy.frag.%u" : "fill.frag.%u", index);
     VkPipelineShaderStageCreateInfo stages[2] = {
         {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
          .module = vk_builtin_shader("resolve.vert"), .pName = "main"},
@@ -5627,15 +5658,16 @@ static VkPipeline fill_pipeline(VkRenderPass rp, uint32_t index, uint32_t ncolor
                                        .pDynamicState = &dy, .layout = fill_layout, .renderPass = rp};
     VkPipeline p = VK_NULL_HANDLE;
     if (sync_pipeline(&pi, &p) != VK_SUCCESS) LOG("[vk] scaling pipeline failed\n");
-    if (n < 16) tab[n].rp = rp, tab[n].index = index, tab[n++].p = p;
+    if (n < 16) tab[n].rp = rp, tab[n].index = index, tab[n].kind = kind, tab[n++].p = p;
     return p;
 }
 
-// (inside a pass of rp's kind, w x h) src scaled over colour target index, as vkCmdBlitImage LINEAR would
+// (inside a pass of rp's kind, w x h) src scaled over colour target index, as vkCmdBlitImage LINEAR would (kind 1: copied,
+// as vkCmdCopyImage would)
 static void fill_draw(VkCommandBuffer cb, TexBackend *src, VkRenderPass rp, uint32_t index, uint32_t ncolor, VkFormat depth,
-                      uint32_t samples, uint32_t w, uint32_t h) {
+                      uint32_t samples, uint32_t w, uint32_t h, int kind) {
     static const VkComponentMapping id = {0};
-    VkPipeline p = fill_pipeline(rp, index, ncolor, depth, samples);
+    VkPipeline p = fill_pipeline(rp, index, ncolor, depth, samples, kind);
     VkImageView v = vk_image_view(src, VK_IMAGE_VIEW_TYPE_2D, src->format, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
     if (!p || !v) return;
     VkDescriptorSet set = vk_alloc_set(fill_set_layout);
@@ -5655,10 +5687,16 @@ static void fill_draw(VkCommandBuffer cb, TexBackend *src, VkRenderPass rp, uint
     ss_forget();  // (its own pipeline, set and state: the next draw sets them all again)
 }
 
-// The blit, as fsr.c scale_to_stand does it (outside a pass)
-static void fill_blit(TexBackend *s, TexBackend *d) {
+// The blit, as fsr.c scale_to_stand does it (outside a pass); kind 1: the copy, as copy_texture does it
+static void fill_blit(TexBackend *s, TexBackend *d, int kind) {
     VkCommandBuffer cb = vk_cmd();
     vk_full_barrier(cb);
+    if (kind) {
+        VkImageCopy c = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                         .extent = {d->width, d->height, 1}};
+        vkCmdCopyImage(cb, s->image, VK_IMAGE_LAYOUT_GENERAL, d->image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
+        return;
+    }
     VkImageBlit r = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .srcOffsets = {{0, 0, 0}, {(int32_t)s->width, (int32_t)s->height, 1}},
                      .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstOffsets = {{0, 0, 0}, {(int32_t)d->width, (int32_t)d->height, 1}}};
     vkCmdBlitImage(cb, s->image, VK_IMAGE_LAYOUT_GENERAL, d->image, VK_IMAGE_LAYOUT_GENERAL, 1, &r, VK_FILTER_LINEAR);
@@ -5669,14 +5707,16 @@ static void fill_now(void) {  // (H' read before a pass drew it in: the blit, no
     if (!fill.dst) return;
     vk_end_pass();
     st.rt_dirty = true;
-    fill_blit(fill.src, fill.dst);
+    fill_blit(fill.src, fill.dst, fill.kind);
     fill.dst = fill.src = NULL;
 }
 void vk_color_fill_flush(TexBackend *b) { if (fill.dst && (!b || b == fill.dst)) fill_now(); }
+static void fill_copy_flush(void) { if (fill.dst && fill.kind == 1) fill_now(); }  // (a copy, clear or dispatch first)
 void vk_color_fill_forget(TexBackend *b) { if (fill.dst == b || fill.src == b) fill.dst = fill.src = NULL; }
 
-// (FILL_CHECKING, its copies done) the blit's picture and the draw's: the same bytes
-static void fill_check(void) {
+// (FILL_CHECKING, its copies done) the blit's (or copy's) picture and the draw's: the same bytes
+static void fill_check(int kind) {
+#define fc fcs[kind]
     vmaInvalidateAllocation(g_vk.vma, fc.mem, 0, VK_WHOLE_SIZE);
     const uint8_t *a = fc.ptr, *b = a + (size_t)fc.dw * fc.dh * 4;
     uint64_t n = (uint64_t)fc.dw * fc.dh * 4, ndiff = 0;
@@ -5693,25 +5733,31 @@ static void fill_check(void) {
     vk_defer_image(fc.scratch.image, fc.scratch.mem);
     fc.scratch.image = VK_NULL_HANDLE;
     fc.state = ndiff ? FILL_OFF : FILL_OK;
-    LOG("[perf] HUD start %ux%u -> %ux%u: the scaling draw %s the blit%s\n", fc.sw, fc.sh, fc.dw, fc.dh,
-        ndiff ? "differs from" : "gives the same bytes as", ndiff ? ": the blit stays" : ": drawn in the HUD's pass from now on");
-    if (ndiff) LOG("[perf] HUD start: %llu of %llu bytes differ, by %d at most\n", (unsigned long long)ndiff, (unsigned long long)n, mx);
+    const char *what = kind ? "FXAA Off's copy" : "HUD start";
+    LOG("[perf] %s %ux%u -> %ux%u: the draw %s the %s%s\n", what, fc.sw, fc.sh, fc.dw, fc.dh, ndiff ? "differs from" : "gives the same bytes as",
+        kind ? "copy" : "blit", ndiff ? ": that stays" : ": drawn in the next pass from now on");
+    if (ndiff) LOG("[perf] %s: %llu of %llu bytes differ, by %d at most\n", what, (unsigned long long)ndiff, (unsigned long long)n, mx);
+#undef fc
 }
 
 // (fsr.c hud_start, a frame scaled without FSR) true: H' is filled from H in the first pass that draws into it (fill_draw);
 // false: the caller blits, and then calls vk_color_fill_check on the first such frame
-bool vk_color_fill_later(TexBackend *dst, TexBackend *src) {
-    if (fc.state == FILL_CHECKING && vk_completed_seq() >= fc.seq) fill_check();
+bool vk_color_fill_later(TexBackend *dst, TexBackend *src, int kind) {
+    fill_used = true;
+#define fc fcs[kind]
+    if (fc.state == FILL_CHECKING && vk_completed_seq() >= fc.seq) fill_check(kind);
     if (fc.state != FILL_OK || g_vk.msaa > 1 || src->width != fc.sw || src->height != fc.sh || dst->width != fc.dw ||
         dst->height != fc.dh || dst->format != fc.f || src->format != fc.f)
         return false;
+#undef fc
     if (fill.dst) fill_now();  // (one not drawn yet: as it would have been)
-    fill.dst = dst, fill.src = src;
+    fill.dst = dst, fill.src = src, fill.kind = kind;
     return true;
 }
 
 // (after the blit, the first time) the scaling draw into a picture of its own, and both read back for fill_check
-void vk_color_fill_check(TexBackend *dst, TexBackend *src) {
+void vk_color_fill_check(TexBackend *dst, TexBackend *src, int kind) {
+#define fc fcs[kind]
     if (fc.state != FILL_UNKNOWN || g_vk.msaa > 1 || src->format != dst->format || src->samples != 1 || dst->samples != 1 ||
         (dst->format != VK_FORMAT_R8G8B8A8_UNORM && dst->format != VK_FORMAT_R8G8B8A8_SRGB && dst->format != VK_FORMAT_B8G8R8A8_UNORM))
         return;
@@ -5746,7 +5792,7 @@ void vk_color_fill_check(TexBackend *dst, TexBackend *src) {
     VkRenderPassBeginInfo rb = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = rp,
                                 .framebuffer = vk_framebuffer(rp, &v, 1, t->width, t->height), .renderArea = {{0, 0}, {t->width, t->height}}};
     vkCmdBeginRenderPass(cb, &rb, VK_SUBPASS_CONTENTS_INLINE);
-    fill_draw(cb, src, rp, 0, 1, VK_FORMAT_UNDEFINED, 1, t->width, t->height);
+    fill_draw(cb, src, rp, 0, 1, VK_FORMAT_UNDEFINED, 1, t->width, t->height, kind);
     vkCmdEndRenderPass(cb);
     vk_full_barrier(cb);
     VkBufferImageCopy c = {.bufferOffset = 0, .imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .imageExtent = {t->width, t->height, 1}};
@@ -5757,7 +5803,9 @@ void vk_color_fill_check(TexBackend *dst, TexBackend *src) {
     fc.sw = src->width, fc.sh = src->height, fc.dw = dst->width, fc.dh = dst->height, fc.f = f;
     fc.seq = vk_pending_seq();
     fc.state = FILL_CHECKING;
-    LOG("[perf] HUD start %ux%u -> %ux%u: the scaling draw compared with the blit\n", fc.sw, fc.sh, fc.dw, fc.dh);
+    LOG("[perf] %s %ux%u -> %ux%u: the draw compared with the %s\n", kind ? "FXAA Off's copy" : "HUD start", fc.sw, fc.sh,
+        fc.dw, fc.dh, kind ? "copy" : "blit");
+#undef fc
 }
 
 // (clear) the pass's depth cleared: in the atlas's pass, nothing more is left out in it
@@ -6359,6 +6407,7 @@ static void copy_texture_to_buffer(const TexRef *src, uint64_t dst) {
 
 static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
     snapshots_invalidate(NULL);
+    fill_copy_flush();  // (MHGU_PERF_FXAA_COPYDRAW: its copy, done first)
     NvnTexture *st_ = (NvnTexture *)(uintptr_t)src->tex, *dt = (NvnTexture *)(uintptr_t)dst->tex;
     if (!st_ || !dt) return;
     if (g_dump_active) LOG("[dump] copy %p -> %p\n", (void *)st_, (void *)dt);
@@ -6768,12 +6817,12 @@ void backend_execute(uint64_t handle) {
                 (unsigned long long)atomic_exchange(&stat_pw_new, 0), (unsigned long long)atomic_exchange(&stat_pw_known, 0),
                 (unsigned long long)atomic_load(&stat_pw_left));
         }
-        if (perf.rodepth || perf.shadow_clear || perf.noload_fs)
+        if (perf.rodepth || perf.shadow_clear || perf.fxaa_copydraw || fill_used)
             LOG("[perf] 2s: %llu passes with depth read-only (%llu ended for a depth or stencil write) | shadow atlas: %llu passes "
-                "begun cleared, %llu clearing draws left out | %llu one-draw passes begun cleared\n",
+                "begun cleared, %llu clearing draws left out | %llu scalings or copies drawn in the next pass\n",
                 (unsigned long long)stat_ro_passes, (unsigned long long)stat_ro_left, (unsigned long long)stat_atlas_clear,
-                (unsigned long long)stat_atlas_skipped, (unsigned long long)stat_fs_noload);
-        stat_ro_passes = stat_ro_left = stat_atlas_clear = stat_atlas_skipped = stat_fs_noload = 0;
+                (unsigned long long)stat_atlas_skipped, (unsigned long long)stat_fills);
+        stat_ro_passes = stat_ro_left = stat_atlas_clear = stat_atlas_skipped = stat_fills = 0;
         stat_prog_cached = stat_skip_prog = stat_skip_pipe = stat_skip_frames = stat_waited_ns = stat_waits = stat_rescued = stat_frame_max = 0;
         stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = stat_a2c = 0;
         stat_set_new = stat_set_reused = 0;
