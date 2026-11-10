@@ -21,6 +21,9 @@ void touch_right_stick(int *rx, int *ry);
 // the item bar turned a step (a desktop's wheel, ItemLeft / ItemRight; dir < 0 left): a hunter's items, a Prowler's
 // Support Moves (L + Y / A)
 void touch_item_step(int dir);
+// (MHGU_PERF_INPUT_WAKE, runtime/ui.c) a finger down, or something of theirs going on by the clock (a timed press, the
+// locked run, the lock-on, a locked shot, the item bar held open, the editor): the window loop keeps its pace
+bool touch_busy(void);
 // game thread (runtime/overlay.cpp): drawn over the game, under the port's menus
 bool touch_visible(void);
 // (something of them is on the screen: hidden, the settings button alone, or the lock-on's padlock by the target camera's

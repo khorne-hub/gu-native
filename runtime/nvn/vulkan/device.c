@@ -1364,6 +1364,7 @@ void backend_present(NvnTexture *t) {
     if (g_frames == 120) gpu_driver_good();  // (a driver of the player's own has drawn: it stays)
 #endif
     touch_hud_frame();  // (the touch controls: where this frame's HUD parts were, runtime/touch.cpp)
+    ui_loop_wake();  // (a frame: the window loop runs a pass now if it waits between events, MHGU_PERF_INPUT_WAKE, ui.c)
 #ifndef __ANDROID__
     mousemenu_frame();  // (and the mouse in the game's menus: where this frame's menu pieces were, runtime/hle/mousemenu.c)
 #endif

@@ -2189,6 +2189,33 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     said_run = s.run;
 }
 
+// (MHGU_PERF_INPUT_WAKE) What touch_input does by the clock, between events: a finger down (the long presses, the
+// stick's run, an ammo arrow held, the menu pad), a timed press (a tap's, an art's, the camera's double tap), the run
+// held back after X, the locked run, the lock-on (its follow comes back LOCK_AFTER_TURN after a turn), a locked shot,
+// a Hunter Art on the right stick, the item bar held open, the editor. While any is on the window loop polls every 3 ms
+// as always
+extern "C" bool touch_busy(void) {
+    std::lock_guard<std::mutex> l(g_lock);
+    const State &s = g_s;
+    uint64_t now = SDL_GetTicksNS();
+    for (const Finger &f : s.f)
+        if (f.kind != F_NONE) return true;
+    for (const Pulse &p : s.pulse)
+        if (p.until > now) return true;
+    if (s.stick_on || s.run || s.run_lock || s.run_free || s.lock || s.bar_open || s.edit || s.edit_request || s.pinch)
+        return true;
+    if (s.held || s.tapped || s.pad_held || s.cam_dx != 0 || s.cam_dy != 0 || g_tap_due) return true;
+    if (now < s.ammo_hold || now < s.ammo_ready || now < s.run_x_until || now < s.lit_until || now < s.rs_until ||
+        now < s.item_flash || now < s.art_flash || now - s.tap_ns < 350 * MS)
+        return true;
+    if (s.combo_t0 || s.assist_wait || now < s.assist_until || now < s.assist_fire || s.keep_r || now < s.replay_until)
+        return true;
+#ifndef __ANDROID__
+    if (s.hud_edit || s.hud_request || g_hud_hold) return true;
+#endif
+    return false;
+}
+
 extern "C" bool touch_visible(void) { return g_visible; }
 extern "C" uint64_t touch_menu_buttons(void) { return g_menu_buttons; }
 #ifndef __ANDROID__

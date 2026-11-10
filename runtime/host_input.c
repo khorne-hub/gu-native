@@ -151,6 +151,8 @@ typedef struct { uint64_t start, len; uint64_t buttons; int stick, x, y; } Scrip
 #define MAX_STEPS 4096
 static ScriptStep script[MAX_STEPS];
 static int nscript = -1;
+static uint64_t script_end;  // (the presented frame the last step ends at: host_input_busy)
+static bool out_busy;         // (the last update gave the game a button or a stick: host_input_busy)
 
 static const char *const button_names[] = {"A", "B", "X", "Y", "LSTICK", "RSTICK", "L", "R", "ZL", "ZR", "PLUS",
                                            "MINUS", "LEFT", "UP", "RIGHT", "DOWN"};
@@ -179,6 +181,7 @@ static bool add_step(const char *name, uint64_t start, uint64_t len) {
         if (nscript == MAX_STEPS) return false;
     }
     script[nscript++] = st;
+    if (st.start + st.len > script_end) script_end = st.start + st.len;
     return true;
 }
 
@@ -1485,4 +1488,18 @@ void host_input_update(void) {
     b &= ~ed_held;
     input_stage_menu_only(menu_only & b);
     input_set(b, clamp_axis(lx), clamp_axis(ly), clamp_axis(rx), clamp_axis(ry));
+    out_busy = b || lx || ly || rx || ry || rstick_hold;
+}
+
+// (MHGU_PERF_INPUT_WAKE, runtime/ui.c) Something that goes on by the clock, not by an event: then the window loop keeps its
+// 3 ms pace. A button or a stick given to the game at the last update (a touch press, a locked run, a key, a scripted
+// step), a controller open (SDL reads some only as the loop polls), a scripted press or a test finger waiting, the game's
+// rumble, the settings menu, a text being typed, a controller being mapped, or the touch controls' own timers
+// (touch_busy). Otherwise nothing changes until an event, a frame or a rumble wakes the loop (ui_loop_wake).
+bool host_input_busy(void) {
+    if (out_busy || pad || npads || padmap_active() || g_present_count < script_end || plat_now_ns() < test_until) return true;
+    for (int i = 0; i < 32; i++)
+        if (finger_wait[i].due) return true;
+    if (input_rumble() || overlay_menu_open() || textinput_active() || chat_active()) return true;
+    return touch_busy();
 }
