@@ -144,7 +144,13 @@ final class AppHome {
         String stamp = null;
         for (File k : kids) {
             if (++seen[0] > 4000) return;
-            if (k.getName().contains(".other-app-") || k.getName().endsWith(".tmp")) continue;
+            String name = k.getName();
+            if (name.endsWith(".other-app.tmp") || name.endsWith(".mine.tmp")) {  // (a replacement cut short: the file back)
+                File was = new File(dir, name.substring(0, name.lastIndexOf('.', name.length() - 5)));
+                if (!was.exists() && k.isFile() && k.renameTo(was)) Log.w(TAG, "home: " + was + " put back from " + name);
+                continue;
+            }
+            if (name.contains(".other-app-") || name.endsWith(".tmp")) continue;
             if (depth == 0 && k.isDirectory() && !owned(k.getName())) continue;
             if (k.isDirectory()) {
                 int err = probe(k);
