@@ -75,11 +75,16 @@ int weapon_ranged(uint32_t h) {
 }
 
 // the hunter is in the common actions of aiming with a gun or a bow (R held: 0001:045 going in, 046 held, 048 back from
-// walking; 0002:016 walking so)
+// walking; 0002:016 walking so). 046 stays the hunter's action after the aim or the scope is over, standing, until the
+// next action (an RG406V with a heavy bowgun, 2026-11-10: the hunt camera's handler ran again, the view was the hunt's,
+// for minutes): standing, it counts only while the gun's or the bow's own camera is up, the hunt camera's stopped. No
+// action of a quick aim, the scope (046 with the weapon's command table 43), a shot (0010:005 then 124; an empty
+// magazine's 0010:004), a reload (0010:001) or crouching fire (0010:026, 028, 029, 033; 053 its dodge) had bit 15 set
+// there
 bool weapon_aiming(uint32_t h) {
     if (!h || !weapon_ranged(h)) return false;
     uint32_t st = LD16(h + PL_ACT_ST), no = LD16(h + PL_ACT_NO);
-    return (st == 1 && no >= 45 && no <= 48) || (st == 2 && no == 16);
+    return (st == 1 && no >= 45 && no <= 48 && !mousecam_hunt_camera()) || (st == 2 && no == 16);
 }
 
 // the local player is a Prowler (a Palico played): its item bar holds Support Moves, chosen with L + Y / A

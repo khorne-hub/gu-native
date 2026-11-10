@@ -377,7 +377,9 @@ void mousecam_lock_shot(void) {
     if (fire && !fire_was) armed = active && (was || (armed && weapon_moving(h)));
     fire_was = fire;
     if (fire) fired = now;
-    if ((others & ~others_was) || weapon_aiming(h) || !active) armed = false;  // (another button, the aiming mode, a turn)
+    // (another button - the aiming mode's among them -, or a turn by hand. Not weapon_aiming: what the draw itself does
+    // isn't known, and a draw from the aiming mode is no stance's anyway)
+    if ((others & ~others_was) || !active) armed = false;
     others_was = others;
     if (armed && !fire && now - fired >= SHOT_NS && !weapon_moving(h)) armed = false;  // (the shot over)
     if (armed && (fire || now - fired < SHOT_NS) && weapon_moving(h)) aim_at_monster(h);
