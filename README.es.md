@@ -11,6 +11,7 @@ Hecho con Claude Code (Opus 5.5). Muchas de las decisiones fueron propias, porqu
 [Read this guide in English](README.md)
 
 La versión más nueva está en [Releases](../../releases/latest): el APK para Android y `MHGU-PC-<versión>.zip` para PC.
+Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEjEMwF) de la comunidad.
 
 ## Contenido
 
@@ -338,7 +339,7 @@ puntos, **Añadir juegos**.
 | Se cierra después de unos minutos de juego | Actualiza a la 0.1.6 o una más nueva: usa la memoria de video de otra forma en GPU PowerVR. Si sigue pasando, comparte el registro: anota la memoria cada minuto |
 | En un teléfono débil va lento | Activa el modo gama baja, apaga **Sombras** y prueba la resolución 3D al 33 % o al 25 %. Si sigue lento: modo gama baja, **Tostadora** |
 
-Si sigue fallando, abre un [issue](../../issues) y adjunta el registro. Si el juego se cierra por un error, aparece una pantalla para
+Si sigue fallando, pregunta en el [Discord](https://discord.gg/sk5xEjEMwF) o abre un [issue](../../issues) y adjunta el registro. Si el juego se cierra por un error, aparece una pantalla para
 compartirlo; si no, está en el engranaje, **Opciones del menú**, **Compartir registro**. Si la pantalla se queda en negro y no llegas al
 engranaje, mantén pulsado el ícono de la app: también ofrece **Compartir registro**. No adjuntes archivos del juego.
 
@@ -690,7 +691,7 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 
 El registro está en **F1**, **Opciones del menú**, **Carpeta del registro** (`log.txt`; si el juego se cerró y lo volviste a
 abrir, el de esa sesión es `log_prev.txt`): adjúntalo a un [issue](../../issues) con el procesador y la tarjeta gráfica de tu
-PC. No adjuntes archivos del juego.
+PC. No adjuntes archivos del juego. También puedes preguntar en el [Discord](https://discord.gg/sk5xEjEMwF).
 
 ## Legal
 
@@ -715,7 +716,7 @@ Android de la misma forma.
 MHGU para Android es gratis, igual que su versión de PC. Las únicas descargas oficiales son los links que da khorne-hub,
 empezando por las [Releases](https://github.com/khorne-hub/gu-native/releases) de este repositorio. Si la bajaste de otro
 lado, pagaste por ella o tu copia vino con publicidad, no es la oficial. En la app, el botón de GitHub arriba en el menú de
-opciones, junto a **Guardar**, abre esta página en tu navegador.
+opciones, junto a **Guardar**, abre esta página en tu navegador, y el botón de Discord a su lado el [Discord](https://discord.gg/sk5xEjEMwF) de la comunidad.
 
 Todos los APK oficiales están firmados con la misma clave. La huella SHA-256 de su certificado es:
 

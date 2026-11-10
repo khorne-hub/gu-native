@@ -11,6 +11,7 @@ Made with Claude Code (Opus 5.5). Many of the decisions were my own, because AI 
 [Lee esta guía en español](README.es.md)
 
 The newest version is on [Releases](../../releases/latest): the APK for Android and `MHGU-PC-<version>.zip` for PC.
+Talk with other players and ask for help in the community's [Discord](https://discord.gg/sk5xEjEMwF).
 
 ## Contents
 
@@ -334,7 +335,7 @@ dots, **Add games**.
 | It closes after a few minutes of play | Update to 0.1.6 or newer: it uses video memory differently on PowerVR GPUs. If it still happens, share the log: it notes the memory every minute |
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 
-If it still fails, open an [issue](../../issues) with your device model and the log. If the game closes because of an error, a screen lets you
+If it still fails, ask in the [Discord](https://discord.gg/sk5xEjEMwF) or open an [issue](../../issues) with your device model and the log. If the game closes because of an error, a screen lets you
 share it; if not, it's under the gear, **Menu Options**, **Share log**. If the screen stays black and you can't reach the gear, a long
 press on the app's icon offers **Share log** too. Don't attach game files.
 
@@ -675,7 +676,7 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 | It runs slowly | Lower **3D resolution** or turn on **Low-end mode**; still slow, **Toaster**. On a laptop with two graphics cards, check that **GPU** shows the dedicated one |
 
 The log is in **F1**, **Menu Options**, **Log folder** (`log.txt`; if the game closed and you opened it again, that session's
-is `log_prev.txt`): attach it to an [issue](../../issues) with your PC's processor and graphics card. Don't attach game files.
+is `log_prev.txt`): attach it to an [issue](../../issues) with your PC's processor and graphics card. Don't attach game files. You can also ask in the [Discord](https://discord.gg/sk5xEjEMwF).
 
 ## Legal
 
@@ -700,7 +701,7 @@ Android the same way.
 MHGU for Android is free, and so is its PC version. The only official downloads are the links khorne-hub gives, starting with
 this repository's [Releases](https://github.com/khorne-hub/gu-native/releases). If you got it anywhere else, paid for it, or
 your copy came with ads, it is not the official one. In the app, the GitHub button at the top of the settings menu, beside
-**Save**, opens this page in your browser.
+**Save**, opens this page in your browser, and the Discord button beside it the community's [Discord](https://discord.gg/sk5xEjEMwF).
 
 Every official APK is signed with the same key. Its certificate's SHA-256 fingerprint is:
 
