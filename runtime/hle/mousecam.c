@@ -217,6 +217,12 @@ bool mousecam_lock_following(void) {
     return t && plat_now_ns() - t < 300000000ull;
 }
 
+// (any thread) a bowgun out with the lock-on on, and a monster its locked shot can aim at, at the hunter's last update:
+// none (another zone, too far, none left), and a press of the fire button is the player's own shot (runtime/touch.cpp
+// touch_lock_shot: holding it back for an aim with nothing to aim at only delayed it)
+static volatile bool g_aimable;
+bool mousecam_lock_aimable(void) { return g_aimable; }
+
 // The game's Control Type, and with it the button that changes the target (sUserInfo *0x1a97f78: the options, copied
 // there from the save; read by the Target Cam's update, main 0x21fec4): +0x446c the type, 0 Type 1 (ZL; on L with the
 // L / R and ZL / ZR buttons swapped, +0x446e), 1 Type 2 (the d-pad: down turns the Target Cam on and off, right and left
@@ -351,10 +357,15 @@ void mousecam_lock_shot(void) {
     bool was = stance_was;
     stance_was = stance;
     if (!ranged || !touch_lock_on()) {
-        armed = fire_was = false;
+        armed = fire_was = g_aimable = false;
         return;
     }
     if (ranged == WEAPON_BOWGUN) {
+        // (a monster to aim at, for touch_lock_shot: asked as the shot asks it, the monster followed left as it was)
+        float x = LDF(h + PL_PLACE), y = LDF(h + PL_PLACE + 4), z = LDF(h + PL_PLACE + 8), t[3];
+        uint32_t followed = g_lock_en;
+        g_aimable = isfinite(x) && lock_target(x, y, z, t);
+        g_lock_en = followed;
         // Only the locked shot's own aim (touch_lock_shot: R held for it after a press of A in the stance), in its aim, its
         // shot, or before them. Not the player's own R; not during a turn by hand (the aim is theirs); not once B, X or Y
         // ended it: a dodge, a reload, crouching fire, a sheathe go where the player sends them
@@ -366,15 +377,19 @@ void mousecam_lock_shot(void) {
     }
     // A bow: what draws it (held; let go, the arrow leaves a little later, in the shot's own action: SHOT_NS) and what
     // enters its aiming mode, by the game's Bow Controls; A its melee attack (X + A its coating), Y the sheathe, B a dodge
+    g_aimable = false;
     uint64_t b, now = plat_now_ns();
     int32_t sticks[4];
     input_get(&b, sticks);
     bool type2 = weapon_bow_type() != 0;
     uint64_t draw = type2 ? 1ull << BTN_R : 1ull << BTN_X, aim_mode = type2 ? 1ull << BTN_X : 1ull << BTN_R;
     uint64_t others = b & ((1ull << BTN_A) | (1ull << BTN_B) | (1ull << BTN_Y) | aim_mode);
+    // (L, ZL or ZR held with the draw: ZL + X is a Hunter Art with Control Type 3, L + X with the L / R Button Controls
+    // swapped - no locked shot)
+    uint64_t shoulders = b & ((1ull << BTN_L) | (1ull << BTN_ZL) | (1ull << BTN_ZR));
     bool fire = (b & draw) != 0, active = touch_lock_active();
     // a draw from the stance, or one more that chains a locked shot (pressed again in its shot's move), is a locked shot
-    if (fire && !fire_was) armed = active && (was || (armed && weapon_moving(h)));
+    if (fire && !fire_was) armed = active && !shoulders && (was || (armed && weapon_moving(h)));
     fire_was = fire;
     if (fire) fired = now;
     // (another button - the aiming mode's among them -, or a turn by hand. Not weapon_aiming: what the draw itself does

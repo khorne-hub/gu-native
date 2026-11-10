@@ -256,8 +256,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   locked shot from a bowgun goes through quick aim (`touch.cpp`, `assist_*`). With a gun aimed or a bow drawn the hunt camera's handler does not run: per-update
   work goes in the item bar's hook (`hle/itembar.c`).
 - Locked shots come only from a normal stance (#177, #132): `weapon_stance`, the weapon out, no weapon move, no aim, and `mousecam_hunt_camera` (the hunt
-  camera's handler ran in one of the hunter's last two updates, counted: `mousecam_active` stays true 200 ms after it stops). A press of A there waits the
-  game's own two-button window (`combowin_ns`), so X, B or Y joining it pass with it as pressed, and only then holds R; the aim counts as up by
+  camera's handler ran in one of the hunter's last two updates, counted: `mousecam_active` stays true 200 ms after it stops), and a monster to aim at
+  (`mousecam_lock_aimable`). A press of A there, with no L, ZL or ZR held (the item bar, Control Type 3's Hunter Arts), waits the game's own
+  two-button window (`combowin_ns`), so X, B, Y or a shoulder joining it pass with it as pressed, and only then holds R; the aim counts as up by
   `weapon_aiming` or by the hunt camera stopping (any style's aim), never while still going in (0001:045). The player's own R, crouching fire, reloads,
   dodges and the styles' moves pass untouched, and `mousecam_lock_shot` writes a bowgun's heading and pitch only during the help's own aim; a bow's only
   for a draw from the stance (or one chained in its shot), never in its aiming mode. `ranged_aim` keeps an aim weapon_aiming doesn't know (the camera

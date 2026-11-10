@@ -21,5 +21,6 @@ bool mousecam_active(void);            // the hunt camera takes the mouse now (i
 bool mousecam_hunt_camera(void);       // its handler ran in one of the hunter's last two updates (any thread)
 void mousecam_add(float dx, float dy);  // counts the mouse moved (x right, y down; any thread)
 bool mousecam_lock_following(void);    // the lock-on turned the camera to its monster just now (any thread)
+bool mousecam_lock_aimable(void);      // a bowgun's locked shot has a monster to aim at now (any thread)
 int mousecam_control_type(void);       // the game's Control Type: 0 Type 1 .. 2 Type 3 (3: the fourth, as Type 3)
 uint64_t mousecam_target_buttons(void);  // the buttons that change the target now, by the Control Type (BTN_* bits)

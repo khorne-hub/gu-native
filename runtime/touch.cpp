@@ -2332,7 +2332,8 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
 // aims (held: the quick aim) and A fires once the aim is up; a press while the hunter is still in that aim fires at once,
 // and after a shot (the game leaves the aim then) the next press from the stance aims anew.
 // Everything else is the player's and passes untouched: their own R (the quick aim, the scope), crouching fire, a reload, a
-// dodge, a sheathe, the styles' moves (Valor's slide, its sheathing stance), and any press out of the stance (#132, #177).
+// dodge, a sheathe, the styles' moves (Valor's slide, its sheathing stance), and any press out of the stance (#132, #177),
+// with L, ZL or ZR (the item bar, Control Type 3's Hunter Arts) or with no monster to aim at (mousecam_lock_aimable).
 // On every input's fire button (the touch controls', a key, a mouse button, a controller's: host_input.c gives them all,
 // once each update). The aim is known by the hunter's actions (weapon_aiming) or by the hunt camera's handler stopping (a
 // gun aimed has a camera of its own: so any style's aim is seen); a moment of R without either fires anyway: R is the aim
@@ -2364,12 +2365,19 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
         uint64_t others = buttons & (B(BTN_B) | B(BTN_X) | B(BTN_Y)), joined = others & ~s.shot_others;
         s.shot_others = others;
         if (joined) s.others_ns = now;
+        // (L, ZL or ZR with it: L + A turns the item bar, ZL + A is a Hunter Art with Control Type 3 - L + A with the L / R
+        // Button Controls swapped -: held at the press or joining it in the window, no locked shot)
+        uint64_t mods = buttons & (B(BTN_L) | B(BTN_ZL) | B(BTN_ZR));
         uint64_t window = combowin_ns();
         bool helping = s.combo_t0 || s.assist_wait || now < s.assist_until;
         if (player_aims && helping) {  // (the player's R: the aim is theirs, and the press held back fires with it)
             if (s.combo_t0 || s.assist_wait) s.assist_fire = now + SHOT_A;
             s.combo_t0 = s.assist_until = s.keep_r = 0, s.assist_wait = false;
             if (dbg) rt_logf("[touch] a locked shot ended: the player aims\n");
+        } else if (s.combo_t0 && mods) {  // (a shoulder joined the press in the window: it passes with it, as pressed)
+            if (!fire) s.assist_fire = now + SHOT_A;
+            s.combo_t0 = 0, s.assist_off = true;
+            if (dbg) rt_logf("[touch] a locked shot ended by L, ZL or ZR, its A passed with it\n");
         } else if (joined && helping) {
             // A dodge, a reload, crouching fire, a sheathe: the help ends, and none begins until A is let go. In the game's
             // window, before any R, the press held back passes with them as pressed (X + A crouching fire; a tap already let
@@ -2392,9 +2400,11 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
             } else if (now < s.assist_until && weapon_aiming(hunter)) {
                 s.assist_until = now + SHOT_AIM;  // (the hunter in its aim: this one passes at once, and the aim stays)
             } else if (!s.combo_t0) {
-                bool stance = weapon_stance(hunter), alone = !others && now - s.others_ns >= window && !s.keep_r &&
+                bool stance = weapon_stance(hunter), alone = !others && !mods && now - s.others_ns >= window && !s.keep_r &&
                                                              now >= s.replay_until;
-                if (stance && alone) {
+                // (and a monster to aim at: without one the help would only hold the shot back)
+                bool target = mousecam_lock_aimable();
+                if (stance && alone && target) {
                     // (after a shot the game leaves the aim, R held or not: the next press from the stance aims anew, its
                     // R let go through the window first, so the game takes it as a new press of R; held that long, its
                     // letting go is no tap of R)
@@ -2402,8 +2412,9 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
                     if (dbg) rt_logf("[touch] a locked shot from the stance (action %04x:%03u)\n", act >> 16, act & 0xffff);
                 } else if (dbg) {
                     rt_logf("[touch] fire passed: %s (action %04x:%03u)\n",
-                            !alone ? "B, X or Y with it" : weapon_aiming(hunter) ? "aiming" : weapon_moving(hunter) ? "a weapon move"
-                            : !mousecam_hunt_camera() ? "no hunt camera (an aim, crouching fire)" : "not in the stance",
+                            !alone ? "another button with it" : weapon_aiming(hunter) ? "aiming" : weapon_moving(hunter) ? "a weapon move"
+                            : !mousecam_hunt_camera() ? "no hunt camera (an aim, crouching fire)"
+                            : !stance ? "not in the stance" : "no monster to aim at",
                             act >> 16, act & 0xffff);
                 }
             }
