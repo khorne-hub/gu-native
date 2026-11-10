@@ -390,6 +390,21 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   four frames of each between frames with the switches off (4.5-4.7 ms main pass, 21.4-22.1 ms GPU frame): the main pass 4.25 ms
   with NMINMAX, 4.37 with IPA, 4.48 with VSTRIM, 3.78 with the three, the frame 20.9, 21.4, 22.1 and 20.1. The shadow atlas, whose
   vertex outputs VSTRIM all leaves out, didn't move: that driver may already drop them, or the pass isn't held up there.
+- The translator's per-draw work has test switches (0.1.9's performance pass, `nvn/vulkan/exec.c` `perf_init`), each read once at
+  start and named in the log's `[perf] draws` line, all off (the old way) unless set in `env.txt` to 1: `MHGU_PERF_GETENV` (debug
+  switches read once, not by `getenv` at every depth clamp command), `MHGU_PERF_DRVTAB` (the driver constants' 256-byte storage
+  buffer table compared before their 2 KB are zeroed), `MHGU_PERF_TEXSCAN` (a draw's textures looked up once for the movie, MSAA
+  and feedback checks; the MSAA one skipped until a pass rendered multisampled), `MHGU_PERF_TEXTIME` (a texture bind with nothing
+  to upload isn't timed), `MHGU_PERF_PIPEMEMO` (a draw with the last draw's pipeline key takes its pipeline without the hash),
+  `MHGU_PERF_LAZYIDX` (a draw's largest index found only when a stream's copy needs it: none at a camp) and `MHGU_PERF_IDXCOPY`
+  (16 / 32-bit indices copied once per submission per range, as uniform buffers are: the same mesh in the shadow, depth, mask and
+  main passes); `MHGU_PERF_DRAWS=1` turns on all seven. `MHGU_PERF_DYNUBO=1` binds uniform buffers with dynamic offsets (the game's
+  per-object ones first, then the compiler's and the driver's constants, up to the GPU's `maxDescriptorSetUniformBuffersDynamic`
+  a program, logged: 8 on an RX 6800 XT), so a copy's place in the staging ring is no longer part of the set and `stage_set` reuses
+  most sets (quest 101's camp on the RX 6800 XT: 28 % reused before, 69 % with it); it changes the programs' pipeline layouts, so
+  the driver's pipeline cache is cold once (every pipeline built again at the first start with it: warm up before measuring).
+  `MHGU_PERF_CHECK=1` does the old work beside each cut that is on and counts what differs (`[perf] 2s check`; 0 in every run so
+  far); with `MHGU_VK_STATS=1` a `[perf] 2s` line says what the switches did.
 - Texture uploads (`nvn/vulkan/textures.c`): a texture's first upload is hashed and copied into staging memory by three worker
   threads in bands of about 1 MB, and the submission waits for them (`vk_upload_jobs_finish`): nothing draws early or half uploaded.
   The list's own CPU-side writes (ClearBuffer, CopyBufferToBuffer, UpdateUniformBuffer, ReportCounter) run at once, so one over
