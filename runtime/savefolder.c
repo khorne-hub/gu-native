@@ -41,6 +41,11 @@ static char g_chosen[1024];       // the same, as the runtime's file functions s
 static char g_dev_id[40], g_dev_name[128];
 static bool g_marked;             // this run wrote the in-use mark
 static bool g_missed_told;
+// The game's own folder for the rest of this run: a mount of the save missed the chosen folder once (savefolder_root).
+// Never back to the folder in the same run: the game holds the save it read, and if it read this device's copy because
+// the folder wasn't there yet, a later save into the folder would put that older save over the folder's newer one. 2:
+// the notice that says so is due (savefolder_tick, the host thread; set from the file system's thread)
+static SDL_AtomicInt g_own;
 static char g_later[300];         // a notice for when the game shows (savefolder_tick)
 
 static bool es(void) { return config_language() == 1; }
@@ -370,11 +375,14 @@ const char *savefolder_chosen(void) { return g_chosen_utf8; }
 bool savefolder_root(const char *sub, char *out, size_t size) {
     bool missed = false;
     if (g_chosen[0] && !strcmp(sub, "save_0")) {
-        if (writable(g_chosen)) {
-            snprintf(out, size, "%s", g_chosen);
-            return false;
+        if (!SDL_GetAtomicInt(&g_own)) {
+            if (writable(g_chosen)) {
+                snprintf(out, size, "%s", g_chosen);
+                return false;
+            }
+            LOG("[save folder] %s can't be reached: the game's own folder is used until the game closes\n", g_chosen_utf8);
+            SDL_SetAtomicInt(&g_own, 2);
         }
-        LOG("[save folder] %s can't be reached: the game's own folder is used meanwhile\n", g_chosen_utf8);
         missed = true;
     }
     snprintf(out, size, "%s/%s", g_save_dir, sub);
@@ -386,7 +394,7 @@ void savefolder_missed(void) {
     snprintf(text, sizeof text, "time=%lld\n", (long long)time(NULL));
     write_file(MISSED_FILE, text);
     LOG("[save folder] the save went to the game's own folder\n");
-    if (!g_missed_told) {
+    if (!g_missed_told && SDL_GetAtomicInt(&g_own) != 2) {  // (2: savefolder_tick tells it)
         g_missed_told = true;
         overlay_notice(es() ? "Carpeta de partidas" : "Save folder",
                        es() ? "No se pudo llegar a la carpeta, así que esta partida quedó en este dispositivo. Cuando vuelva, "
@@ -405,10 +413,18 @@ void savefolder_tick(void) {
         overlay_notice(es() ? "Carpeta de partidas" : "Save folder", g_later);
         g_later[0] = 0;
     }
+    if (now > 20000 && SDL_CompareAndSwapAtomicInt(&g_own, 2, 1)) {
+        g_missed_told = true;  // (this one says it: not again at the save)
+        overlay_notice(es() ? "Carpeta de partidas" : "Save folder",
+                       es() ? "No se llega a la carpeta de partidas, así que hasta que cierres el juego se usa la partida de este "
+                              "dispositivo. Si guardas, al próximo inicio el juego te preguntará cuál conservar."
+                            : "The save folder can't be reached, so until the game closes it uses this device's save. If you "
+                              "save, the game asks at its next start which save to keep.");
+    }
     static time_t last;
     time_t t = time(NULL);
     if (g_chosen[0] && t - last >= REFRESH_S) {
-        if (last) mark();
+        if (last && !SDL_GetAtomicInt(&g_own)) mark();  // (the folder no longer used: its mark goes stale)
         last = t;
     }
 }
