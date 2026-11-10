@@ -3821,6 +3821,11 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                     // everything after them center-anchored, so the HUD jumped down)
                     loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 433.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f;
                     if (loading_strip) ui_loading_pass = true;
+                    static int dbg = -1;  // (MHGU_TOUCH_LOG: a strip taken mid-hunt would put the whole HUD at the game's places)
+                    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != NULL;
+                    static uint64_t said;
+                    if (dbg && loading_strip && plat_now_ns() - said > 2000000000ull)
+                        LOG("[hud] a loading strip: z 110 at %.1f,%.1f m %.2f %.2f\n", pos_x, pos_y, m[0], m[5]), said = plat_now_ns();
                 }
                 // Front-end screens keep their backdrop 16:9: the HUD stays on it as with the 16:9 anchor. Edges / 21:9 / 32:9
                 // took their centred menus (layer 100, x 640, anchored Right) and the help box (96) off it, to the sides.

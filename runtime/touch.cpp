@@ -615,7 +615,11 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // gathering ends, longer than WINDOW_PRESS after the A on a mining spot), or the pause menu opened while a bubble was up.
 // Taken for a bubble, they had no menu pad and their cursor could not be moved (#74, #107). Only a menu runs one (a list,
 // a box, a quantity, a choice of two: hle/mousemenu.c)
-bool game_menu(void) {
+// Without a window, a while without the hunter played is a menu (the title, the main menu, a talk in a town), but never
+// with a hunter in a quest (weapon_hunter): a ballista's or a cannon's own aim runs no hunt camera, and four seconds on
+// one made a menu of it - the stick turned into the d-pad, a drag into a cursor's steps, and nothing aimed (#169). A
+// cutscene there reads no stick either way
+bool game_menu(uint32_t hunter) {
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
         if (!g_window_open) g_window_asked = !p || now - p > PLAY_NOW || ticks - g_press_ns.load() < WINDOW_PRESS;
@@ -630,7 +634,7 @@ bool game_menu(void) {
     } else {
         g_window_open = false;
     }
-    return !p || now - p > PLAY_HOLD;
+    return (!p || now - p > PLAY_HOLD) && !hunter;
 }
 // (a bow drawn or a gun aimed has a camera of its own: the hunt camera's handler doesn't run then)
 void play_seen(uint32_t hunter) {  // (the SDL main thread, each input update)
@@ -1718,7 +1722,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     uint32_t hunter = weapon_hunter();
     play_seen(hunter);
     // (a bow or a gun being aimed draws on the layer of the game's menus, and it is the hunt's controls that it needs)
-    bool game = game_menu() && !weapon_aiming(hunter);
+    bool game = game_menu(hunter) && !weapon_aiming(hunter);
     static int dbg = -1;  // (MHGU_TOUCH_LOG: the menu, the hunter played or not, the menu pad's presses, as they change)
     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
     // (a menu opened in a town, the item box, a shop, the smithy, its windows drawn: no Hunter Art comes of the d-pad
@@ -1729,7 +1733,11 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     menu_set_free(!play || town_menu);  // (the game's thread lets the menu pad's buttons through then too: hle/input.c)
     {
         static int was = -1;
-        if (dbg && (int)play != was) rt_logf("[touch] hunter %s (menu %d)\n", play ? "played" : "not played", (int)game);
+        if (dbg && (int)play != was) {
+            unsigned act = weapon_action(hunter);
+            rt_logf("[touch] hunter %s (menu %d; action %04x:%03u, hunt camera %d)\n", play ? "played" : "not played",
+                    (int)game, act >> 16, act & 0xffff, (int)mousecam_active());
+        }
         was = play;
         static uint64_t said_ns;  // (a cursor of a menu's running in the field, no menu window: there should be none)
         if (dbg && play && !game && menu_cursor_age() == 0 && now - said_ns > 2000 * MS)
