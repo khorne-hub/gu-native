@@ -40,7 +40,7 @@ enum {
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
        TB_COUNT };
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1}
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1}
 #define TOUCH_COMBOS 6
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
@@ -135,6 +135,9 @@ typedef struct {
                               // (runtime/hle/mousemenu.c, host_input.c); off, it turns the camera there as elsewhere
     int grass;                // [Performance] Grass: 0 the tall grass and foliage drawn with alpha to coverage left out
                               // (nvn/vulkan/exec.c; the Marshland's area 8 slowed weak phones down: #85, #121)
+    int lock_buttons;         // [Touch] LockOnButtons: L and the target button were shown once for the lock-on (its
+                              // padlock and long press are L's, the target button changes its monster: touch.cpp); a
+                              // file without it (0.1.8 and before, both off by default) gets both shown (config.c)
 } Config;
 uint32_t config_combo_mask(const char *text);  // "A+X" -> the BTN_* bits, 0 if there is nothing or anything else in it
 void config_combo_text(uint32_t mask, char *out, size_t size);  // and back

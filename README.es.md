@@ -35,7 +35,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 
 - **Movimiento:** un pad fijo, que no se mueve con el dedo. Arrastra más allá de su borde para correr; con el arma desenfundada eso se desactiva, para que no salgas corriendo en plena pelea
 - **Cámara:** arrastra en cualquier parte de la pantalla para girarla, como en un juego de teléfono. Con un doble toque se centra
-- **Fijar al monstruo:** toca el ícono del objetivo y la cámara lo sigue hasta que lo vuelvas a tocar, como en los Monster Hunter más nuevos. Solo sigue a un monstruo de tu misma zona. Se puede desactivar en el engranaje, **Controles**, **Fijar objetivo**: entonces el ícono gira la cámara una vez, como en el juego original
+- **Fijar al monstruo:** toca el candado junto a **L**, o mantén apretado **L**, y la cámara sigue girando hacia el monstruo hasta que lo vuelvas a hacer, como en los Monster Hunter más nuevos y en el port de MH4U. Sigue al monstruo que eligió la cámara objetivo del juego, o al más cercano si no eligió ninguno; el botón de objetivo (**ZL**, o el que use tu **Tipo de control**) lo cambia al otro monstruo. Girar la cámara tú mismo, o apretar **L**, solo la pausa un momento, y solo sigue a un monstruo de tu misma zona. Se puede desactivar en el engranaje, **Controles**, **Fijar objetivo (mantener L)**
 - **Layout propio para arcos y ballestas:** con uno en la mano, en una cacería, los controles cambian solos: un disparo grande bajo el pulgar, recarga, mira con un toque o apuntado rápido si lo mantienes, fuego agachado, y flechas para la munición. Si arrastras sobre el disparo mientras lo mantienes, también apuntas. Respeta la opción Bow Controls del juego y se acomoda aparte en el editor
 - **Cambiar munición al deslizar:** además de las flechas, desliza hacia arriba o abajo sobre la barra de ítems. La lista del juego ahora se ve completa, con los nombres de cada munición
 - **Disparos con el monstruo fijado:** salen hacia el centro de su cuerpo, también si está más alto o más bajo que tú. Para elevar el tiro, una ballesta entra un momento en apuntado rápido. Sin fijarlo, apuntas como siempre
@@ -85,7 +85,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 
 - Los controles táctiles se ocultan apenas conectas uno y vuelven cuando lo desconectas, sin reiniciar
 - El engranaje queda siempre en pantalla, así que siempre puedes abrir las opciones. También puedes apretar **+** y **-** juntos
-- El clic del stick derecho fija al monstruo. Mientras está fijado, aparece un candado junto al ícono del objetivo, y los disparos de una ballesta apuntan al cuerpo del monstruo, igual que con los controles táctiles
+- El clic de la palanca derecha fija al monstruo (con el **Tipo de control 3** del juego, cuyo clic cambia el objetivo, mantenla apretada). Mientras está fijado, aparece un candado junto al ícono del objetivo, y los disparos de una ballesta apuntan al cuerpo del monstruo, igual que con los controles táctiles
 - **Cualquier mando:** si el juego no lee bien el tuyo, entra al engranaje, **Controles**, **Mapear un mando**, y aprieta cada botón una vez. Queda guardado para ese modelo. Si un mando no se puede leer hasta mapearlo, la app te avisa al conectarlo
 
 ### ¿Qué tan bien corre?

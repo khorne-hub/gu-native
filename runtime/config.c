@@ -62,11 +62,11 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ASK, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
-// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, and the mouse in the game's
-// menus)
+// thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
+// menus, the grass, and the lock-on's buttons shown)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -299,8 +299,9 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "PhoneRumble = On\n"
     "\n"
-    "; The lock-on, as in the newer games: the target icon or the right stick's click keep the camera on the monster,\n"
-    "; and a bow's or a bowgun's shots go to it. Off: the icon turns the camera to it once, as in the original game\n"
+    "; The lock-on, as in the newer games: the camera keeps turning to the monster the game's Target Cam has chosen (or\n"
+    "; the nearest), and a bow's or a bowgun's shots go to it. The padlock by L or a long press on L turn it on and off,\n"
+    "; as the right stick's click does (held, with the game's Control Type 3, whose click changes the target)\n"
     "; Default: On\n"
     "LockOn = On\n"
 #ifndef __ANDROID__  // (runtime/hle/mousemenu.c)
@@ -341,12 +342,18 @@ static const char DEFAULT_INI[] =
     "ShowPlus = On\n"
     "ShowMinus = Off\n"
     "ShowDpad = Off\n"
-    "ShowL = Off\n"
-    "ShowZL = Off\n"
+    "ShowL = On\n"
+    "ShowZL = On\n"
     "ShowZR = Off\n"
     "ShowL3 = Off\n"
     "ShowR3 = Off\n"
     "ShowStick = On\n"
+    "\n"
+    "; L and the target button (ZL) were turned on once for the lock-on: the padlock by L and a long press on L turn it on\n"
+    "; and off, and the target button moves it to another monster. Written by the app; Off, a file of an older version\n"
+    "; (where both were off by default) gets them on at the next start\n"
+    "; Default: On\n"
+    "LockOnButtons = On\n"
     "\n"
     "; While a menu of the game's is open, a small pad shows that moves its cursor, with the page buttons above it (L and R,\n"
     "; or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay\n"
@@ -781,6 +788,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ShowL3", touch_show[TB_L3], false),
     ON_OFF("Touch", "ShowR3", touch_show[TB_R3], false),
     ON_OFF("Touch", "ShowStick", touch_show[TB_STICK], false),
+    ON_OFF("Touch", "LockOnButtons", lock_buttons, false),  // (written by the app: config_load)
     ON_OFF("Touch", "ShowRanged", touch_show[TB_RANGED], false),
     ON_OFF("Touch", "ShowFire", touch_show[TB_FIRE], false),
     ON_OFF("Touch", "ShowSecond", touch_show[TB_SECOND], false),
@@ -1153,6 +1161,7 @@ bool config_help(const char *key, char *buf, size_t size) {
 static int desktop_w, desktop_h;
 static bool render_auto = true;
 static bool g_shadows_set, g_bloom_set;  // (the file says Shadows / Bloom: an older one doesn't, and LowEnd then takes them off)
+static bool g_lock_buttons_set;          // (it says LockOnButtons: one of 0.1.8 or before doesn't)
 
 static void set_key(const char *key, char *val, int line) {
     char k[64], v[256];
@@ -1182,6 +1191,7 @@ static void set_key(const char *key, char *val, int line) {
     if (!s) { LOG("[config] line %d: unknown setting \"%s\" (ignored)\n", line, key); return; }
     if (s->field == offsetof(Config, shadows)) g_shadows_set = true;
     if (s->field == offsetof(Config, bloom)) g_bloom_set = true;
+    if (s->field == offsetof(Config, lock_buttons)) g_lock_buttons_set = true;
     if (!config_parse(s, val, &g_config))
         LOG("[config] line %d: \"%s\" is not a value %s takes; using the default\n", line, val, key);
 }
@@ -1303,6 +1313,12 @@ void config_load(void) {
     if (f && !g_shadows_set && g_config.low_end == LOW_END_TOASTER) g_config.shadows = 0;
 #endif
     if (f && !g_bloom_set && g_config.low_end) g_config.bloom = 0;  // (LowEnd alone left the bloom out up to 0.1.6)
+    // (L and the target button, off by default up to 0.1.8, when a tap on the target camera's icon turned the lock-on: the
+    // icons take no taps now, so a file of then gets both, once; the next save writes LockOnButtons and keeps the choice)
+    if (f && (!g_lock_buttons_set || !g_config.lock_buttons)) {
+        g_config.touch_show[TB_L] = g_config.touch_show[TB_ZL] = 1, g_config.lock_buttons = 1;
+        LOG("[config] L and the target button shown for the lock-on (a file of an older version)\n");
+    }
     // Keep Auto/Desktop and file values, rather than persisting temporary environment overrides.
     render_auto = !g_config.render_w;
     config_store_loaded(&g_config);

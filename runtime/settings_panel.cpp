@@ -1942,8 +1942,12 @@ std::vector<Row> main_rows() {
                            [](int v) { c.touch_controls = v; }, ini("Controls"));
                 add_bool(r, "touch.hud", "Move the HUD for touch", &c.touch_hud, ini("MoveHUD"));
             }
+#ifdef __ANDROID__
+            add_bool(r, "lock.on", "Lock-on (hold L)", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
+#else
             add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));
-            r.back().help = tr("The target icon, or a controller's right stick click, keeps the camera on the monster as in the newer games, and bows and bowguns fire at it. Off: the icon turns the camera to it once, as in the original game.");
+#endif
+            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
             if (fingers) {
                 action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
                 r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");
@@ -2201,7 +2205,7 @@ void menu_hint_seen() {
 #endif
 // Which of the game's buttons are on the screen, and the player's own
 const char *const TB_TITLES[TB_COUNT] = {"Attacks", "Dodge (B)", "Guard (R)", "Sheathe (Y)", "Game menu (+)", "Minus (-)", "D-pad",
-                                         "L", "ZL", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
+                                         "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item arrows", "ZL in menus", "ZR in menus",
                                          "Menu pad"};
@@ -2479,8 +2483,8 @@ const PhoneHelp PHONE_HELP[] = {
      "El pasto alto y el follaje de los mapas. Apagado: más rápido donde hay mucho (la zona 8 del Pantano) en un teléfono débil."},
     {"AdrenoFix", "Some Adreno drivers repeat the 3D picture in a grid at a low 3D resolution: Auto keeps 2x MSAA there. If the picture looks dark or flickers, or for more speed, choose Off.",
      "Algunos drivers de Adreno repiten la imagen 3D en grilla con una resolución 3D baja: Auto deja MSAA 2x en ese caso. Si la imagen se ve oscura o parpadea, o para ganar velocidad, elige Off."},
-    {"LockOn", "Keeps the camera on the monster, as in the newer games, and a bow's or a bowgun's shots go to it. Off: the icon turns the camera to it once.",
-     "Mantiene la cámara sobre el monstruo, como en los juegos nuevos, y los disparos de arcos y ballestas van hacia él. Apagado: el ícono gira la cámara una sola vez."},
+    {"LockOn", "Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.",
+     "Mantén apretado L o toca el candado junto a él (un mando: aprieta la palanca derecha; mantenla apretada con el Tipo de control 3, donde el clic cambia el objetivo) y la cámara sigue girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo hagas de nuevo. El botón de objetivo cambia el monstruo, y los arcos y ballestas disparan hacia él. Girar la cámara tú mismo la pausa un momento."},
     {"Join", "A host's IP address, to play over a VPN. Empty: searches your network.", "La dirección IP de un anfitrión, para jugar por VPN. Vacío: busca en tu red."},
     {"Server", "A hub server's address (name or IP, and :port if it is not 39510), to play over the internet with everyone who uses the same server: their hubs show when you search for hubs in the game. Empty: none, only your network.",
      "La dirección de un servidor de hubs (nombre o IP, y :puerto si no es el 39510), para jugar por internet con todos los que usen el mismo servidor: sus hubs aparecen al buscar hubs en el juego. Vacío: ninguno, solo tu red."},

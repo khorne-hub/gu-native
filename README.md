@@ -34,7 +34,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 
 - **Movement:** a fixed pad that doesn't follow your finger. Drag past its edge to run; this turns off while your weapon is out, so you don't run off in the middle of a fight
 - **Camera:** drag anywhere on the screen to turn it, as in a phone game. A double tap centers it
-- **Monster lock-on:** tap the target icon and the camera follows the monster until you tap it again, as in the newer Monster Hunter games. It only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on**: the icon then turns the camera once, as in the original game
+- **Monster lock-on:** tap the padlock by **L**, or hold **L**, and the camera keeps turning to the monster until you do it again, as in the newer Monster Hunter games and the MH4U port. It follows the monster the game's Target Cam has chosen, or the nearest one if none is chosen; the target button (**ZL**, or whatever your **Control Type** uses) moves it to the other monster. Turning the camera yourself, or pressing **L**, only pauses it for a moment, and it only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on (hold L)**
 - **A layout of their own for bows and bowguns:** with one in hand, in a hunt, the controls change by themselves: a large fire button under your thumb, reload, the scope with a tap or quick aim if you hold it, crouching fire, and arrows for the ammo. Drag on the fire button while you hold it to aim. It follows the game's Bow Controls option and has its own place in the editor
 - **Change ammo with a swipe:** besides the arrows, swipe up or down on the item bar. The game's list now shows whole, with each ammo's name
 - **Shots with a monster locked on:** they go toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Without the lock you aim as always
@@ -84,7 +84,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 
 - The touch controls hide as soon as you connect one and come back when you disconnect it, with no restart
 - The gear stays on the screen, so you can always open the settings. You can also press **+** and **-** together
-- Clicking the right stick locks onto the monster. While the lock is on, a padlock shows by the target icon, and a bowgun's shots aim at the monster's body, as with the touch controls
+- Clicking the right stick locks onto the monster (with the game's **Control Type 3**, whose click changes the target, hold it instead). While the lock is on, a padlock shows by the target icon, and a bowgun's shots aim at the monster's body, as with the touch controls
 - **Any controller:** if the game doesn't read yours well, go to the gear, **Controls**, **Map a controller**, and press each button once. It's kept for that model. If a controller can't be read until it is mapped, the app tells you when you connect it
 
 ### How well does it run?
