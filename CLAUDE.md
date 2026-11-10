@@ -180,6 +180,13 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - The hunter: heading at +0x14a0, in the camera's units, (x, z) = (sin, cos); written, the hunter turns at once. Place at +0xa0, zone at
   +0x1054, which monsters have too. The classes are `uPlayerQuest00..15` in weapon order, no 05: 04 and 06 the bowguns, 10 the bow.
 - In towns the game's camera does not turn, with any stick: it isn't a controller problem.
+- SDL makes an Android controller a gamepad mapping only if its button mask has a face button, and the mask comes from
+  `InputDevice.hasKeys`. A pad whose A, B, X, Y Android doesn't list (though it sends them) was a joystick never opened: SDL
+  sent its A and B as Enter and Escape, so the port's menu answered them by their labels and the game read nothing (#87).
+  `SDLControllerManager.faceButtonPressed` adds it again with the four at its first press of one. A controller can be faked
+  without one: the shell is in the `uhid` group, and `hid <file>` (JSON lines: `register` with a HID descriptor, `report`,
+  `delay`) makes a Bluetooth HID device the app sees as real. Tested so on a Motorola g06, its face buttons hidden by a
+  test-only line in `getButtonMask`.
 - Heat: `GameActivity.pickRefreshRate` takes the lowest screen mode that fits the FPS limit, never under 60, because forcing the fastest one
   shows nothing more. `efficiency_follow` (`android_perf.c`, API 35) lets the system use efficient cores while frames use under
   half the target, and stops at once when they near it. `MHGU_ADPF_EFFICIENT=0` turns it off. A phone that isn't charging gives real watts:
