@@ -347,6 +347,9 @@ engranaje, mantén pulsado el ícono de la app: también ofrece **Compartir regi
 
 La misma carpeta del juego sirve en una PC con Windows: `MHGU.exe` corre tu juego de forma nativa.
 
+La descarga trae solo el programa: el código del juego (`mhgugame.dll` y `mhgugame.id`) se crea una vez a partir de tu propia
+copia, en el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1).
+
 ### Qué ofrece
 
 #### Teclado y mouse
@@ -677,7 +680,7 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 | "romfs está incompleto" | Usa el `romfs` del juego base con la actualización aplicada. Tiene 35.531 archivos |
 | "no se encontró SDL3.dll" | Descomprime primero el zip entero en una carpeta: `MHGU.exe` no arranca desde dentro del zip |
 | El Control inteligente de aplicaciones lo bloqueó | Bloquea los programas sin firma, sin **Ejecutar de todas formas**, y `MHGU.exe` no está firmado: solo arranca con el Control inteligente de aplicaciones desactivado (Seguridad de Windows, **Control de aplicaciones y navegador**, **Configuración de Control inteligente de aplicaciones**). Piénsalo antes: en muchas versiones de Windows no se puede volver a activar sin reinstalar Windows |
-| "En esa carpeta falta mhgugame.dll" | Haz de nuevo el paso 2 con tu carpeta: agrega el código del juego para PC |
+| "En esa carpeta falta mhgugame.dll" | La descarga no lo trae: haz el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1) (`python build_game.py --pc <tu carpeta>`) y elige esa carpeta |
 | "Este mhgugame.dll es de otra versión" | Una versión nueva de PC lo necesita de nuevo: repite el paso 2 con la descarga nueva |
 | "A este procesador le faltan instrucciones que necesita el código del juego" | El juego de PC necesita un procesador con SSE4.2: mira [Qué necesitas](#qué-necesitas-1) |
 | "Este programa tiene que llamarse MHGU.exe" | Vuelve a ponerle `MHGU.exe` |

@@ -343,6 +343,9 @@ press on the app's icon offers **Share log** too. Don't attach game files.
 
 The same game folder plays on a Windows PC: `MHGU.exe` runs your game natively.
 
+The download has the program only: the game code (`mhgugame.dll` and `mhgugame.id`) is made once from your own copy, in
+[Setup step 2](#step-2-create-the-game-code-1).
+
 ### What it does
 
 #### Keyboard and mouse
@@ -663,7 +666,7 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 | "romfs is incomplete" | Use the base game's `romfs` with the update applied. It has 35,531 files |
 | "SDL3.dll was not found" | Unzip the whole zip into a folder first: `MHGU.exe` doesn't start from inside the zip |
 | Smart App Control blocked it | It blocks programs that aren't signed, with no **Run anyway**, and `MHGU.exe` isn't signed: it only runs with Smart App Control off (Windows Security, **App & browser control**, **Smart App Control settings**). Think it over first: on many versions of Windows it can't be turned back on without reinstalling Windows |
-| "mhgugame.dll is missing" | Do step 2 again with your folder: it adds the PC's game code |
+| "mhgugame.dll is missing" | The download doesn't include it: do [Setup step 2](#step-2-create-the-game-code-1) (`python build_game.py --pc <your folder>`) and choose that folder |
 | "This mhgugame.dll is from another version" | A new PC version needs it again: repeat step 2 with the new download |
 | "This processor lacks instructions the game code needs" | The PC game needs a processor with SSE4.2: see [What you need](#what-you-need-1) |
 | "This program must be called MHGU.exe" | Rename it back to `MHGU.exe` |
