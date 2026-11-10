@@ -226,6 +226,7 @@ int main(int argc, char **argv) {
     if (getenv("MHGU_GAME_DIR")) g_game_dir = getenv("MHGU_GAME_DIR"), given = true;
     if (!given) {  // standalone (the build folder): data\ holds the game files; caches, mods and log.txt beside, saves
         plat_standalone();  // in the player's folder (%APPDATA%\MHGURecomp\save)
+        fprintf(stderr, "MHGU Recomp %s\n", MHGU_VERSION);  // (log.txt's first line: before anything that logs or stops)
         static char data[1100] = "data";
         char exe[1024];
         if (getenv("MHGU_HOME") && plat_exe_path(exe, sizeof exe)) {  // (running elsewhere: the files beside the exe)
@@ -319,7 +320,7 @@ int main(int argc, char **argv) {
     }
     rt_log_start();  // (Windows: from here the log's own thread writes it, runtime/logwriter.c)
     hitch_init();  // ((debug) MHGU_HITCHLOG=1: before the game's threads start, runtime/hitchlog.c)
-    LOG("MHGU Recomp %s\n", MHGU_VERSION);
+    if (given) LOG("MHGU Recomp %s\n", MHGU_VERSION);  // (standalone: log.txt's first line, written above)
 #if defined(__ANDROID__) || defined(_WIN32)
     void plat_log_device(void);  // (the phone; Windows: how this run treats its threads)
     plat_log_device();
