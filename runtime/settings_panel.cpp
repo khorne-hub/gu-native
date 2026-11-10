@@ -412,6 +412,38 @@ void sign(ImDrawList *dl, ImVec2 c, float r, bool plus, ImU32 col, float thick) 
     if (plus)
         dl->AddRectFilled(ImVec2(c.x - thick * .5f, c.y - r), ImVec2(c.x + thick * .5f, c.y + r), col);
 }
+// The header's button to the project's page: GitHub's mark, a disc with the cat cut out of it, drawn here in the
+// glyphs' colour (no artwork, no brand colours; the same in the MH4U port). r: the disc's radius
+void github_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
+    // (the cat's outline in the disc's radius, y down: from the right of its body, where it leaves the disc at the
+    // bottom, up over the head and the ears and down the left with its arm; the disc's edge closes it from the left of
+    // the body round to the right, clockwise as ImGui fills: one shape, its edges smoothed)
+    static const float cat[][2] = {
+        {.25f, .72f}, {.244f, .575f}, {.22f, .5f}, {.18f, .44f}, {.263f, .428f}, {.345f, .405f},
+        {.422f, .375f}, {.49f, .33f}, {.55f, .265f}, {.595f, .18f}, {.625f, .077f}, {.635f, -.05f},
+        {.61f, -.2f}, {.53f, -.32f}, {.552f, -.411f}, {.549f, -.49f}, {.52f, -.585f}, {.457f, -.583f},
+        {.371f, -.554f}, {.245f, -.485f}, {.125f, -.51f}, {0, -.52f}, {-.125f, -.51f}, {-.245f, -.485f},
+        {-.371f, -.554f}, {-.457f, -.583f}, {-.52f, -.585f}, {-.549f, -.49f}, {-.552f, -.411f}, {-.53f, -.32f},
+        {-.61f, -.2f}, {-.635f, -.05f}, {-.625f, .077f}, {-.595f, .18f}, {-.55f, .265f}, {-.49f, .33f},
+        {-.422f, .375f}, {-.345f, .405f}, {-.263f, .428f}, {-.18f, .44f}, {-.22f, .5f}, {-.244f, .575f},
+        {-.3f, .594f}, {-.377f, .6f}, {-.46f, .573f}, {-.535f, .49f}, {-.59f, .43f}, {-.69f, .39f},
+        {-.733f, .416f}, {-.6875f, .456f}, {-.624f, .525f}, {-.585f, .598f}, {-.56f, .646f}, {-.5f, .695f},
+        {-.4f, .724f}, {-.25f, .715f}};
+    const float bx = .25f, by = std::sqrt(1 - bx * bx);  // (where the body leaves the disc)
+    dl->PathArcTo(c, r, std::atan2(by, -bx), std::atan2(by, bx) + 2 * IM_PI, 40);
+    for (const auto &p : cat)
+        dl->PathLineTo(ImVec2(c.x + p[0] * r, c.y + p[1] * r));
+    dl->PathFillConcave(col);
+}
+// The project's official page, the only link the project gives: in the phone's browser (SDL_OpenURL: an Android VIEW
+// intent; a desktop's own browser), from the header's GitHub button
+constexpr const char *OFFICIAL_PAGE = "https://github.com/khorne-hub/gu-native";
+void open_official_page() {
+    if (SDL_OpenURL(OFFICIAL_PAGE))
+        fprintf(stderr, "[settings] the official page went to the browser (%s)\n", OFFICIAL_PAGE);
+    else
+        fprintf(stderr, "[settings] the official page could not be opened (%s): %s\n", OFFICIAL_PAGE, SDL_GetError());
+}
 // On / Off: a slot whose stud slides to the right and lights it green when on
 void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
     const Look k = touch_look();
@@ -3693,7 +3725,13 @@ void touch_panel(bool *open, const Config &before) {
         shadow_text(dl, f,
                     ImVec2(save_rect.GetCenter().x - ts.x * .5f, save_rect.GetCenter().y - ts.y * .5f),
                     can ? k.glow : look.text_off, label);
-        right = save_rect.Min.x - pad;
+        // (the project's page, a little apart from Save: GitHub's mark, as in the MH4U port)
+        ImRect site(save_rect.Min.x - pad * 1.6f - side, by, save_rect.Min.x - pad * 1.6f, by + side);
+        if (touch_button("###site", site, true, &held))
+            later = []() { open_official_page(); };
+        plate(dl, site, line, held, true);
+        github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
+        right = site.Min.x - pad;
     }
     {  // (the title; the tab's name or the submenu's after it)
         const char *title = tr("SETTINGS");

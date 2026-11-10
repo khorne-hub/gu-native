@@ -711,7 +711,8 @@ Android de la misma forma.
 
 MHGU para Android es gratis, igual que su versión de PC. Las únicas descargas oficiales son los links que da khorne-hub,
 empezando por las [Releases](https://github.com/khorne-hub/gu-native/releases) de este repositorio. Si la bajaste de otro
-lado, pagaste por ella o tu copia vino con publicidad, no es la oficial.
+lado, pagaste por ella o tu copia vino con publicidad, no es la oficial. En la app, el botón de GitHub arriba en el menú de
+opciones, junto a **Guardar**, abre esta página en tu navegador.
 
 Todos los APK oficiales están firmados con la misma clave. La huella SHA-256 de su certificado es:
 
