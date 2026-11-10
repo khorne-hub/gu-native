@@ -3444,13 +3444,14 @@ void draw_part_frames(ImDrawList *dl, ImFont *font, const HudVals *hud, int pick
 }
 
 // A button's word on its plate: on one line, smaller where it is too long; where that would make it much smaller (a small
-// panel, a narrow screen), on two lines split at the space nearest its middle, when those come out larger
+// panel, a narrow screen), on two lines split at the space nearest its middle, when those come out larger (never after a
+// one-letter word: "Diseño:" over "a distancia", not "Diseño: a" over "distancia")
 void button_text(ImDrawList *dl, ImFont *font, const Rect &b, float fs, ImU32 col, const char *t) {
     float room = (b.x1 - b.x0) * .92f, wide = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, one = wide > room ? fs * room / wide : fs;
     ImVec2 c((b.x0 + b.x1) * .5f, (b.y0 + b.y1) * .5f);
     int n = (int)strlen(t), cut = -1;
-    for (int k = 1; k < n - 1; k++)
-        if (t[k] == ' ' && (cut < 0 || abs(2 * k - n) < abs(2 * cut - n))) cut = k;
+    for (int k = 2; k < n - 1; k++)
+        if (t[k] == ' ' && t[k - 2] != ' ' && (cut < 0 || abs(2 * k - n) < abs(2 * cut - n))) cut = k;
     if (one < fs * .8f && cut > 0 && n < 64) {
         char first[64];
         snprintf(first, sizeof first, "%.*s", cut, t);
