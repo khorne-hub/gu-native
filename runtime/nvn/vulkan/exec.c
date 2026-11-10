@@ -78,7 +78,7 @@ static void job_stat(int kind, uint64_t t0) {
 }
 
 // ---- (test) the translator's per-draw work, each cut behind a switch of its own, read once at start (vk_exec_init,
-// which logs them): MHGU_PERF_<NAME>=0|1, off (as before) unless set. MHGU_PERF_DRAWS=1 turns them all on at once
+// which logs them): MHGU_PERF_<NAME>=0|1, off (as before) unless set. MHGU_PERF_DRAWS=1 turns on all but DYNUBO at once
 // (a switch of its own still wins). None changes what is drawn: the same commands, the same data.
 //   GETENV    debug switches read once, not by getenv at every depth clamp command / buffer-to-texture copy
 //   DRVTAB    the driver constants' storage buffer table (256 bytes) compared before the 2 KB block is zeroed and filled
@@ -90,10 +90,15 @@ static void job_stat(int kind, uint64_t t0) {
 //             are copied whole, the vertex cache's not at all)
 //   IDXCOPY   16 / 32-bit indices copied once per submission per range (the same mesh drawn in the shadow, depth, mask
 //             and main passes shares the copy, as uniform buffers do)
-static struct { bool getenv, drvtab, texscan, textime, pipememo, lazyidx, idxcopy; } perf;
+//   DYNUBO    the uniform buffers bound with dynamic offsets (VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC), the game's per
+//             object ones first, up to the GPU's maxDescriptorSetUniformBuffersDynamic a program: a buffer's place in the
+//             staging ring is then no longer part of a descriptor set, and stage_set reuses far more of them. Changes
+//             the programs' pipeline layouts: the driver's pipeline cache is cold once (every pipeline built again)
+static struct { bool getenv, drvtab, texscan, textime, pipememo, lazyidx, idxcopy, dynubo; } perf;
 static bool perf_dump_verbose, perf_tex_log;  // (GETENV: MHGU_DUMP_VERBOSE, MHGU_TEX_LOG)
+static uint32_t perf_dyn_limit;               // (DYNUBO: dynamic uniform buffers a pipeline layout may hold)
 bool vk_perf_textime;                         // (textures.c vk_tex)
-static uint64_t stat_pipememo, stat_idx_bytes, stat_idx_shared, stat_lazy_scans;  // (MHGU_VK_STATS)
+static uint64_t stat_pipememo, stat_idx_bytes, stat_idx_shared, stat_lazy_scans, stat_dyn_binds;  // (MHGU_VK_STATS)
 // MHGU_PERF_CHECK=1 (a test of the switches, slower): each cut that is on also does the old work and compares, and the
 // [perf] 2s line counts what differed (always 0 if they are exact): the driver constants' bytes, a draw's textures, the
 // memoised pipeline, the indices' shared copy against guest memory, the vertex data a lazy largest index sizes
@@ -116,12 +121,16 @@ static void perf_init(void) {
     perf.getenv = perf_switch("GETENV", all), perf.drvtab = perf_switch("DRVTAB", all);
     perf.texscan = perf_switch("TEXSCAN", all), perf.textime = perf_switch("TEXTIME", all);
     perf.pipememo = perf_switch("PIPEMEMO", all), perf.lazyidx = perf_switch("LAZYIDX", all);
-    perf.idxcopy = perf_switch("IDXCOPY", all);
+    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", false);
     perf_check = perf_switch("CHECK", false);
     perf_dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL, perf_tex_log = getenv("MHGU_TEX_LOG") != NULL;
     vk_perf_textime = perf.textime;
-    LOG("[perf] draws: getenv %d drvtab %d texscan %d textime %d pipememo %d lazyidx %d idxcopy %d\n", perf.getenv, perf.drvtab,
-        perf.texscan, perf.textime, perf.pipememo, perf.lazyidx, perf.idxcopy);
+    uint32_t lim = g_vk.props.limits.maxDescriptorSetUniformBuffersDynamic;
+    perf_dyn_limit = lim > 32 ? 32 : lim;
+    if (perf.dynubo && !perf_dyn_limit) perf.dynubo = false;
+    LOG("[perf] draws: getenv %d drvtab %d texscan %d textime %d pipememo %d lazyidx %d idxcopy %d dynubo %d (a pipeline layout's "
+        "dynamic uniform buffers: up to %u)\n", perf.getenv, perf.drvtab, perf.texscan, perf.textime, perf.pipememo, perf.lazyidx,
+        perf.idxcopy, perf.dynubo, lim);
 }
 
 // The renderer's own pipelines (resolves, masked clears, FXAA), made on the render thread the first time they are needed
@@ -510,9 +519,10 @@ VkDescriptorSet vk_alloc_set(VkDescriptorSetLayout layout) {
             VkDescriptorPoolSize sizes[] = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 16384}, {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2048},
                                             {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 16384},
                                             {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 512}, {VK_DESCRIPTOR_TYPE_SAMPLER, 512},
-                                            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 512}};
+                                            {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 512},
+                                            {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 16384}};  // (MHGU_PERF_DYNUBO only)
             VkDescriptorPoolCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, .maxSets = 4096,
-                                             .poolSizeCount = 6, .pPoolSizes = sizes};
+                                             .poolSizeCount = perf.dynubo ? 7 : 6, .pPoolSizes = sizes};
             uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
             VK_CHECK(vkCreateDescriptorPool(g_vk.dev, &ci, NULL, &s->pools[s->npools++]));
             if (HITCH_ON) hitch_add(HC_DESC_POOL, plat_now_ns() - t0, 0);
@@ -1820,6 +1830,7 @@ static struct {
     VkBuffer ib; VkDeviceSize io; VkIndexType it;
     VkBuffer vb[17]; VkDeviceSize vo[17];
     VkPipelineLayout sets_layout; VkDescriptorSet sets[2];  // (draw's two sets; any other bind forgets them: SS_SETS)
+    uint32_t doff[34];  // (and their dynamic offsets: MHGU_PERF_DYNUBO; a layout fixes how many)
 } ss;
 static void ss_forget(void) { ss.known = 0; ss.vb_known = 0; }
 static inline bool ss_need(uint32_t bit, bool same) {
@@ -3088,12 +3099,52 @@ typedef struct {
                             // before it is built (pipe_ahead)
     struct Pipe *prewarm;   // pipelines of earlier runs to build once this is (pipeline cache)
     FsrCapProg *fsrcap;     // FSR object motion: the capture variant of its vertex shader (fsr.c)
+    uint32_t dyn_mask[2];   // (MHGU_PERF_DYNUBO) each set's uniform buffers bound with a dynamic offset (bit: binding)
+    uint8_t ndyn[2];        // (and how many)
 } Prog;
 static void prewarm_pipelines(Prog *p);
 
+// (MHGU_PERF_DYNUBO) Which of a program's uniform buffers (the ones cbuf_info fills: bindings 0..16) get a dynamic offset,
+// up to perf_dyn_limit in its pipeline layout: the game's (3..16: a new copy for most draws, the per-object ones) of the
+// vertex then the fragment stage, then the compiler constants (1: a new copy whenever the list wrote guest memory), then
+// the driver constants (0: one copy shared by most draws). The rest keep their place in the set, as before.
+static void dyn_pick(Prog *p) {
+    uint32_t left = perf_dyn_limit;
+    p->dyn_mask[0] = p->dyn_mask[1] = 0;
+    for (int pass = 0; pass < 3; pass++)
+        for (uint32_t set = 0; set < 2; set++)
+            for (int i = 0; i < p->nbinds && left; i++) {
+                const VkBindingInfo *b = &p->binds[i];
+                if (b->set != set || b->type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || b->binding >= 17) continue;
+                if (pass == 0 ? b->binding < 3 : b->binding != (pass == 1 ? 1u : 0u)) continue;
+                if (p->dyn_mask[set] >> b->binding & 1) continue;
+                p->dyn_mask[set] |= 1u << b->binding, left--;
+            }
+    p->ndyn[0] = (uint8_t)__builtin_popcount(p->dyn_mask[0]), p->ndyn[1] = (uint8_t)__builtin_popcount(p->dyn_mask[1]);
+    static _Atomic int said;
+    if (atomic_fetch_add(&said, 1) < 4) {  // (a few: how a GPU's limit splits them)
+        int all = 0;
+        for (int i = 0; i < p->nbinds; i++)
+            all += p->binds[i].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && p->binds[i].binding < 17 && p->binds[i].set < 2;
+        LOG("[perf] dynamic uniform buffers: program %llx/%llx, %d of its %d (vertex %#x, fragment %#x)\n",
+            (unsigned long long)p->code[0], (unsigned long long)p->code[1], p->ndyn[0] + p->ndyn[1], all, p->dyn_mask[0],
+            p->dyn_mask[1]);
+    }
+}
+
 static VkPipelineLayout make_layout(Prog *p, int nsets, VkShaderStageFlags s0, VkShaderStageFlags s1) {
-    p->set_layout[0] = vk_set_layout(p->binds, p->nbinds, 0, s0);
-    if (nsets > 1) p->set_layout[1] = vk_set_layout(p->binds, p->nbinds, 1, s1);
+    const VkBindingInfo *binds = p->binds;
+    VkBindingInfo dyn[MAX_BIND];
+    if (p->dyn_mask[0] | p->dyn_mask[1]) {  // (MHGU_PERF_DYNUBO: those buffers' type in the layouts)
+        memcpy(dyn, p->binds, (size_t)p->nbinds * sizeof *dyn);
+        for (int i = 0; i < p->nbinds; i++)
+            if (dyn[i].type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && dyn[i].set < 2 && dyn[i].binding < 17 &&
+                (p->dyn_mask[dyn[i].set] >> dyn[i].binding & 1))
+                dyn[i].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        binds = dyn;
+    }
+    p->set_layout[0] = vk_set_layout(binds, p->nbinds, 0, s0);
+    if (nsets > 1) p->set_layout[1] = vk_set_layout(binds, p->nbinds, 1, s1);
     VkPipelineLayoutCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = (uint32_t)nsets,
                                      .pSetLayouts = p->set_layout};
     VkPipelineLayout l;
@@ -3141,6 +3192,7 @@ static void compile_program(void *arg) {
     p->fs = vk_module(sf, nf);
     free(sv);
     free(sf);
+    if (perf.dynubo) dyn_pick(p);
     p->layout = make_layout(p, 2, VK_SHADER_STAGE_VERTEX_BIT, VK_SHADER_STAGE_FRAGMENT_BIT);
     if (g_fsr_objvel) p->fsrcap = vk_fsr_capprog_new(p->vi->msl);  // (FSR: its vertex shader's source, for the capture)
     free(p->vi->msl);  // (not needed any more: the source of every program ever seen would add up)
@@ -4629,8 +4681,10 @@ static bool set_reuse_on(void) {
     return on;
 }
 
+// dyn_mask (MHGU_PERF_DYNUBO): the uniform buffers the layout has with a dynamic offset (bit: binding), written at offset 0
+// with their offsets in the ring put in dyn_off, in binding order (vkCmdBindDescriptorSets' order within a set)
 static VkDescriptorSet stage_set(int nbinds, const VkBindingInfo *binds, VkDescriptorSetLayout layout, uint32_t set, int stage,
-                                 ShaderInfo *si, uint32_t gx, uint32_t gy, uint32_t gz) {
+                                 ShaderInfo *si, uint32_t gx, uint32_t gy, uint32_t gz, uint32_t dyn_mask, uint32_t *dyn_off) {
     VkDescriptorSet ds = VK_NULL_HANDLE;
     VkWriteDescriptorSet w[MAX_BIND];
     VkDescriptorBufferInfo bi[MAX_BIND];
@@ -4649,6 +4703,11 @@ static VkDescriptorSet stage_set(int nbinds, const VkBindingInfo *binds, VkDescr
         } else if (b->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b->binding < 17) {
             bi[n] = cbuf_info(stage, si, (int)b->binding, gx, gy, gz);
             w[n].pBufferInfo = &bi[n];
+            if (dyn_mask >> b->binding & 1) {
+                dyn_off[__builtin_popcount(dyn_mask & ((1u << b->binding) - 1))] = (uint32_t)bi[n].offset;
+                bi[n].offset = 0;
+                w[n].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+            }
         } else if (b->binding == FSR_CAP_OUT_BINDING && b->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {  // (FSR capture)
             bi[n] = vk_fsr_cap_buffer();
             w[n].pBufferInfo = &bi[n];
@@ -4795,7 +4854,7 @@ static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
     VkCommandBuffer cb = vk_cmd();
     vk_full_barrier(cb);
     nfeedback = 0;
-    VkDescriptorSet ds = stage_set(cp->p.nbinds, cp->p.binds, cp->p.set_layout[0], 0, 5, cp->si, gx, gy, gz);
+    VkDescriptorSet ds = stage_set(cp->p.nbinds, cp->p.binds, cp->p.set_layout[0], 0, 5, cp->si, gx, gy, gz, 0, NULL);
     vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_COMPUTE, cp->pipe);
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_COMPUTE, cp->p.layout, 0, 1, &ds, 0, NULL);
     vkCmdDispatch(cb, gx, gy, gz);
@@ -5390,11 +5449,16 @@ static void draw(CmdRec *r, bool indexed) {
     apply_scissor(cb);
 
     // ---- descriptor sets
-    VkDescriptorSet sets[2] = {stage_set(pr->nbinds, pr->binds, pr->set_layout[0], 0, 0, pr->vi, 0, 0, 0),
-                               stage_set(pr->nbinds, pr->binds, pr->set_layout[1], 1, 1, pr->fi, 0, 0, 0)};
-    if (ss_need(SS_SETS, ss.sets_layout == pr->layout && !memcmp(ss.sets, sets, sizeof sets))) {  // (the same ones: kept)
+    uint32_t doff[34];  // (MHGU_PERF_DYNUBO: the dynamic offsets, set 0's then set 1's)
+    int nd = pr->ndyn[0] + pr->ndyn[1];
+    VkDescriptorSet sets[2] = {stage_set(pr->nbinds, pr->binds, pr->set_layout[0], 0, 0, pr->vi, 0, 0, 0, pr->dyn_mask[0], doff),
+                               stage_set(pr->nbinds, pr->binds, pr->set_layout[1], 1, 1, pr->fi, 0, 0, 0, pr->dyn_mask[1],
+                                         doff + pr->ndyn[0])};
+    if (ss_need(SS_SETS, ss.sets_layout == pr->layout && !memcmp(ss.sets, sets, sizeof sets) &&  // (the same ones: kept)
+                             (!nd || !memcmp(ss.doff, doff, (size_t)nd * sizeof *doff)))) {
         ss.sets_layout = pr->layout, memcpy(ss.sets, sets, sizeof sets);
-        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pr->layout, 0, 2, sets, 0, NULL);
+        if (nd) memcpy(ss.doff, doff, (size_t)nd * sizeof *doff), stat_dyn_binds++;
+        vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pr->layout, 0, 2, sets, (uint32_t)nd, nd ? doff : NULL);
     }
     if (ui_relax_scissor || ui_scissor_v >= 0 || ui_scissor_mid) {  // (set while the constants above were built: for this
         apply_scissor(cb);                         // draw only; the next draw and any clear before it get the game's scissor again)
@@ -5625,7 +5689,7 @@ static void draw(CmdRec *r, bool indexed) {
         if (vk_fsr_capture(&fc, pr->fsrcap, &cpipe, &fsr_cap_base)) {
             vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, cpipe);
             ss.known &= SS_IB;  // (a pipeline without dynamic state: the next draw sets it all again)
-            VkDescriptorSet s0 = stage_set(pr->fsrcap->nbinds, pr->fsrcap->binds, pr->fsrcap->set0, 0, 0, pr->vi, 0, 0, 0);
+            VkDescriptorSet s0 = stage_set(pr->fsrcap->nbinds, pr->fsrcap->binds, pr->fsrcap->set0, 0, 0, pr->vi, 0, 0, 0, 0, NULL);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pr->fsrcap->layout, 0, 1, &s0, 0, NULL);
             ss.known &= ~SS_SETS;  // (not draw's sets any more)
             if (!use_index) vkCmdDraw(cb, count, 1, first, base_inst);
@@ -6154,10 +6218,11 @@ void backend_execute(uint64_t handle) {
         if (perf_check)
             LOG("[perf] 2s check: %llu compared, %llu differed\n", (unsigned long long)stat_check_n, (unsigned long long)stat_check_bad);
         stat_check_n = 0;
-        if (perf.pipememo || perf.idxcopy || perf.lazyidx)  // (MHGU_PERF_*: what the switches on did)
+        if (perf.pipememo || perf.idxcopy || perf.lazyidx || perf.dynubo)  // (MHGU_PERF_*: what the switches on did)
             LOG("[perf] 2s: %llu draws took the last draw's pipeline, indices copied %.1f MB (%llu draws shared a copy), the "
-                "largest index found %llu times\n", (unsigned long long)stat_pipememo, stat_idx_bytes / 1048576.0,
-                (unsigned long long)stat_idx_shared, (unsigned long long)stat_lazy_scans);
-        stat_pipememo = stat_idx_bytes = stat_idx_shared = stat_lazy_scans = 0;
+                "largest index found %llu times, %llu binds with dynamic offsets\n", (unsigned long long)stat_pipememo,
+                stat_idx_bytes / 1048576.0, (unsigned long long)stat_idx_shared, (unsigned long long)stat_lazy_scans,
+                (unsigned long long)stat_dyn_binds);
+        stat_pipememo = stat_idx_bytes = stat_idx_shared = stat_lazy_scans = stat_dyn_binds = 0;
     }
 }
