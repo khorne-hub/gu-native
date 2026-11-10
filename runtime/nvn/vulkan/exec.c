@@ -2555,7 +2555,7 @@ static void begin_pass(void) {
         for (uint32_t k = 0; k < nviews && depth_clear_pending; k++)
             if (att[k] == depth_clear_pending) depth_clear_now();
         for (uint32_t k = 0; k < nviews && fill.dst; k++)
-            if (att[k] == fill.dst) fill_now();
+            if (att[k] == fill.dst || fill.kind == 1) fill_now();  // (a copy: before any other pass)
     } else {  // (MHGU_PERF_*: more attachments begun cleared, where what the pass draws first covers them whole anyway)
         VkClearValue pv[9];
         uint32_t more = perf_noload(minw, minh, att, att_index, nviews, pv);
@@ -5705,8 +5705,7 @@ static void fill_blit(TexBackend *s, TexBackend *d, int kind) {
 
 static void fill_now(void) {  // (H' read before a pass drew it in: the blit, now)
     if (!fill.dst) return;
-    vk_end_pass();
-    st.rt_dirty = true;
+    if (in_pass) vk_end_pass(), st.rt_dirty = true;  // (from begin_pass, no pass is open: none ends)
     fill_blit(fill.src, fill.dst, fill.kind);
     fill.dst = fill.src = NULL;
 }
