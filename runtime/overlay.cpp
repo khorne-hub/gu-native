@@ -634,6 +634,7 @@ static void draw_chat(const char *line, uint64_t now, float scale) {
 // ------------------------------------------------------------------ frames (game thread)
 static std::mutex g_snap_lock;  // the copy the render thread draws
 static ImDrawData g_snap;
+static uint32_t g_snap_gen;  // (counts the copies: overlay_draw's turned one is made again for a new one)
 static std::atomic<uint32_t> g_disp_w, g_disp_h;
 static bool g_plugins_init;
 static uint64_t g_last_ns;
@@ -799,6 +800,7 @@ static void frame_once(void *cpu) {
     g_snap.FramebufferScale = dd->FramebufferScale;
     g_snap.Textures = nullptr;  // (done above)
     g_snap.Valid = true;
+    g_snap_gen++;
 }
 
 // ------------------------------------------------------------------ drawing (render thread)
@@ -841,6 +843,57 @@ void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t) {
         g_ready = true;
     }
     std::lock_guard<std::mutex> l(g_snap_lock);
-    if (g_snap.Valid && g_snap.CmdListsCount) ImGui_ImplVulkan_RenderDrawData(&g_snap, cb);
+    if (!g_snap.Valid || !g_snap.CmdListsCount) return;
+    if (!t->turn) {
+        ImGui_ImplVulkan_RenderDrawData(&g_snap, cb);
+        return;
+    }
+    // The window image drawn turned for the panel (nvn/vulkan/device.c, MHGU_PERF_PREROTATE): a turned copy of the
+    // snapshot, made once for each (its vertices and clip rectangles a quarter turn round, onto the image's own size)
+    static ImDrawData rot;
+    static uint32_t rot_gen;
+    static int rot_turn;
+    if (!rot.Valid || rot_gen != g_snap_gen || rot_turn != t->turn) {
+        for (ImDrawList *d : rot.CmdLists) IM_DELETE(d);
+        rot.CmdLists.resize(0);
+        float w = g_snap.DisplaySize.x, h = g_snap.DisplaySize.y, ox = g_snap.DisplayPos.x, oy = g_snap.DisplayPos.y;
+        bool r90 = t->turn == 1;  // (else 270)
+        // The scissor of each command: the pixels ImGui's backend would take for it upright (the clip rectangle clamped
+        // to the picture, its start and its size each cut to whole pixels: a start of 252.5 and an end of 600.4 are
+        // columns 252 to 599), turned. Turned before it is cut, a clip rectangle that isn't on whole pixels took a column
+        // more or less than upright: at 270 degrees 262 pixels of the settings menu's list and text differed.
+        float sx = g_snap.FramebufferScale.x > 0 ? g_snap.FramebufferScale.x : 1, sy = g_snap.FramebufferScale.y > 0 ? g_snap.FramebufferScale.y : 1;
+        float fw = w * sx, fh = h * sy;  // (the picture's size in pixels, upright)
+        for (ImDrawList *src : g_snap.CmdLists) {
+            ImDrawList *d = src->CloneOutput();
+            for (ImDrawVert &v : d->VtxBuffer) {
+                float x = v.pos.x - ox, y = v.pos.y - oy;
+                v.pos = r90 ? ImVec2(h - y, x) : ImVec2(y, w - x);
+            }
+            for (ImDrawCmd &c : d->CmdBuffer) {
+                float x1 = (c.ClipRect.x - ox) * sx, y1 = (c.ClipRect.y - oy) * sy;  // (as imgui_impl_vulkan.cpp does)
+                float x2 = (c.ClipRect.z - ox) * sx, y2 = (c.ClipRect.w - oy) * sy;
+                x1 = x1 < 0 ? 0 : x1, y1 = y1 < 0 ? 0 : y1, x2 = x2 > fw ? fw : x2, y2 = y2 > fh ? fh : y2;
+                if (x2 <= x1 || y2 <= y1) {
+                    c.ClipRect = ImVec4(0, 0, 0, 0);  // (nothing: skipped there too)
+                    continue;
+                }
+                float X0 = (float)(int32_t)x1, Y0 = (float)(int32_t)y1, X1 = X0 + (float)(uint32_t)(x2 - x1), Y1 = Y0 + (float)(uint32_t)(y2 - y1);
+                ImVec4 r = r90 ? ImVec4(fh - Y1, X0, fh - Y0, X1) : ImVec4(Y0, fw - X1, Y1, fw - X0);  // (whole pixels, turned)
+                c.ClipRect = ImVec4(r.x / sy, r.y / sx, r.z / sy, r.w / sx);  // (back in its units: the turned picture's scale is (sy, sx))
+            }
+            rot.CmdLists.push_back(d);
+        }
+        rot.CmdListsCount = g_snap.CmdListsCount;
+        rot.TotalIdxCount = g_snap.TotalIdxCount;
+        rot.TotalVtxCount = g_snap.TotalVtxCount;
+        rot.DisplayPos = ImVec2(0, 0);
+        rot.DisplaySize = ImVec2(h, w);
+        rot.FramebufferScale = ImVec2(sy, sx);
+        rot.Textures = nullptr;
+        rot.Valid = true;
+        rot_gen = g_snap_gen, rot_turn = t->turn;
+    }
+    ImGui_ImplVulkan_RenderDrawData(&rot, cb);
 #endif
 }

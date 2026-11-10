@@ -48,6 +48,7 @@ typedef struct {
     VkPipelineCache cache;
     VkRenderPass pass;
     uint32_t width, height;
+    int turn;  // the window image drawn turned for the panel: 0, 1 (90 degrees) or 3 (270) quarter turns (device.c sc_turn)
 } OverlayTarget;
 void overlay_draw(VkCommandBuffer cb, const OverlayTarget *t);
 

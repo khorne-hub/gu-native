@@ -981,6 +981,38 @@ static VkPresentModeKHR present_mode(void) {
 
 static VkRenderPass sc_pass;
 static VkFramebuffer sc_fb[VK_SC_MAX];
+// The window image drawn turned for the panel (Android, MHGU_PERF_PREROTATE=1): a phone's panel is portrait, and a picture
+// presented upright in landscape (IDENTITY) is turned by the system on every frame. Where the display hardware turns it
+// as it scans out (an Anbernic RG406V's DPU) that costs nothing, but a Moto g06's MediaTek composer sends the layer through
+// its MDP block ("MM" in dumpsys SurfaceFlinger), which reads the whole picture and writes a turned copy every frame. So
+// the swapchain takes the surface's own transform and portrait size, and its one pass draws turned:
+// the game's picture (exec.c vk_present_draw), the overlay (overlay.cpp) and a screenshot's pixels turned back upright.
+// sc_extent stays the window's (landscape) size, what everything is drawn for; sc_phys is the images' own.
+// Only at 90 degrees (transform 0x2: the Moto, the Anbernic and the Galaxy as they are usually held): there the screen
+// shows the same pixels as upright (the settings menu held over a frame, both ways: 0 of 691200 differ). At 270 (0x8)
+// a pixel centre right on an edge goes to the other side of it (Vulkan draws one on a top or left edge, and the turn makes
+// ImGui's glyph edges, which sit on half pixels across, bottom and top ones): 266 pixels of the menu's text differed, up
+// to 48 levels. There the system keeps turning the picture, as before ("prerotate 2" in the control file tries it).
+static int sc_turn;           // quarter turns the window image is drawn with: 0, 1 (90 degrees) or 3 (270)
+static VkExtent2D sc_phys;    // the window images' own size (sc_extent turned when sc_turn is odd)
+static VkSurfaceTransformFlagBitsKHR sc_transform;  // the swapchain's preTransform
+int vk_window_turn(void) { return sc_turn; }
+#ifdef __ANDROID__
+int g_prerotate_test = -1;  // (MHGU_CONTROL "prerotate 0|1|2": tests, the same frame both ways, 2 at 270 too; -1: the switch)
+static bool sc_wants_turn;     // (the switch or a test on: the panel's transform looked at again at a SUBOPTIMAL)
+// The quarter turns to draw with for the surface as it is now: 1 at 90 degrees with the switch on, else 0
+static int turn_wanted(const VkSurfaceCapabilitiesKHR *caps) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("MHGU_PERF_PREROTATE");
+        on = e && *e == '1';
+    }
+    int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED), want = t >= 0 ? t : on;
+    VkSurfaceTransformFlagsKHR cur = caps->currentTransform;
+    if (!want || !(caps->supportedTransforms & cur)) return 0;
+    return cur == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ? 1 : cur == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR && want == 2 ? 3 : 0;
+}
+#endif
 
 static void create_swapchain(void) {
     VkSurfaceCapabilitiesKHR caps;
@@ -1021,7 +1053,15 @@ static void create_swapchain(void) {
         ext.width = ext.height, ext.height = t;
     }
     if (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    sc_turn = w > 0 && h > 0 ? turn_wanted(&caps) : 0;
+    {
+        VkSurfaceCapabilitiesKHR any = caps;
+        any.currentTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, any.supportedTransforms = ~0u;
+        sc_wants_turn = turn_wanted(&any) != 0;  // (the switch on: a swapchain left upright looks again at a SUBOPTIMAL)
+    }
+    if (sc_turn) transform = caps.currentTransform;  // (MHGU_PERF_PREROTATE: drawn turned for the panel)
 #endif
+    VkExtent2D phys = sc_turn ? (VkExtent2D){ext.height, ext.width} : ext;
     // (Android drivers often only offer INHERIT)
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha))
@@ -1044,7 +1084,7 @@ static void create_swapchain(void) {
     VkSwapchainKHR old = g_vk.swapchain;
     VkSwapchainCreateInfoKHR ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_vk.surface, .minImageCount = count,
-        .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = ext, .imageArrayLayers = 1,
+        .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = phys, .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = transform,
         .compositeAlpha = alpha, .presentMode = present_mode(), .clipped = VK_TRUE,
@@ -1071,6 +1111,7 @@ static void create_swapchain(void) {
     if (sc_pass && sf.format != g_vk.sc_format) { vkDestroyRenderPass(g_vk.dev, sc_pass, NULL); sc_pass = VK_NULL_HANDLE; }
     g_vk.sc_format = sf.format;
     g_vk.sc_extent = ext;
+    sc_phys = phys, sc_transform = transform;
     if (!sc_pass) {  // the window image: cleared, then presented (copied from for screenshots first)
         VkAttachmentDescription a = {.format = sf.format, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                      .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -1096,11 +1137,12 @@ static void create_swapchain(void) {
                                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
         VK_CHECK(vkCreateImageView(g_vk.dev, &vi, NULL, &g_vk.sc_views[i]));
         VkFramebufferCreateInfo fi = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = sc_pass, .attachmentCount = 1,
-                                      .pAttachments = &g_vk.sc_views[i], .width = ext.width, .height = ext.height, .layers = 1};
+                                      .pAttachments = &g_vk.sc_views[i], .width = phys.width, .height = phys.height, .layers = 1};
         VK_CHECK(vkCreateFramebuffer(g_vk.dev, &fi, NULL, &sc_fb[i]));
     }
-    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d%s\n", ext.width, ext.height, g_vk.sc_count, count,
-        caps.minImageCount, sf.format, swapchain_paced ? ", FIFO with presents timed to the display" : "");
+    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d%s%s\n", ext.width, ext.height, g_vk.sc_count, count,
+        caps.minImageCount, sf.format, swapchain_paced ? ", FIFO with presents timed to the display" : "",
+        sc_turn == 1 ? ", drawn turned 90 degrees for the panel" : sc_turn == 3 ? ", drawn turned 270 degrees for the panel" : "");
 #ifdef __ANDROID__
     vk_pacing_swapchain();  // (the display's period, the cadence anew)
 #endif
@@ -1201,6 +1243,11 @@ static bool frame_begin(void) {
         config_live_vsync() != swapchain_vsync) recreate_swapchain();
 #ifdef __ANDROID__
     else if (paced_wanted() != swapchain_paced) recreate_swapchain();  // (the FPS limit or the display's rate changed)
+    else if (__atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED) >= 0) {  // (a test's switch: made again when it changes)
+        static int was = -1;
+        int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED);
+        if (t != was) was = t, recreate_swapchain();
+    }
 #endif
     if (!g_vk.swapchain) return false;
     slot = (slot + 1) % FRAMES;
@@ -1221,11 +1268,11 @@ static bool frame_begin(void) {
     vk_full_barrier(cb);  // (the game's image is complete before it is sampled)
     VkClearValue black = {.color.float32 = {0, 0, 0, 1}};
     VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = sc_pass,
-                                .framebuffer = sc_fb[cur_frame.image], .renderArea = {{0, 0}, g_vk.sc_extent},
+                                .framebuffer = sc_fb[cur_frame.image], .renderArea = {{0, 0}, sc_phys},
                                 .clearValueCount = 1, .pClearValues = &black};
     vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
-    VkViewport vp = {0, 0, (float)g_vk.sc_extent.width, (float)g_vk.sc_extent.height, 0, 1};
-    VkRect2D sc = {{0, 0}, g_vk.sc_extent};
+    VkViewport vp = {0, 0, (float)sc_phys.width, (float)sc_phys.height, 0, 1};
+    VkRect2D sc = {{0, 0}, sc_phys};
     vkCmdSetViewport(cb, 0, 1, &vp);
     vkCmdSetScissor(cb, 0, 1, &sc);
     cur_frame.ok = true;
@@ -1233,9 +1280,17 @@ static bool frame_begin(void) {
 }
 
 // A screenshot being written: the window image's pixels (B8G8R8A8 or R8G8B8A8), made RGBA and saved as PNG.
-typedef struct { char path[300]; uint8_t *px; uint32_t w, h; bool bgr; } ShotJob;
+typedef struct { char path[300]; uint8_t *px; uint32_t w, h; bool bgr; int turn; } ShotJob;
 static void *shot_thread(void *arg) {
     ShotJob *j = arg;
+    if (j->px && j->turn) {  // (drawn turned for the panel: the window's w x h from the image's h x w, MHGU_PERF_PREROTATE)
+        uint32_t *src = (uint32_t *)j->px, *dst = malloc((size_t)j->w * j->h * 4), W = j->w, H = j->h;
+        for (uint32_t y = 0; dst && y < H; y++)
+            for (uint32_t x = 0; x < W; x++)
+                dst[(size_t)y * W + x] = j->turn == 1 ? src[(size_t)x * H + (H - 1 - y)] : src[(size_t)(W - 1 - x) * H + y];
+        free(j->px);
+        j->px = (uint8_t *)dst;
+    }
     if (j->px) {
         uint64_t n = (uint64_t)j->w * j->h;
         for (uint64_t i = 0; j->bgr && i < n; i++) { uint8_t t = j->px[i * 4]; j->px[i * 4] = j->px[i * 4 + 2]; j->px[i * 4 + 2] = t; }
@@ -1259,7 +1314,7 @@ static void frame_end(const char *shot_path, bool new_frame) {
     VkSpan shot = {0};
     uint32_t img = cur_frame.image;
     if (shot_path) {  // PRESENT_SRC -> TRANSFER_SRC, copy, back
-        uint32_t w = g_vk.sc_extent.width, h = g_vk.sc_extent.height;
+        uint32_t w = sc_phys.width, h = sc_phys.height;
         shot = vk_readback((uint64_t)w * h * 4);
         VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                   .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -1293,6 +1348,16 @@ static void frame_end(const char *shot_path, bool new_frame) {
     // portrait panel held sideways): the compositor turns it, which is fine; remaking the swapchain for it drained the
     // GPU every frame - half the frame time on a Galaxy S25. Only a swapchain out of date is made again.)
     if (r == VK_ERROR_OUT_OF_DATE_KHR) recreate_swapchain();
+    else if (r == VK_SUBOPTIMAL_KHR && sc_wants_turn) {  // (MHGU_PERF_PREROTATE: the phone turned round since? 4 a second at most)
+        static uint64_t asked;
+        uint64_t now = plat_now_ns();
+        VkSurfaceCapabilitiesKHR caps;
+        if (now - asked >= 250000000ull && (asked = now) &&
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps) == VK_SUCCESS && turn_wanted(&caps) != sc_turn) {
+            LOG("[vk] the panel's transform is now 0x%x: the swapchain made again\n", caps.currentTransform);
+            recreate_swapchain();
+        }
+    }
 #else
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
 #endif
@@ -1302,7 +1367,7 @@ static void frame_end(const char *shot_path, bool new_frame) {
         vk_wait_seq(seq);
         ShotJob *j = malloc(sizeof *j);
         if (!j) { LOG("[vk] saving %s failed: out of memory\n", shot_path); return; }
-        j->w = g_vk.sc_extent.width, j->h = g_vk.sc_extent.height;
+        j->w = g_vk.sc_extent.width, j->h = g_vk.sc_extent.height, j->turn = sc_turn;
         j->bgr = g_vk.sc_format == VK_FORMAT_B8G8R8A8_UNORM || g_vk.sc_format == VK_FORMAT_B8G8R8A8_SRGB;
         j->px = malloc((size_t)j->w * j->h * 4);
         snprintf(j->path, sizeof j->path, "%s", shot_path);
@@ -1369,7 +1434,7 @@ void backend_present(NvnTexture *t) {
         if (vh > wh) vh = wh, vw = wh * a;
         vk_present_draw(vk_cmd(), b, (float)((ww - vw) / 2), (float)((wh - vh) / 2), (float)vw, (float)vh);
         OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
-                            g_vk.sc_extent.width, g_vk.sc_extent.height};
+                            g_vk.sc_extent.width, g_vk.sc_extent.height, sc_turn};
         overlay_draw(vk_cmd(), &ot);  // (Forge plugins' ImGui overlay, over the game: runtime/overlay.cpp)
         char path[300];
         extern char g_shot_request[256];  // (runtime/host_input.c: MHGU_CONTROL "shot <name>")
@@ -1457,7 +1522,7 @@ bool vk_present_again(void) {
         void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, float vw, float vh);  // (exec.c)
         vk_present_draw(vk_cmd(), b, (float)((ww - vw) / 2), (float)((wh - vh) / 2), (float)vw, (float)vh);
         OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
-                            g_vk.sc_extent.width, g_vk.sc_extent.height};
+                            g_vk.sc_extent.width, g_vk.sc_extent.height, sc_turn};
         overlay_draw(vk_cmd(), &ot);
         frame_end(NULL, false);
     } else {

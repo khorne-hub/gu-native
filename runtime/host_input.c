@@ -296,6 +296,13 @@ static void control_poll(void) {
             if (sscanf(line, "%31s %255s %199s", cmd, arg, arg2) < 1) continue;
             if (!strcmp(cmd, "crash")) raise(SIGILL);  // (tests: the error screen, runtime/platform/android.c)
             if (!strcmp(cmd, "msaa")) { void vk_set_msaa(uint32_t); vk_set_msaa((uint32_t)atoi(arg)); continue; }
+#ifdef __ANDROID__
+            if (!strcmp(cmd, "prerotate")) {  // prerotate 0|1: the window image drawn turned for the panel or not, the
+                extern int g_prerotate_test;  // swapchain made again (tests: nvn/vulkan/device.c MHGU_PERF_PREROTATE, the
+                g_prerotate_test = atoi(arg) ? 1 : 0;  // same held frame both ways)
+                continue;
+            }
+#endif
             if (!strcmp(cmd, "gpuprof")) { extern volatile int g_gpuprof_request; g_gpuprof_request = 1; continue; }
             if (!strcmp(cmd, "devicelost")) { extern volatile int g_fake_lost; g_fake_lost = 1; continue; }  // (tests: exec.c lost_report)
             if (!strcmp(cmd, "hudtrace")) { g_hudtrace_request = 1; continue; }
