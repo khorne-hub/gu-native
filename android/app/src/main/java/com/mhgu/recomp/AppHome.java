@@ -216,10 +216,15 @@ final class AppHome {
             return;
         }
         if (!from.canRead() || to.exists()) return;
+        // (through a temporary file: a copy cut short - the app closed meanwhile - is never taken for a whole one by the
+        // next start, which skips what is there)
+        File tmp = new File(to.getParentFile(), to.getName() + ".copy.tmp");
         try {
-            copy(from, to);
+            copy(from, tmp);
+            if (!tmp.renameTo(to)) throw new IOException("can't rename " + tmp.getName());
             count[0]++;
         } catch (IOException e) {
+            tmp.delete();
             Log.w(TAG, "home: copying " + from + ": " + e.getMessage());
         }
     }
