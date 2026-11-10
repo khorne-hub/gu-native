@@ -1983,7 +1983,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         // The thumb lifted on the lock circle, armed (it came from inside the rim or landed elsewhere, and a run can
         // lock): the run locks and goes on by itself, the stick held full forward. Not when the system took the finger,
         // nor for a thumb that only passed over the circle
-        bool over = s.run_over || (s.run_can && s.run_armed && on_lock_circle(s, x, y));
+        bool over = s.run_can && s.run_armed && on_lock_circle(s, x, y);  // (where it lifted)
         s.run_over = false;
         if (!cancel && over && s.run_can && !s.run_lock) {
             s.run_lock = s.run_free = true;
