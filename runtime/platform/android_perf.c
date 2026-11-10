@@ -12,6 +12,7 @@
 //   MHGU_PERF_EFFICIENT=1   (being measured) efficiency_follow forgives a lone frame over the target (below)
 //   MHGU_ADPF_EFFICIENT=force  (a test) the efficient cores asked for once the session is made, and never let go: what
 //                           they save at most
+//   MHGU_PERF_MEMTHREAD=1   (being measured) the minute's [mem] line read and written on a thread of its own (mem_watch)
 //
 // The target as all of the period: the system winds the clocks down until the busiest thread's work fills it, so
 // frames then end on either side of a vsync as their work varies (the Moto g06 at Toaster's 30 FPS: work 25.5 ms on
@@ -45,10 +46,12 @@
 #include <fcntl.h>
 #include <math.h>
 #include <pthread.h>
+#include <semaphore.h>
 #include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -404,17 +407,13 @@ void perf_mem_report(void) {
     fprintf(stderr, "[mem] at the error: %ld map entries, resident %ld MB\n", maps, rss / 1024);
 }
 
-static void mem_watch(void) {
-    static uint64_t next;
+static sem_t mem_sem;       // (MHGU_PERF_MEMTHREAD) a line is due
+static bool mem_threaded;   // the mem thread writes the lines (set once, before the first)
+
+// The line itself (the presenting thread's, or with MHGU_PERF_MEMTHREAD the mem thread's: one of them for a whole run)
+static void mem_line(void) {
     static long max_maps = -1, first_maps = -1, first_rss = -1;
-    static uint64_t every;  // (MHGU_MEM_LOG=<seconds>, test runs: more often than every minute)
-    if (!every) {
-        const char *e = getenv("MHGU_MEM_LOG");
-        every = (e && atoi(e) > 0 ? (uint64_t)atoi(e) : 60) * 1000000000ull;
-    }
-    uint64_t now = plat_now_ns();
-    if (now < next) return;
-    next = now + every;
+    uint64_t t0 = plat_now_ns();
     if (max_maps < 0) {
         FILE *f = fopen("/proc/sys/vm/max_map_count", "re");
         if (f) { if (fscanf(f, "%ld", &max_maps) != 1) max_maps = 0; fclose(f); }
@@ -435,6 +434,43 @@ static void mem_watch(void) {
     LOG("[mem] %ld map entries%s (%+ld since the start), resident %ld MB (%+ld; own %ld, files %ld, shared %ld), the system's "
         "available %ld MB%s\n",
         maps, of, maps - first_maps, rss / 1024, (rss - first_rss) / 1024, anon / 1024, file / 1024, shmem / 1024, avail / 1024, gpu);
+    if (__atomic_load_n(&log_on, __ATOMIC_RELAXED) > 0)  // (MHGU_ADPF_LOG: what reading it cost the thread)
+        LOG("[mem] that line took %.2f ms of the %s thread\n", (plat_now_ns() - t0) / 1e6, mem_threaded ? "mem" : "presenting");
+}
+
+// MHGU_PERF_MEMTHREAD: the line on a thread of its own, at nice 10, when the presenting thread says it is time (as the
+// MH4U port does). Reading /proc/self/maps has the kernel write out its thousands of lines (7,685 at the Moto g06's camp)
+// under the process's memory map lock, which the write tracking's faults and mprotects take too: a stall on the game's
+// update thread once a minute, there.
+static void *mem_thread(void *arg) {
+    (void)arg;
+    plat_thread_name("mem");
+    setpriority(PRIO_PROCESS, (id_t)gettid(), 10);  // (nothing waits for it)
+    for (;;) {
+        while (sem_wait(&mem_sem) != 0) {}  // (EINTR)
+        mem_line();
+    }
+    return NULL;
+}
+
+static void mem_watch(void) {
+    static uint64_t next;
+    static uint64_t every;  // (MHGU_MEM_LOG=<seconds>, test runs: more often than every minute)
+    if (!every) {
+        const char *e = getenv("MHGU_MEM_LOG");
+        every = (e && atoi(e) > 0 ? (uint64_t)atoi(e) : 60) * 1000000000ull;
+        e = getenv("MHGU_PERF_MEMTHREAD");
+        pthread_t th;
+        if (e && atoi(e) > 0 && sem_init(&mem_sem, 0, 0) == 0 && pthread_create(&th, NULL, mem_thread, NULL) == 0) {
+            pthread_detach(th);
+            mem_threaded = true;
+        }
+    }
+    uint64_t now = plat_now_ns();
+    if (now < next) return;
+    next = now + every;
+    if (mem_threaded) sem_post(&mem_sem);
+    else mem_line();
 }
 
 void perf_hint_frame(void) {
