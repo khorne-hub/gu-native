@@ -34,7 +34,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 
 - **Movement:** a fixed pad that doesn't follow your finger. Drag past its edge to run; this turns off while your weapon is out, so you don't run off in the middle of a fight. Slide up into the small circle with a padlock that shows above the pad and the run locks: the hunter keeps running forward after you lift your thumb, and you steer with the camera, until you touch the pad again, draw your weapon or open a menu. To run only while you hold a button instead: under the gear, **Controls**, **Buttons on the screen**, turn off **Run with the stick**, and a **Run** button shows above the attacks
 - **Camera:** drag anywhere on the screen to turn it, as in a phone game. A double tap centers it
-- **Monster lock-on:** tap the padlock by **L**, or hold **L**, and the camera keeps turning to the monster until you do it again, as in the newer Monster Hunter games and the MH4U port. It follows the monster the game's Target Cam has chosen, or the nearest one if none is chosen; the target button (**ZL**, or whatever your **Control Type** uses) moves it to the other monster. Turning the camera yourself, or pressing **L**, only pauses it for a moment, and it only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on (hold L)**
+- **Monster lock-on:** tap the padlock by **L**, or hold **L**, and the camera keeps turning to the monster until you do it again, as in the newer Monster Hunter games and the MH4U port. It follows the monster the game's Target Cam has chosen, or the nearest one if none is chosen; the target button (**ZL**, or whatever your **Control Type** uses) moves it to the other monster. With the game's **L/R Button Controls** swapped, the target button and **L**'s button swap as the game does: their badges show what each presses. Turning the camera yourself, or pressing **L**, only pauses it for a moment, and it only follows a monster in your zone. You can turn it off under the gear, **Controls**, **Lock-on (hold L)**
 - **A layout of their own for bows and bowguns:** with one in hand, in a hunt, the controls change by themselves: a large fire button under your thumb, reload, the scope with a tap or quick aim if you hold it, crouching fire, and arrows for the ammo (hold one to keep changing). Drag on the fire button while you hold it to aim. It follows the game's Bow Controls option and has its own place in the editor
 - **Change ammo with a swipe:** besides the arrows, swipe up or down on the item bar. The game's list now shows whole, with each ammo's name
 - **Shots with a monster locked on:** they go toward the middle of its body, even if it is higher or lower than you. To raise the shot, a bowgun goes into quick aim for a moment. Without the lock you aim as always
@@ -708,8 +708,8 @@ key can't be installed over the official app either. From 0.1.9 the app checks i
 so once when it starts.
 
 The app also tells you when a new version is out. At most once a day it asks GitHub for this repository's latest release
-(nothing else is sent), and at the next start it offers to open the release page. It never downloads or installs anything
-by itself. Gear, **Menu Options**, **Check for updates** turns it off.
+(nothing else is sent, not even the phone's model), and at the next start it offers to open the release page. It never
+downloads or installs anything by itself. Gear, **Menu Options**, **Check for updates** turns it off.
 
 The PC version has no such signature: each release lists the SHA-256 of its zip. To check yours on Windows, open a terminal
 in its folder and run `certutil -hashfile <file> SHA256`; the result must match the release's.

@@ -37,7 +37,9 @@ what the GPU allows (vertex streams, a stage's buffers and textures...).
 - `runtime/`: the host runtime. `touch.cpp` touch controls and editor, `settings_panel.cpp` the menu, `nvn/vulkan/` the renderer,
   `hle/` game hooks, `platform/android*.c` Android, `config.c` settings and first-run defaults.
 - `tools/`: `gen.py`, `lifter.py`, `neon.py`, `nso.py` translate the game; `build_game.py` is the person's tool.
-- `android/`: the app. `GameFolderActivity` is the entry screen, `GameActivity` runs the game, `SaveImportActivity` imports a save
+- `android/`: the app. `GameFolderActivity` is the entry screen, `GameActivity` runs the game (a start that skipped the entry
+  screen in that process - Recents brings the game back with its old intent, a controller plugged in - goes to it first:
+  `GameFolderActivity.gameStarted`, `SDLActivity.startElsewhere`, which sets nothing of SDL's up), `SaveImportActivity` imports a save
   (it is only applied at the next start, before the game runs, so the game can't save over it). `AppHome` is the app's folder
   (below), `SaveFolder` / `SaveFolderActivity` the save folder, `Notices` the unofficial-build and update notices, `FolderBrowser`
   the game-styled folder browser every screen uses, `Look` the shared colours and the game-styled notice. MH4U for Android has
@@ -211,7 +213,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   n-th large monster (+0xb5f7 0) of sEnemy's slots. Measured in two sessions in the Arena (quest 630, two large monsters: its camp is zone 0,
   the floor zone 1): ZL took it 0, 1, 2, 0, and the game's L turned the camera to the first, then the second. Until the hunter has seen the
   monsters their icons read Hidden and ZL does nothing. The Control Type, and so the change-target button, is `sUserInfo` +0x446c (0 Type 1
-  ZL, 1 Type 2 the d-pad, 2 Type 3 R3: `mousecam_target_buttons`). The target camera's icons: one monster at x 1200 (y 42 and 57, the
+  ZL, 1 Type 2 the d-pad, 2 Type 3 R3: `mousecam_target_buttons`); with L/R Button Controls swapped (+0x446e) Type 1's is L, and the
+  camera button then presses ZL in a hunt, the camera centring (`camera_buttons`, touch.cpp). The target camera's icons: one monster at x 1200 (y 42 and 57, the
   button's hint at 82), two at x 1170 and 1230 (y 42) with the hint still at 1200 (`target_piece`, nvn/vulkan/exec.c).
 - In towns the game's camera does not turn, with any stick: it isn't a controller problem.
 - SDL makes an Android controller a gamepad mapping only if its button mask has a face button, and the mask comes from
@@ -307,7 +310,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   Vulkan 1.0 so images share its blocks (`MHGU_VMA_DEDICATED=1`: the old way).
 - PowerVR's shader compiler crashed building several pipelines at once (#73, #99): there the builds run on one worker and every call
   into the driver's compiler takes one lock, from any thread (`one_compiler_install`, `device.c`: volk's `vkCreateShaderModule`,
-  `vkCreateGraphicsPipelines`, `vkCreateComputePipelines` and `vkGetPipelineCacheData` replaced; the `[mem]` line counts them). Not on the
+  `vkCreateGraphicsPipelines`, `vkCreateComputePipelines` and `vkGetPipelineCacheData` replaced; the `[mem]` line counts them; FSR's
+  backend, which looks them up itself, gets the same through `vk_device_proc_addr`). Not on the
   render thread: 0.1.8 did that, and the start built every saved program and pipeline before its first picture, a black screen on a
   Helio G35 (#157). `MHGU_VK_POWERVR=1` gives any GPU what a PowerVR gets (this, no prewarm, VMA as Vulkan 1.0). The log's `[shader]
   the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s).
@@ -426,11 +430,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   in the folders the app writes (`MHGURecomp`, `save_import`, `cheats`, `cache`, `shots`) and among the files at the top, a foreign
   file is copied and put in its place and a foreign folder is renamed aside (`<name>.other-app-<date>`) and made again (any other
   folder, an agent's backup made with adb, is never touched); if `files/` itself can't be written (EACCES/EPERM only), the app moves for good to
-  its private folder (`home.txt` in `getFilesDir()`, which `runtime/main.c` reads for `MHGU_HOME`) and says so once. Test with
+  its private folder (`home.txt` in `getFilesDir()`, which `runtime/main.c` reads for `MHGU_HOME`) and says so once; game files
+  put in the old folder's `data/` stay there, named by the private folder's `game_folder.txt` (`keepGameFiles`). Test with
   `adb shell` (the shell uid, as Shizuku's): `echo x > .../files/game_folder.txt` after deleting the app's own.
 - The save folder (`runtime/savefolder.h` lists its files): only `save_0` moves (`services/fs.c` asks `savefolder_root` at each
   mount; the game mounts at every save), `g_save_dir`, `bonus/` and `save_backups/` stay local. A folder that can't be reached at
   a save mounts the local one instead and writes `save_folder_missed.txt`; the start gate (`SaveFolderActivity.gate`) asks.
+  Missed once, the local one is used until the game closes (`g_own`), with a notice: the game holds the save it read, and one
+  read locally because the folder wasn't there yet went over the folder's newer one at the next save once it came back.
   A `.mhgu-commit` of `system` / `system_backup` is applied only at the save's full size (a sync app can bring one half-written).
   The in-use mark `.mhgu-in-use` is renewed every 5 minutes (`savefolder_tick`) and counts for 15.
 - The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,

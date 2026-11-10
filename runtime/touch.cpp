@@ -1079,7 +1079,8 @@ uint64_t finger_buttons(const Finger &f) {
                : is_dpad(f.ctl) ? dpad_buttons(f.part)
                : is_combo(f.ctl) ? (uint64_t)config_live_touch_combo(f.ctl - C_COMBO)
                : f.ctl == C_LIGHT && f.part ? PILL_BUTTONS[2]
-               : f.btn || f.ctl == C_ZL ? f.btn  // (the target button: what it pressed as it landed, target_buttons; 0 nothing)
+               : f.btn || f.ctl == C_ZL ? f.btn  // (the target and camera buttons: what they pressed as they landed, target_buttons
+                                                 // (0 nothing) and camera_buttons)
                        : DEFS[f.ctl].buttons;
     return b | f.keep | (f.on_bar ? B(BTN_Y) : 0);  // (a guard kept as it slid: [Touch] GuardSlide)
 }
@@ -1126,10 +1127,16 @@ bool padlock_hit(const State &s, float x, float y) {
 // The target button (ZL on the layout): in a hunt the game's change target, as the player's Control Type has it
 // (hle/mousecam.c: ZL in Type 1, the d-pad in Type 2, the right stick's click in Type 3; the lock-on follows the
 // monster it chooses); in a town ZL, the way to the multiplayer menu. 0: nothing a touch button can press
+bool target_in_town(void) { return plat_now_ns() - g_town_ns < 500 * MS || g_menu_town.load(); }
 uint64_t target_buttons(void) {
-    if (plat_now_ns() - g_town_ns < 500 * MS || g_menu_town.load()) return B(BTN_ZL);
+    if (target_in_town()) return B(BTN_ZL);
     return mousecam_target_buttons();
 }
+// The camera button (L on the layout) and a double tap on the camera's part: the game's camera centring, L, or ZL in a hunt
+// with the game's L/R Button Controls swapped (L is then Type 1's change target, the target button's: both changed the
+// monster, and nothing centred the camera); in a town L, beside the target button's ZL. The lock-on's pause for a turn by
+// the game goes by the same button (touch_lock_buttons)
+uint64_t camera_buttons(void) { return !target_in_town() && game_lr_swapped() ? B(BTN_ZL) : B(BTN_L); }
 // and its badge: the button it presses (a d-pad's direction: an arrow, target_badge)
 const char *target_letter(void) {
     uint64_t b = target_buttons();
@@ -1686,7 +1693,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             }
         if (c >= 0) {
             f->kind = F_BUTTON, f->ctl = c, f->part = part;
-            f->btn = is_ranged(c) ? ranged_buttons(c, s.drawn, s.menu) : c == C_ZL ? target_buttons() : 0;
+            f->btn = is_ranged(c) ? ranged_buttons(c, s.drawn, s.menu) : c == C_ZL ? target_buttons() : c == C_L ? camera_buttons() : 0;
             if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
                 ammo_step(s, c == C_AMMO_UP ? 1 : -1), f->repeat_ns = now + 550 * MS;  // (held: more steps, touch_input)
             if (!of_mpad(c)) tap_due();  // (the menu pad's group: as it presses, touch_input)
@@ -1842,7 +1849,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (f->kind == F_BUTTON && f->ctl == C_SETTINGS && !f->done && e->type == SDL_EVENT_FINGER_UP) overlay_toggle_settings();
     if (s.menu) s.tap_ns = 0;  // (in the game's menus L turns pages: no double tap there)
     else if (f->kind == F_CAMERA && tap) {  // a double tap on the camera's part centres it (L)
-        if (now - s.tap_ns < 350 * MS && hypotf(x - s.tap_x, y - s.tap_y) < .08f * s.h) pulse(s, B(BTN_L), 60 * MS), s.tap_ns = 0;
+        if (now - s.tap_ns < 350 * MS && hypotf(x - s.tap_x, y - s.tap_y) < .08f * s.h) pulse(s, camera_buttons(), 60 * MS), s.tap_ns = 0;
         else s.tap_ns = now, s.tap_x = x, s.tap_y = y;
     }
     f->kind = F_NONE;
@@ -2301,7 +2308,7 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
     if (hunt) s.hunt_ns = now;
     if (s.lock && now - s.hunt_ns > 10000 * MS) lock_set(s, false, "no hunt camera");
     static bool l_was;
-    bool l_now = (buttons & B(BTN_L)) != 0;
+    bool l_now = (buttons & camera_buttons()) != 0;  // (the game's camera centring: L, or ZL with L and ZL swapped)
     if (cam_input || (l_now && !l_was)) s.cam_ns = now;
     l_was = l_now;
     if (s.lock && !config_live_lock_on()) lock_set(s, false, "the settings");
@@ -3202,7 +3209,8 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
                       40, g.r * .09f);
     Icon ic = DEFS[i].icon;
     char letter[8];
-    snprintf(letter, sizeof letter, "%s", i == C_ZL && !s.edit ? target_letter() : DEFS[i].letter);
+    snprintf(letter, sizeof letter, "%s", i == C_ZL && !s.edit ? target_letter()
+                                          : i == C_L && !s.edit && camera_buttons() == B(BTN_ZL) ? "ZL" : DEFS[i].letter);
     if (is_ranged(i)) ranged_face(i, s.edit ? 1 : s.drawn, &ic, letter, sizeof letter);
     icon(dl, ic, g.c, i == C_RFIRE ? r * .94f : r, fade(mask ? GLOW : INK, a), fade(DEEP, a));
     float br = std::max(r * (i == C_RFIRE ? .22f : .3f), .021f * h);  // (the large one's as large as the others')
