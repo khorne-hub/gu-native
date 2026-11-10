@@ -227,28 +227,35 @@ Dos dispositivos en el mismo Wi-Fi pueden jugar juntos:
 1. Los dos van al pueblo, tocan **ZL** y eligen **Connect**.
 2. Uno (el anfitrión) elige **Create Hub** y confirma con **X**.
 3. El otro elige **Search Hubs** y elige esa sala.
-4. Si la sala no aparece: en el engranaje, **Red**, **Buscar servidores**, escribe la IP del anfitrión y busca de nuevo.
+4. Si la sala no aparece: en el engranaje, **Multijugador**, **Buscar servidores**, escribe la IP del anfitrión y busca de nuevo.
 
 Se probó crear la sala, encontrarla y entrar en un Motorola y una Anbernic, pero todavía no una misión completa.
 
 #### Por internet
 
-Para jugar con amigos lejos hace falta un servidor de salas. Este proyecto no tiene uno propio; cualquiera de ustedes puede alojarlo con el programa chico de la carpeta `server` (un puerto, el 39510 por defecto; ver `server/README.md`).
+La app ya trae un servidor de salas puesto, `hunterhubid-gu-hub.duckdns.org`, que mantienen jugadores de la comunidad (no
+este proyecto). Todos los que usan el mismo servidor encuentran las salas de los demás, sin abrir puertos.
 
-1. En el engranaje, **Red**, **Servidor de salas**, todos escriben el mismo servidor (un nombre o una IP, y `:puerto` si no es el 39510).
-2. **Comprobar servidor de salas** te dice si responde.
-3. Opcional: todos ponen la misma **Clave de emparejamiento**, así solo tu grupo ve sus salas.
-4. Después se juega como en [Juego local](#juego-local): uno crea la sala y los demás la buscan.
+1. Se juega como en [Juego local](#juego-local): uno crea la sala y los demás la buscan. Las salas de internet aparecen junto
+   a las de tu Wi-Fi.
+2. Para jugar solo con tus amigos: en el engranaje, **Multijugador**, todos ponen la misma **Clave de emparejamiento**. Solo
+   los jugadores con esa clave ven sus salas.
+3. **Servidor de salas** elige otro servidor: **Otro...** para escribirlo (un nombre o una IP, y `:puerto` si no es el 39510;
+   el programa chico de la carpeta `server` aloja uno, ver `server/README.md`), o **Ninguno** para jugar solo en tu red local.
+   **Comprobar servidor de salas** dice si responde y cuántas salas muestra.
+
+La primera vez que juegas en línea, un cartel dice a qué servidor se conecta el juego: como cualquier servidor de internet,
+ve tu dirección IP.
 
 Sin servidor: pon todos los dispositivos en la misma VPN (por ejemplo Tailscale o ZeroTier) y escribe la IP del anfitrión en esa VPN en **Buscar servidores**.
 
-El juego por internet todavía no se probó en Android.
-
-Un teléfono y una PC deberían poder jugar en la misma sala si los dos tienen la misma versión, pero todavía no se probó.
+Los teléfonos y las PC con 0.1.6 o posterior se encuentran en las mismas salas, por el servidor o en la misma Wi-Fi. Probado
+en 0.1.9: dos teléfonos en una sala por el servidor predeterminado con una clave de emparejamiento, y una PC entrando a la sala
+de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión completa juntos.
 
 #### Vida de los monstruos y misiones de aldea en sala
 
-La vida de los monstruos ajustable (engranaje, **Varios**) y las misiones de aldea en sala (engranaje, **Red**) vienen de
+La vida de los monstruos ajustable (engranaje, **Varios**) y las misiones de aldea en sala (engranaje, **Multijugador**) vienen de
 MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo en Android.
 
 ### Dónde se guarda cada cosa
@@ -391,7 +398,7 @@ Más en [Gráficos y FPS](#gráficos-y-fps).
 
 Si la app de Discord está abierta en la misma PC, tu perfil muestra lo que estás haciendo: dónde estás, los monstruos que
 cazas, el mapa y la zona, cuántos cazadores te acompañan, tu arma, y el nombre y el RC de tu cazador. Viene activado. Para
-apagarlo: **F1**, **Red**, **Presencia en Discord**. Para no mostrar tu nombre ni tu RC: **Mostrar nombre y RC del cazador**.
+apagarlo: **F1**, **Multijugador**, **Presencia en Discord**. Para no mostrar tu nombre ni tu RC: **Mostrar nombre y RC del cazador**.
 El juego solo habla con la app de Discord de tu PC.
 
 ### ¿Qué tan bien corre?
@@ -586,20 +593,21 @@ Desde **F1**, **Opciones del menú**:
 ### Multijugador
 
 El juego local y las salas por internet funcionan como en el teléfono, con el mismo código y las mismas opciones, en **F1**,
-**Red**: mira [Juego local](#juego-local) y [Por internet](#por-internet). En el pueblo, presiona ZL (Tab) y elige
+**Multijugador**: mira [Juego local](#juego-local) y [Por internet](#por-internet). En el pueblo, presiona ZL (Tab) y elige
 **Connect**.
 
 - **Create Hub** se confirma con X: R en el teclado.
 - La primera vez que creas una sala, el Firewall de Windows pregunta si MHGU puede usar la red. Permítelo, o nadie podrá
   encontrar tu sala ni entrar. Solo lo necesita el anfitrión. Si dijiste que no: Seguridad de Windows, **Firewall y protección
   de red**, **Permitir una aplicación a través del firewall**.
-- La búsqueda solo pregunta en la red principal de la PC. Por una VPN, como Tailscale o ZeroTier, escribe la IP del anfitrión
-  en **Buscar servidores** y reinicia el juego.
-- Una PC y un teléfono deberían poder jugar en la misma sala si los dos tienen la misma versión.
+- La búsqueda pregunta en todas las redes de la PC. Por una VPN, como Tailscale o ZeroTier, también puedes escribir la IP del
+  anfitrión en **Buscar servidores** y reiniciar el juego.
+- Una PC y un teléfono juegan en la misma sala (0.1.6 o posterior en los dos).
 - La vida de los monstruos ajustable (**Varios**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
-  de aldea en sala (**Red**) vienen de MHGURecomp.
+  de aldea en sala (**Multijugador**) vienen de MHGURecomp.
 
-Nada de esto se probó todavía en PC, ni una PC con un teléfono.
+Probado en PC: entrar a la sala de un teléfono por el servidor de salas y en la misma Wi-Fi. Todavía no: crear una sala en la
+PC (necesita el permiso del firewall) y una misión completa.
 
 ### Dónde se guarda cada cosa
 

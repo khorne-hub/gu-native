@@ -227,28 +227,35 @@ Two devices on the same Wi-Fi can play together:
 1. Both go to town, tap **ZL** and choose **Connect**.
 2. One player (the host) chooses **Create Hub** and confirms with **X**.
 3. The other chooses **Search Hubs** and picks that hub.
-4. If the hub doesn't show up: under the gear, **Network**, **Search hosts**, enter the host's IP and search again.
+4. If the hub doesn't show up: under the gear, **Multiplayer**, **Search hosts**, enter the host's IP and search again.
 
 Creating a hub, finding it and joining it were tested on a Motorola and an Anbernic, but not a full quest yet.
 
 #### Over the internet
 
-To play with friends far away you need a hub server. This project doesn't run one; any of you can host it with the small program in the `server` folder (one port, 39510 by default; see `server/README.md`).
+The app comes with a hub server already set, `hunterhubid-gu-hub.duckdns.org`, which players of the community run (not this
+project). Everyone on the same server finds the others' hubs, with no ports to open.
 
-1. Under the gear, **Network**, **Hub server**, everyone enters the same server (a name or IP, and `:port` if it isn't 39510).
-2. **Check hub server** tells you whether it answers.
-3. Optional: everyone sets the same **Matchmaking key**, so only your group sees your hubs.
-4. Then play as in [Local play](#local-play): one creates the hub, the others search for it.
+1. Play as in [Local play](#local-play): one creates the hub, the others search for it. Hubs from the internet show up next
+   to the ones on your Wi-Fi.
+2. To play only with your friends: under the gear, **Multiplayer**, everyone enters the same **Matchmaking key**. Only
+   players with that key see your hubs.
+3. **Hub server** picks another server: **Custom...** to type one (a name or IP, and `:port` if it isn't 39510; the small
+   program in the `server` folder runs one, see `server/README.md`), or **Off** for your local network only. **Check hub
+   server** says whether it answers and how many hubs it lists.
+
+The first time you play online a notice says which server the game connects to: like any server on the internet, it sees
+your IP address.
 
 Without a server: put every device on the same VPN (for example Tailscale or ZeroTier) and enter the host's VPN IP under **Search hosts**.
 
-Play over the internet hasn't been tested on Android yet.
-
-A phone and a PC should be able to play in the same hub when both run the same version, but that hasn't been tested yet.
+Phones and PCs with 0.1.6 or later meet in the same hubs, through the server or on the same Wi-Fi. Tested in 0.1.9: two
+phones in one hub through the default server with a matchmaking key, and a PC joining a phone's hub through the server and
+on the same Wi-Fi; a full quest together not yet.
 
 #### Monster HP and Village quests in the Hub
 
-Adjustable monster HP (gear, **Misc**) and Village quests in the Hub (gear, **Network**) come from MHGURecomp, the project this
+Adjustable monster HP (gear, **Misc**) and Village quests in the Hub (gear, **Multiplayer**) come from MHGURecomp, the project this
 one is based on. They haven't been fully tested on Android yet.
 
 ### Where things are kept
@@ -384,7 +391,7 @@ More in [Graphics and frame rate](#graphics-and-frame-rate).
 
 If the Discord app is open on the same PC, your profile there shows what you're doing: where you are, the monsters you hunt,
 the map and area, how many hunters are with you, your weapon, and your hunter's name and HR. It is on by default. To turn it
-off: **F1**, **Network**, **Discord Rich Presence**. To leave out your name and HR: **Show hunter name and HR**. The game only
+off: **F1**, **Multiplayer**, **Discord Rich Presence**. To leave out your name and HR: **Show hunter name and HR**. The game only
 talks to the Discord app on your PC.
 
 ### How well does it run?
@@ -575,20 +582,21 @@ From **F1**, **Menu Options**:
 ### Multiplayer
 
 Local play and hubs over the internet work as on the phone, with the same code and the same settings, under **F1**,
-**Network**: see [Local play](#local-play) and [Over the internet](#over-the-internet). In town, press ZL (Tab) and choose
+**Multiplayer**: see [Local play](#local-play) and [Over the internet](#over-the-internet). In town, press ZL (Tab) and choose
 **Connect**.
 
 - **Create Hub** is confirmed with X: R on a keyboard.
 - The first time you create a hub, Windows Firewall asks whether MHGU may use the network. Allow it, or nobody can find or
   join your hub. Only the host needs this. If you said no: Windows Security, **Firewall & network protection**, **Allow an
   app through firewall**.
-- The search only asks the PC's main network. Over a VPN, such as Tailscale or ZeroTier, enter the host's IP under **Search
-  hosts** and restart the game.
-- A PC and a phone should be able to play in the same hub when both run the same version.
+- The search asks every network the PC is on. Over a VPN, such as Tailscale or ZeroTier, you can also enter the host's IP
+  under **Search hosts** and restart the game.
+- A PC and a phone play in the same hub (0.1.6 or later on both).
 - Adjustable monster HP (**Misc**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
-  (**Network**) come from MHGURecomp.
+  (**Multiplayer**) come from MHGURecomp.
 
-None of this has been tested on PC yet, nor a PC and a phone together.
+Tested on PC: joining a phone's hub through the hub server and on the same Wi-Fi. Not yet: creating a hub on the PC (it
+needs the firewall's permission) and a full quest.
 
 ### Where things are kept
 

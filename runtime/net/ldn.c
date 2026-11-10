@@ -9,7 +9,8 @@
 // there, for players with the same matchmaking key (ini Key, empty: public) and port version, and Scan adds the
 // server's hubs to the LAN's. Joining one goes through the server, which splices the player's connection to one the
 // host opens for it: the same link as a direct connection, so nobody forwards a port. Game packets go by UDP through
-// the server too ("MHGR" relay prefix), else through the link.
+// the server too ("MHGR" relay prefix), else through the link. Empty, Server is LDN_DEFAULT_SERVER (config.h), a
+// community server; nothing reaches any server before the one-time notice about playing online was closed (online_ok).
 //
 // Link frames: u32 size (of what follows), u8 type, payload. Structures are the SDK's (sizes and offsets below).
 #ifdef _WIN32
@@ -33,6 +34,7 @@
 #include "../kernel.h"
 #include "../overlay.h"
 #include "../settings_locale.h"
+#include "../settings_panel.h"
 #include "net.h"
 
 #ifdef _WIN32
@@ -663,16 +665,30 @@ static void *host_thread(void *arg) {
 // (LOBBY_NAME bytes); false: no internet hubs. Server and Key are live settings (config_live_ldn): a change applies
 // from the next search, join or connection to the server on.
 #define LOBBY_NAME sizeof g_config.ldn_server
-static bool lobby_server_of(const char *s, char *out) {
+bool ldn_server_name(const char *s, char *out, size_t size) {
     if ((s[0] | 0x20) == 'o' && (s[1] | 0x20) == 'f' && (s[2] | 0x20) == 'f' && !s[3]) s = "";
     else if (!*s) s = LDN_DEFAULT_SERVER;
-    snprintf(out, LOBBY_NAME, "%s", s);
+    snprintf(out, size, "%s", s);
     return *out;
 }
+static bool lobby_server_of(const char *s, char *out) { return ldn_server_name(s, out, LOBBY_NAME); }
 static bool lobby_server(char *out) {
     char s[LOBBY_NAME];
     config_live_ldn(s, sizeof s, NULL, 0);
     return lobby_server_of(s, out);
+}
+// Playing online for the first time: the menu's card says which server the game connects to, and that the server sees
+// the player's IP address (settings_panel.cpp). Until it is closed ([Multiplayer] OnlineNoticeShown) no hub server is
+// asked. A search waits for it (up to wait_ms: the game searches on a thread of its own, and shows its searching while
+// the card is up; a search that found nothing would end there), a created hub is listed once it is closed
+static bool online_ok(const char *srv, int wait_ms) {
+    for (uint64_t end = plat_now_ns() + (uint64_t)wait_ms * 1000000ull;;) {
+        if (settings_panel_online_ok(srv)) return true;
+        if (plat_now_ns() >= end) break;
+        plat_sleep_until_ns(plat_now_ns() + 100000000ull);
+    }
+    ONCE("[ldn] hub server %s: not asked until the notice about playing online is closed\n", srv);
+    return false;
 }
 
 // A request's header. The room is a hash of the matchmaking key (key NULL: ini Key; spaces around it ignored): hubs
@@ -741,8 +757,11 @@ static void hub_report(int what, const char *srv, int state, int ms, int hubs) {
     uint64_t now = plat_now_ns();
     pthread_mutex_lock(&hub_mu);
     if (hub_now.state != HUB_CHECKING && what != NOTE_JOIN) hub_set_locked(srv, key, state, ms, hubs);
+    // (a search's failures with the default server, which the player didn't choose, are told once: playing on a LAN
+    // without the internet isn't told so at every search)
+    bool again = what != NOTE_SEARCH || strcmp(srv, LDN_DEFAULT_SERVER);
     bool show = state == HUB_ONLINE ? what == NOTE_HOST && note_last[what] > HUB_ONLINE
-                                    : what == NOTE_JOIN || note_last[what] != state || now - note_at[what] > 10000000000ull;
+                                    : what == NOTE_JOIN || note_last[what] != state || (again && now - note_at[what] > 10000000000ull);
     note_last[what] = state;
     if (show) note_at[what] = now;
     pthread_mutex_unlock(&hub_mu);
@@ -811,6 +830,10 @@ static void *lobby_thread(void *arg) {
         struct sockaddr_in addr;
         hsock s = BADSOCK;
         if (!lobby_server(srv)) break;
+        if (!online_ok(srv, 0)) {  // (listed once the notice is closed)
+            if (!lobby_wait(gen, 500)) break;
+            continue;
+        }
         bool named = resolve_host(srv, LOBBY_PORT, &addr);
         if (named) s = connect_to(&addr, 3000);
         if (s == BADSOCK) {
@@ -1202,6 +1225,29 @@ static void probe_networks(hsock u, const uint8_t *probe, size_t size, struct so
 }
 #else
 static void lan_wifi(bool on) { (void)on; }
+#ifdef _WIN32
+// A desktop's the same way: 255.255.255.255 leaves by one adapter, which next to a VPN's or a virtual machine's can be
+// the wrong one (a PC and a phone on the same router did not find each other's hubs)
+static void probe_networks(hsock u, const uint8_t *probe, size_t size, struct sockaddr_in to) {
+    INTERFACE_INFO list[32];
+    DWORD bytes = 0;
+    if (WSAIoctl(u, SIO_GET_INTERFACE_LIST, NULL, 0, list, sizeof list, &bytes, NULL, NULL) == SOCKET_ERROR) return;
+    int sent = 0;
+    char names[256] = "";
+    for (DWORD i = 0; i < bytes / sizeof list[0]; i++) {
+        const INTERFACE_INFO *f = &list[i];
+        if (!(f->iiFlags & IFF_UP) || !(f->iiFlags & IFF_BROADCAST) || (f->iiFlags & IFF_LOOPBACK) ||
+            f->iiAddress.Address.sa_family != AF_INET)
+            continue;
+        to.sin_addr.s_addr = f->iiAddress.AddressIn.sin_addr.s_addr | ~f->iiNetmask.AddressIn.sin_addr.s_addr;
+        sendto(u, (const char *)probe, (int)size, 0, (struct sockaddr *)&to, sizeof to);
+        size_t at = strlen(names);
+        snprintf(names + at, sizeof names - at, "%s%s", sent ? ", " : "", inet_ntoa(to.sin_addr));
+        sent++;
+    }
+    ONCE("[ldn] %d local network(s) to search: %s\n", sent, names);
+}
+#endif
 #endif
 
 // Hosts to ask: ini Join (comma separated host[:port]) and this computer.
@@ -1257,7 +1303,7 @@ static int discover(uint8_t (*infos)[NETINFO_SIZE], struct sockaddr_in *addrs, i
             next_ask = now + SEARCH_ASK_NS;
             to.sin_addr.s_addr = htonl(INADDR_BROADCAST);
             sendto(u, (const char *)probe, sizeof probe, 0, (struct sockaddr *)&to, sizeof to);
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(_WIN32)
             probe_networks(u, probe, sizeof probe, to);
 #endif
             to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -1516,7 +1562,8 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     uint64_t hubs[MAX_FOUND] = {0};
     pthread_t lt;
     hnet_init();  // (before the thread's first socket call)
-    bool asked = lobby_server(online.server) && !pthread_create(&lt, NULL, lobby_list_thread, &online);
+    bool asked = lobby_server(online.server) && online_ok(online.server, 60000) &&
+                 !pthread_create(&lt, NULL, lobby_list_thread, &online);
     int n = discover(infos, addrs, 16), k = 0;
     if (asked) {  // the server's hubs after the LAN's (a hub found both ways is joined directly)
         pthread_join(lt, NULL);

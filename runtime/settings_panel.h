@@ -23,6 +23,13 @@ enum { SETTINGS_VIEW_IMPORT_SAVE = 1, SETTINGS_VIEW_RESTART = 2 };
 extern "C"
 #endif
 void settings_panel_request_view(int view);
+// Any thread, C too: true once the one-time notice about playing online was closed (now or in an earlier session:
+// [Multiplayer] OnlineNoticeShown); false: it is asked for, naming that hub server, and shows as soon as it can.
+// runtime/net/ldn.c asks before anything reaches a hub server.
+#ifdef __cplusplus
+extern "C"
+#endif
+bool settings_panel_online_ok(const char *server);
 
 void settings_panel_before_frame(bool open); // Own navigation keys before ImGui NewFrame.
 void settings_panel_request_back(void); // F1 / chord: same one-level back route.
