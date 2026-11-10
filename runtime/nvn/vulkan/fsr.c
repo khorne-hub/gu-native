@@ -1093,7 +1093,7 @@ static bool ctx_make(void) {
     if (ctx) return true;
     if (ctx_failed) return false;
     FfxVkPortableDeviceInfo di = {.structSize = sizeof di, .instance = g_vk.inst, .physicalDevice = g_vk.phys,
-                                  .device = g_vk.dev, .getDeviceProcAddr = vkGetDeviceProcAddr, .queue = g_vk.queue,
+                                  .device = g_vk.dev, .getDeviceProcAddr = vk_device_proc_addr(), .queue = g_vk.queue,
                                   .queueFamilyIndex = g_vk.qfam, .shaderFloat16Enabled = g_vk.fsr_fp16,
                                   .shaderStorageImageWriteWithoutFormatEnabled = g_vk.fsr_storage_wo_format};
     ctx_ci = (FfxVkPortableUpscaleCreateInfo){.structSize = sizeof ctx_ci, .maxRenderSize = {rw, rh}, .maxOutputSize = {ow, oh}};
