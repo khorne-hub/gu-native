@@ -998,7 +998,7 @@ void text(std::vector<Row> &rows, const char *id, const char *name, char *field,
 // first: [Multiplayer] RecentServer1..; an x takes one out), Custom... (typed on the keyboard; the last one typed is
 // offered again) and Off. Empty in the file is the default, so a later default reaches everyone who kept it; a typed one
 // is kept as it is
-std::string g_custom_server;  // (the last custom server this session: Custom... starts from it)
+std::string g_custom_server;  // (Custom... starts from it: the typed one in use, else the last one typed this session)
 std::string g_custom_key;     // (and the matchmaking key's)
 bool server_off(const char *server) {
     char name[sizeof s.draft.ldn_server];
@@ -1083,7 +1083,7 @@ void server_row(std::vector<Row> &rows) {
     for (int i = 0; i < m && selected == custom; i++)  // (or as one remembered)
         if (!strcasecmp(now, used[i].c_str()))
             selected = n + i;
-    if (selected == custom)
+    if (selected >= n && selected <= custom)  // (a typed one in use, remembered or not: Custom... starts from it)
         g_custom_server = now;
     std::vector<std::string> names;
     std::vector<char> removable(n, 0);
@@ -1145,7 +1145,7 @@ void key_row(std::vector<Row> &rows) {
     for (int i = 0; i < m && selected == custom; i++)
         if (now == used[i])
             selected = 1 + i;
-    if (selected == custom)
+    if (selected)  // (the key in use, remembered or not: Custom... starts from it, as the typed row did)
         g_custom_key = now;
     std::vector<std::string> names = {std::string(tr("Public")) + "  (" + tr("Default") + ")"};
     std::vector<char> removable = {0};
