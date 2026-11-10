@@ -901,6 +901,8 @@ struct Pulse {
 };
 struct State {
     Finger f[10];
+    uint64_t bow_leave, bow_leave_until;  // a bow's aim held and let go: its button pressed again to leave the aiming
+                                          // mode once the hunter is in it (touch_input), until then at most
     bool stick_on;
     float bx, by, kx, ky;    // the stick's base and knob, pixels
     float cam_dx, cam_dy;    // pixels dragged since the last touch_input
@@ -1012,6 +1014,8 @@ std::atomic<bool> g_hud_pad;    // (a controller is read: its B, which cancels t
 #endif
 // (the lock-on waits so long after a turn by hand or an L, as the MH4U port's; a press on L so long turns it on or off)
 const uint64_t LOCK_AFTER_TURN = 600 * MS, LOCK_HOLD = 600 * MS, MIN_PRESS = 70 * MS;
+// (the aim's tap: let go within this, the game's own tap of R, under its 14 frames at 60 FPS with an update to spare)
+const uint64_t AIM_TAP = 180 * MS;
 const uint64_t BAR_HOLD = 400 * MS;  // (a finger kept this long on the item bar, unmoved, holds it open: as the MH4U port)
 
 // The Run button at its default place in a layout of the corner style (saved before the button was there): inside the
@@ -1852,6 +1856,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 if (hypotf(x - g.c.x, y - g.c.y) < g.r * 1.2f) arrow = d;
             }
         if (c >= 0) {
+            if (c == C_RAIM) s.bow_leave = 0;
             f->kind = F_BUTTON, f->ctl = c, f->part = part;
             f->btn = is_ranged(c) ? ranged_buttons(c, s.drawn, s.menu) : c == C_ZL ? target_buttons() : c == C_L ? camera_buttons() : 0;
             if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
@@ -1914,8 +1919,9 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 f->swipe = across ? f->swipe - copysignf(step, f->swipe) : 0;
                 f->swipe_y = across ? 0 : f->swipe_y - copysignf(step, f->swipe_y);
             }
-        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
-            s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot aims while it is held)
+        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && (f->ctl == C_RFIRE || f->ctl == C_RAIM) && f->moved && !f->done &&
+                                           !s.menu)) {
+            s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot or the aim aims while it is held)
         } else if (f->kind == F_STICK) stick_to(s, x, y);
         else if (f->kind == F_ITEM) {  // a swipe turns the bar, an item every so far; up or down with a gun: the ammo
             f->swipe += dx, f->swipe_y += dy;
@@ -1979,6 +1985,16 @@ extern "C" bool touch_event(const SDL_Event *e) {
     }
     bool tap = !f->moved && now - f->t0 < 300 * MS && e->type == SDL_EVENT_FINGER_UP;
     bool cancel = e->type == SDL_EVENT_FINGER_CANCELED;
+    // The aim with a gun out (its R): a tap, let go within AIM_TAP and not slid, is the game's tap of R, the scope; held
+    // longer or slid it is the quick aim, held while the thumb is (its slide turns the aim as a drag of the view does),
+    // and its R stays down until the game can't take it for a tap (aim_hold_ns): the aim comes up and ends, no scope.
+    // A bow's: its button enters the aiming mode, which stays until it is pressed again (0010:012, the game's Bow
+    // Controls say which button: f->btn): a tap enters it; held or slid, the thumb aims and letting go leaves it
+    uint64_t held_ns = now - f->t0;
+    bool aim_hold = f->kind == F_BUTTON && f->ctl == C_RAIM && !s.menu && !cancel && s.drawn == 1 && (f->moved || held_ns >= AIM_TAP);
+    if (aim_hold && g_ranged.load() == WEAPON_BOWGUN && (f->btn & B(BTN_R)) && held_ns < aim_hold_ns())
+        pulse(s, B(BTN_R), aim_hold_ns() - held_ns);
+    if (aim_hold && g_ranged.load() == WEAPON_BOW && f->btn) s.bow_leave = f->btn, s.bow_leave_until = now + 1500 * MS;
     if (f->kind == F_BUTTON && !f->done && !cancel && now - f->t0 < MIN_PRESS) {  // (a quick tap is held long enough for the game,
         if (of_mpad(f->ctl)) {  // which reads the buttons at its own update rate; the menu pad's the menu's, and a press
             int want = mpad_want(*f);  // not started yet starts only as press_ok lets it)
@@ -2036,6 +2052,18 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     bool game = game_menu(hunter) && !weapon_aiming(hunter) && !ranged_aim(hunter);
     static int dbg = -1;  // (MHGU_TOUCH_LOG: the menu, the hunter played or not, the menu pad's presses, as they change)
     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+    // (a bow's aim held and let go: out of the aiming mode once the hunter is back in it - a shot taken meanwhile ends
+    // there -; no more once it has left it by itself, a dodge or a sheathe)
+    if (s.bow_leave) {
+        unsigned act = weapon_action(hunter);
+        if (now >= s.bow_leave_until || act >> 16 != 0x10 || s.drawn != 1) {
+            s.bow_leave = 0;
+        } else if (act == (0x10u << 16 | 12)) {
+            pulse(s, s.bow_leave, MIN_PRESS);
+            if (dbg) rt_logf("[touch] the bow's aim let go: out of the aiming mode\n");
+            s.bow_leave = 0;
+        }
+    }
     // (a menu opened in a town, the item box, a shop, the smithy, its windows drawn: no Hunter Art comes of the d-pad
     // there, so what the menu pad presses passes whether a cursor of the game's ran or not - the item box's sorting moves
     // none of those, and the pad pressed nothing there, #174)
