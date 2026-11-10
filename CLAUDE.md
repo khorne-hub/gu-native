@@ -160,7 +160,8 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
   and the log's `[perf]` lines say which are set):
   - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
     runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
-    the lock-on, a controller open, the game's rumble, the settings menu, a scripted press, an event in the last 500 ms);
+    the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings
+    menu, a scripted press, an event in the last 500 ms);
     otherwise it waits up to 16 ms on a semaphore that SDL's event watch, each frame presented, a rumble changing and the
     menu's requests post. Woken by an event it brings the controls' state up to date first, as the pass 3 ms before did. The
     touch controls' timings are those of the 3 ms loop. Once a minute the log counts the passes of each kind.

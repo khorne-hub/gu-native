@@ -1493,13 +1493,32 @@ void host_input_update(void) {
 
 // (MHGU_PERF_INPUT_WAKE, runtime/ui.c) Something that goes on by the clock, not by an event: then the window loop keeps its
 // 3 ms pace. A button or a stick given to the game at the last update (a touch press, a locked run, a key, a scripted
-// step), a controller open (SDL reads some only as the loop polls), a scripted press or a test finger waiting, the game's
-// rumble, the settings menu, a text being typed, a controller being mapped, or the touch controls' own timers
-// (touch_busy). Otherwise nothing changes until an event, a frame or a rumble wakes the loop (ui_loop_wake).
-bool host_input_busy(void) {
-    if (out_busy || pad || npads || padmap_active() || g_present_count < script_end || plat_now_ns() < test_until) return true;
+// step), a controller SDL reads only as the loop polls (HIDAPI's: a device path; a virtual one: bus 0. Android's own, a
+// handheld's built-in buttons too, have neither and come as events from the system's input thread: SDL gives them all
+// the Bluetooth bus), a scripted press or a test finger waiting, the game's rumble, the settings menu, a text being typed,
+// a controller being mapped, or the touch controls' own timers (touch_busy). Otherwise nothing changes until an event, a
+// frame or a rumble wakes the loop (ui_loop_wake).
+int host_input_busy(void) {  // (which, for the log: HIB_*, 0 none)
+    if (out_busy) return HIB_OUTPUT;
+    if (padmap_active()) return HIB_PADMAP;
+    if (g_present_count < script_end || plat_now_ns() < test_until) return HIB_SCRIPT;
+    for (int i = 0; i < npads; i++) {
+        SDL_Joystick *j = SDL_GetGamepadJoystick(pads[i].pad);
+        SDL_GUID g = j ? SDL_GetJoystickGUID(j) : (SDL_GUID){{0}};
+        const char *path = SDL_GetGamepadPath(pads[i].pad);
+        bool events = j && !path && g.data[0] == 0x05 && !g.data[1];  // (SDL_HARDWARE_BUS_BLUETOOTH, SDL_sysjoystick.h)
+        static SDL_Gamepad *said;
+        if (said != pads[i].pad) {
+            LOG("[perf] input loop: %s %s (bus %02x%02x, %s)\n", SDL_GetGamepadName(pads[i].pad),
+                events ? "sends events: the loop waits between them" : "is read by polling: 3 ms", g.data[1], g.data[0],
+                path ? path : "no path");
+            said = pads[i].pad;
+        }
+        if (!events) return HIB_PAD;
+    }
     for (int i = 0; i < 32; i++)
-        if (finger_wait[i].due) return true;
-    if (input_rumble() || overlay_menu_open() || textinput_active() || chat_active()) return true;
-    return touch_busy();
+        if (finger_wait[i].due) return HIB_SCRIPT;
+    if (input_rumble()) return HIB_RUMBLE;
+    if (overlay_menu_open() || textinput_active() || chat_active()) return HIB_MENU;
+    return touch_busy() ? HIB_TOUCH : 0;
 }

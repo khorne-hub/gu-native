@@ -269,7 +269,7 @@ int ui_run(void) {
     int background = config_live_background_input();
 #ifdef __ANDROID__
     uint64_t input_ns = 0;  // (MHGU_PERF_INPUT_WAKE: the last event)
-    uint64_t waits[2] = {0, 0}, since = plat_now_ns();  // (...the passes after a 3 ms sleep and after a wait, for the log)
+    uint64_t waits[HIB_COUNT] = {0}, since = plat_now_ns();  // (...the passes after a wait and after a 3 ms sleep, by why)
 #endif
     for (;;) {
         if (HITCH_ON) hitch_frame(HT_INPUT, 0);  // ((debug) MHGU_HITCHLOG: one pass, runtime/hitchlog.c)
@@ -294,15 +294,19 @@ int ui_run(void) {
             // Woken by an event, the controls' state is brought up to date first (host_input_update with nothing new:
             // the pass the 3 ms loop made just before it), so the event finds it as fresh as before
             uint64_t now = plat_now_ns();
-            bool busy = now - input_ns < 500000000ull || host_input_busy();
+            int busy = now - input_ns < 500000000ull ? HIB_EVENT : host_input_busy();
             if (busy) SDL_Delay(3);
             else if (SDL_WaitSemaphoreTimeout(loop_sem, 16) && SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST)) host_input_update();
-            waits[!busy]++;
+            waits[busy]++;
             got = SDL_PollEvent(&e);
-            if (now - since >= 60000000000ull) {  // (once a minute: how the loop went)
-                LOG("[perf] input loop: %llu passes after 3 ms, %llu after a wait (a minute)\n", (unsigned long long)waits[0],
-                    (unsigned long long)waits[1]);
-                waits[0] = waits[1] = 0, since = now;
+            if (now - since >= 60000000000ull) {  // (once a minute: how the loop went, and what kept the 3 ms pace)
+                LOG("[perf] input loop: %llu passes after a wait, after 3 ms %llu for an event, %llu the touch controls, %llu a "
+                    "button or stick, %llu a controller, %llu the rumble, %llu a menu, %llu a script (a minute)\n",
+                    (unsigned long long)waits[0], (unsigned long long)waits[HIB_EVENT], (unsigned long long)waits[HIB_TOUCH],
+                    (unsigned long long)waits[HIB_OUTPUT], (unsigned long long)waits[HIB_PAD],
+                    (unsigned long long)waits[HIB_RUMBLE], (unsigned long long)(waits[HIB_MENU] + waits[HIB_PADMAP]),
+                    (unsigned long long)waits[HIB_SCRIPT]);
+                memset(waits, 0, sizeof waits), since = now;
             }
         }
         if (got && loop_sem) input_ns = plat_now_ns();
