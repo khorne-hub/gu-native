@@ -233,6 +233,17 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   no more than two runs of one setting differ from each other. The shadow pass is 6.2 ms of a 29 ms GPU frame there, Off 25 ms: at 30 FPS the
   GPU drops a clock step instead of idling (Off, its other passes took about 10 % longer), so the 6 ms saved little power.
   A Galaxy denies those files: use `dumpsys battery` (Charge counter, in steps of 4.9 mAh); its `dumpsys thermalservice` repeats a stale value.
+- Pacing and threads, switches being measured (0.1.9's performance pass; each read once at the start, off unless set to 1, which is the
+  old behaviour, until measured): `MHGU_PERF_ADPF70` the ADPF target 70 % of the frame period at FPS limits of 60 and below, as in MH4U
+  (at all of it the system lowers the clocks until the busiest thread fills the period: the Moto at Toaster 30 worked 25.5 ms a frame on
+  average, 33 at most, of 33.3), the efficient cores then judged against the period. `MHGU_PERF_EFFICIENT` a frame over the target on
+  its own neither turns the efficient cores off nor keeps them away (`efficiency_follow`; two in a window, or another within 5 windows,
+  still do); `MHGU_ADPF_EFFICIENT=force` holds them on, to measure what they can save. `MHGU_PERF_LIMITER` the engine's frame limiter
+  (main 0xda5824) sleeps until its frame's time less a margin instead of turning 1-2 ms a frame on the clock (`runtime/hle/limiter.c`;
+  `MHGU_LIMITER_LOG=1` its sleeps and turns, on or off). `MHGU_PERF_MEMTHREAD` the minute's `[mem]` line on a thread of its own, off the
+  update thread (with `MHGU_ADPF_LOG=1` each line says what it cost). `MHGU_PERF_THREADNAMES` names the runtime's threads (`g44-10a` the
+  game's by priority and handle, `game+render`, `submit`, `vsync`, `audren`, `upload-N`, `shader-N`, `fence`, `ui`...): otherwise all are
+  `SDLThread`, and `scripts/pacing/threads.py` can't tell them apart. `MHGU_PERF_NODISCORD` no Discord thread on Android.
 - `MHGU_FS_NEW=1` logs each fragment program the first time it draws; `MHGU_FS_WATCH=<hash>` saves the frames where one draws. A hit draws
   `cc207b43683737c8`, a 17-sample radial blur. The device's `shots` folder keeps old files: go by the names in the log, not by what's there.
 - Started with the phone locked or upright, the display says portrait: the 3D picture came out 720x576 with black at the sides. `config.c` now
