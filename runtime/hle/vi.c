@@ -12,8 +12,9 @@ uint32_t vi_vsync_handle(void) { return vsync_r; }
 volatile uint64_t g_vsync_count;
 uint32_t g_native_window;
 
-// Frame rate. The engine paces itself (frame limiter at main 0xda5d00: sleeps until a frame period has passed, then
-// derives its frame delta, which game logic scales by): the target is a float at +0x3c of its main system object
+// Frame rate. The engine paces itself (frame limiter at main 0xda5d00: sleeps to a millisecond or two before a frame
+// period has passed and reads the clock in a loop until it has, runtime/hle/limiter.c; then derives its frame delta,
+// which game logic scales by): the target is a float at +0x3c of its main system object
 // (pointer in the global at 0x2326764, the same field theboy181's 60fps patch sets). The game puts 30.0 there at
 // start and resets it at some transitions, so every presented frame writes the chosen rate back (the 90 / 120 fps
 // cheat codes write this same field). The frame delta is in 60 fps frames, measured: walking speed is the same at 30,

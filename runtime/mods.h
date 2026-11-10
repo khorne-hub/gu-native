@@ -32,6 +32,7 @@ void hpscale_init(void);  // large monster HP by the number of hunters (runtime/
 void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime/hle/villagehub.c)
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void grass_init(void);  // [Performance] Grass: the game's grass unit (uGrass2) not drawn while Off (runtime/hle/grass.c)
+void limiter_init(void);  // (being measured, MHGU_PERF_LIMITER) the engine's frame limiter sleeps to its frame's time (runtime/hle/limiter.c)
 void inflate_init(void);  // zlib's inflate_fast as host code: archives decompress faster (runtime/hle/inflate.c)
 void movelog_init(void);  // (debug) MHGU_LOG_MOVES: the player's command table changes (runtime/hle/movelog.c)
 void quickhunt_init(void);  // (debug) MHGU_QUICKHUNT: start-up straight into a quest (runtime/hle/quickhunt.c)
