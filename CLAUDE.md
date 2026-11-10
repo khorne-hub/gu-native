@@ -224,7 +224,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   (`[vk] depth blit ...`, `depth_copy_note`): on the Adreno 618 of #160 (1.1.87, Verdant Hills area 5) they are a suspect, not a proven cause.
 - A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
   area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
-  tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`).
+  tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy).
 - `Config` gets its defaults by position: `CONFIG_DEFAULT_VALUES` in `config.c`. A new field in `config.h` needs its value there, in its
   place, or every later field moves (two added once turned most touch buttons off).
 - The shadow maps are one 1024x3072 depth atlas (three cascades), the first pass of a hunt's frame: 47 draws, 2.8 ms of a Moto g06's 18.6.

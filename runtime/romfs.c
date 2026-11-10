@@ -277,6 +277,8 @@ static bool build(RomfsImage *im, const char *base_dir, const char *const *overl
     if (im->size < 12000000000ull) LOG("[romfs] WARNING: smaller than the game's 12.3 GB: some files are probably incomplete\n");
     if (empty) LOG("[romfs] WARNING: %d empty file(s): the copy is incomplete\n", empty);
     if (im->size < 12000000000ull || empty) g_short_gb = im->size / 1e9, g_short_empty = empty;
+    const char *t = getenv("MHGU_ROMFS_SHORT");  // (test: the notice as if the copy were that many GB, e.g. 11.5)
+    if (t && atof(t) > 0) g_short_gb = atof(t);
     return true;
 }
 
