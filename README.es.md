@@ -248,7 +248,9 @@ ve tu dirección IP.
 
 Sin servidor: pon todos los dispositivos en la misma VPN (por ejemplo Tailscale o ZeroTier) y escribe la IP del anfitrión en esa VPN en **Buscar servidores**.
 
-Un teléfono y una PC juegan en la misma sala si los dos tienen la misma versión (0.1.6 o posterior), por el servidor o en la misma Wi-Fi.
+Los teléfonos y las PC con 0.1.6 o posterior se encuentran en las mismas salas, por el servidor o en la misma Wi-Fi. Probado
+en 0.1.9: dos teléfonos en una sala por el servidor predeterminado con una clave de emparejamiento, y una PC entrando a la sala
+de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión completa juntos.
 
 #### Vida de los monstruos y misiones de aldea en sala
 
@@ -597,11 +599,12 @@ El juego local y las salas por internet funcionan como en el teléfono, con el m
   de red**, **Permitir una aplicación a través del firewall**.
 - La búsqueda pregunta en todas las redes de la PC. Por una VPN, como Tailscale o ZeroTier, también puedes escribir la IP del
   anfitrión en **Buscar servidores** y reiniciar el juego.
-- Una PC y un teléfono juegan en la misma sala si los dos tienen la misma versión.
+- Una PC y un teléfono juegan en la misma sala (0.1.6 o posterior en los dos).
 - La vida de los monstruos ajustable (**Varios**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
   de aldea en sala (**Multijugador**) vienen de MHGURecomp.
 
-Nada de esto se probó todavía en PC, ni una PC con un teléfono.
+Probado en PC: entrar a la sala de un teléfono por el servidor de salas y en la misma Wi-Fi. Todavía no: crear una sala en la
+PC (necesita el permiso del firewall) y una misión completa.
 
 ### Dónde se guarda cada cosa
 

@@ -248,7 +248,9 @@ your IP address.
 
 Without a server: put every device on the same VPN (for example Tailscale or ZeroTier) and enter the host's VPN IP under **Search hosts**.
 
-A phone and a PC play in the same hub when both run the same version (0.1.6 or later), through the server or on the same Wi-Fi.
+Phones and PCs with 0.1.6 or later meet in the same hubs, through the server or on the same Wi-Fi. Tested in 0.1.9: two
+phones in one hub through the default server with a matchmaking key, and a PC joining a phone's hub through the server and
+on the same Wi-Fi; a full quest together not yet.
 
 #### Monster HP and Village quests in the Hub
 
@@ -586,11 +588,12 @@ Local play and hubs over the internet work as on the phone, with the same code a
   app through firewall**.
 - The search asks every network the PC is on. Over a VPN, such as Tailscale or ZeroTier, you can also enter the host's IP
   under **Search hosts** and restart the game.
-- A PC and a phone play in the same hub when both run the same version.
+- A PC and a phone play in the same hub (0.1.6 or later on both).
 - Adjustable monster HP (**Misc**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
   (**Multiplayer**) come from MHGURecomp.
 
-None of this has been tested on PC yet, nor a PC and a phone together.
+Tested on PC: joining a phone's hub through the hub server and on the same Wi-Fi. Not yet: creating a hub on the PC (it
+needs the firewall's permission) and a full quest.
 
 ### Where things are kept
 
