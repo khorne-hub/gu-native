@@ -642,7 +642,10 @@ int hit(const Layout &l, float x, float y, float w, float h, int *part, float sl
             *part = s / (g.r * BAND_LEN) < (BAND_SEAM0 + BAND_SEAM1) * .5f ? 1 : 0;
         }
     }
-    if (part && !menu && g_style.load() == STYLE_SEPARATE) {  // (between the two attack buttons: both, as the pill's seam)
+    // (between the two attack buttons: both, as the pill's seam; only where they are: in the ranged layout the seam's
+    // place, under the fire button in a layout where the two sit round it, pressed X + A for a tap on the shot - crouching
+    // fire, no locked shot: the owner's Galaxy, 2026-11-10)
+    if (part && !menu && g_style.load() == STYLE_SEPARATE && in_mode(C_LIGHT, menu) && in_mode(C_HEAVY, menu)) {
         ImVec2 at;
         float size;
         if (separate_seam(l, w, h, &at, &size) && hypotf(x - at.x, y - at.y) < size * 1.5f) best = C_LIGHT, *part = 1;
