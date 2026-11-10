@@ -40,7 +40,7 @@ extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
-                  PadList, PadMap, ImportSave, Licenses, Remove };
+                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite };
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -436,8 +436,9 @@ void github_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
     dl->PathFillConcave(col);
 }
 // The project's official page, the only link the project gives: in the phone's browser (SDL_OpenURL: an Android VIEW
-// intent; a desktop's own browser), from the header's GitHub button. With nothing to open it (a handheld or a TV box
-// with no browser) the menu says so, as in the MH4U port
+// intent; a desktop's own browser), from the header's GitHub button once View::OpenSite's Open says so (the browser
+// can make Android close the game on a phone with little memory). With nothing to open it (a handheld or a TV box with
+// no browser) the menu says so, as in the MH4U port
 constexpr const char *OFFICIAL_PAGE = "https://github.com/khorne-hub/gu-native";
 constexpr const char *NO_BROWSER = "No app here can open web pages.";
 void open_official_page() {
@@ -620,7 +621,7 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
 }
 bool confirmation() {
     return s.view == View::CloseChanges || s.view == View::Exit || s.view == View::Restart ||
-           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove;
+           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove || s.view == View::OpenSite;
 }
 // The guides a desktop's view shows at its bottom (0: none): all four on the tabs, Confirm and Back on a dialog, and
 // Navigation too on a page of rows (the licenses' scroll: no Confirm there). None while a key is being chosen, text
@@ -2621,6 +2622,11 @@ std::vector<Row> rows_for_view(bool *open) {
 #endif
         if (s.view == View::Reset)
             action(r, "dialog.reset", tr("Reset"), []() { reset_section(); });
+        if (s.view == View::OpenSite)  // (back to where the button was, then the browser: a notice there without one)
+            action(r, "dialog.open", tr("Open"), []() {
+                pop();
+                open_official_page();
+            });
         if (s.view == View::CloseChanges) {
             action(r, "dialog.save", tr("Save and close"), [open]() {
                 if (save())
@@ -3452,7 +3458,14 @@ std::string view_title() {
                     : s.view == View::KeyCapture ? "Press the key for chat (Esc: cancel)"
                     : s.view == View::ImportSave ? "Import this save? The characters here are replaced by its own and the game restarts; the current save is kept in a copy."
                     : s.view == View::Licenses   ? "Licenses"
+                    : s.view == View::OpenSite   ? "Open the project's page?"
                                                  : "Unsaved changes");
+}
+// What a dialog's question means, under it (empty: the question says it all)
+std::string view_detail() {
+    return s.view == View::OpenSite
+               ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save first.")
+               : "";
 }
 // The tab's notes under its rows (text, a warning)
 std::vector<std::pair<const char *, bool>> page_notes() {
@@ -3745,8 +3758,8 @@ void touch_panel(bool *open, const Config &before) {
                     can ? k.glow : look.text_off, label);
         // (the project's page, a little apart from Save: GitHub's mark, as in the MH4U port)
         ImRect site(save_rect.Min.x - pad * 1.6f - side, by, save_rect.Min.x - pad * 1.6f, by + side);
-        if (touch_button("###site", site, true, &held))
-            later = []() { open_official_page(); };
+        if (touch_button("###site", site, true, &held))  // (asks first: the browser can make Android close the game)
+            later = []() { push(View::OpenSite, "dialog.cancel"); };
         plate(dl, site, line, held, true);
         github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
         right = site.Min.x - pad;
@@ -3771,7 +3784,11 @@ void touch_panel(bool *open, const Config &before) {
             q = std::clamp(room / name_w(1), .6f, 1.f);
             while (q > .6f && name_w(q) > room)
                 q = std::max(.6f, q - .02f);
-            sub = whole_words(font, sized(f, q), sub, room);
+            std::string cut = whole_words(font, sized(f, q), sub, room);
+            if (cut.empty())  // (not even its first word: the title as it was, at its size, clipped at the buttons)
+                alone = false, q = 1;
+            else
+                sub = cut;
         }
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
         float x = title_x;
@@ -3869,7 +3886,16 @@ void touch_panel(bool *open, const Config &before) {
         float size = std::floor(f * 1.1f), y = top + pad;
         ImVec2 qs = font->CalcTextSizeA(size, FLT_MAX, cw, question.c_str());
         shadow_text(dl, size, ImVec2(cx - qs.x * .5f, y), k.glow, question.c_str(), cw);
-        y += qs.y + pad * 1.5f;
+        y += qs.y;
+        std::string detail = view_detail();
+        if (!detail.empty()) {  // (smaller, under the question, as the MH4U port's)
+            float ds = std::floor(f * .85f);
+            ImVec2 dz = font->CalcTextSizeA(ds, FLT_MAX, cw, detail.c_str());
+            y += pad * .6f;
+            dl->AddText(font, ds, ImVec2(cx - std::min(cw, dz.x) * .5f, y), k.dim, detail.c_str(), nullptr, cw);
+            y += dz.y;
+        }
+        y += pad * 1.5f;
         y += error_text(y, cx - cw * .5f, cw);
         list_rect = ImRect(cx - cw * .5f, y, cx + cw * .5f, bottom);
     } else {  // (Keybinds, Conflicts: the whole width)
@@ -4762,8 +4788,12 @@ void settings_panel(bool *open) {
         ImGui::PushClipRect(ImVec2(window->ClipRect.Min.x, std::min(body_top, window->ClipRect.Max.y)),
                             window->ClipRect.Max, true);
         clipped_body = true;
-    } else
+    } else {
         ImGui::TextWrapped("%s", view_title().c_str());
+        std::string detail = view_detail();
+        if (!detail.empty())
+            ImGui::TextWrapped("%s", detail.c_str());
+    }
     if (s.view == View::Keyboard) {
         keyboard_keys();
         if (s.view == View::Keyboard) {
