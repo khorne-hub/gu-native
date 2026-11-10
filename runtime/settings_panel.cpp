@@ -41,7 +41,7 @@ extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
-                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite };
+                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord };
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -444,21 +444,66 @@ void github_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
         dl->PathLineTo(ImVec2(c.x + p[0] * r, c.y + p[1] * r));
     dl->PathFillConcave(col);
 }
-// The project's official page, the only link the project gives: in the phone's browser (SDL_OpenURL: an Android VIEW
-// intent; a desktop's own browser), from the header's GitHub button once View::OpenSite's Open says so (the browser
-// can make Android close the game on a phone with little memory). With nothing to open it (a handheld or a TV box with
-// no browser) the menu says so, as in the MH4U port
+// The header's button to the community's Discord: Discord's mark, the controller-shaped face with its two eyes, drawn
+// like GitHub's in the glyphs' colour (no artwork, no brand colours; the same in the MH4U port). r: as GitHub's disc's
+// radius; the face a little wider than that disc and shorter
+void discord_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
+    // (the face's left half in its half-width, y down: from the middle of its top along the top and down the left side
+    // to the eyes' line (upper), then on round the left horn and along the mouth to the middle of its bottom (lower); the
+    // right half mirrors it. ImGui fills no holes, so the face is two shapes, above and below the eyes' line, each with
+    // its halves of the eyes cut out of that edge, clockwise as ImGui fills; the upper one reaches a pixel below the
+    // line, so no seam shows between them)
+    static const float upper[][2] = {{0, -.668f},    {-.229f, -.65f},  {-.282f, -.758f}, {-.493f, -.708f}, {-.695f, -.631f},
+                                     {-.8f, -.457f}, {-.881f, -.285f}, {-.94f, -.115f},  {-.981f, .076f}};
+    static const float lower[][2] = {{-.981f, .076f}, {-.999f, .28f},  {-.992f, .504f}, {-.882f, .578f}, {-.766f, .644f},
+                                     {-.628f, .707f}, {-.485f, .758f}, {-.377f, .583f}, {-.548f, .502f}, {-.506f, .47f},
+                                     {-.393f, .516f}, {-.259f, .555f}, {-.122f, .577f}, {0, .583f}};
+    const int nu = IM_ARRAYSIZE(upper), nl = IM_ARRAYSIZE(lower);
+    const float w = r * 1.08f, ex = .332f * w, ey = .076f * w, rx = .18f * w, ry = .2f * w, under = 1;
+    auto at = [&](float x, float y) { return ImVec2(c.x + x * w, c.y + y * w); };
+    for (int i = nu - 1; i >= 0; i--)  // (up the left side and along the top, then down the right side)
+        dl->PathLineTo(at(upper[i][0], upper[i][1]));
+    for (int i = 1; i < nu; i++)
+        dl->PathLineTo(at(-upper[i][0], upper[i][1]));
+    dl->PathLineTo(ImVec2(c.x - upper[nu - 1][0] * w, c.y + ey + under));
+    for (float x : {ex, -ex}) {  // (back along the line, over the top of each eye)
+        dl->PathLineTo(ImVec2(c.x + x + rx, c.y + ey + under));
+        dl->PathEllipticalArcTo(ImVec2(c.x + x, c.y + ey), ImVec2(rx, ry), 0, 0, -IM_PI);
+        dl->PathLineTo(ImVec2(c.x + x - rx, c.y + ey + under));
+    }
+    dl->PathLineTo(ImVec2(c.x + upper[nu - 1][0] * w, c.y + ey + under));
+    dl->PathFillConcave(col);
+    for (float x : {-ex, ex})  // (along the line, under each eye, then down the right side and back round the left)
+        dl->PathEllipticalArcTo(ImVec2(c.x + x, c.y + ey), ImVec2(rx, ry), 0, IM_PI, 0);
+    for (int i = 0; i < nl; i++)
+        dl->PathLineTo(at(-lower[i][0], lower[i][1]));
+    for (int i = nl - 2; i >= 0; i--)
+        dl->PathLineTo(at(lower[i][0], lower[i][1]));
+    dl->PathFillConcave(col);
+}
+// The project's official page and its community's Discord, the only links the project gives: in the phone's browser
+// (SDL_OpenURL: an Android VIEW intent, which the Discord app takes if it is there; a desktop's own browser), from the
+// header's GitHub and Discord buttons once View::OpenSite's or View::OpenDiscord's Open says so (the browser can make
+// Android close the game on a phone with little memory). With nothing to open it (a handheld or a TV box with no
+// browser) the menu says so, as in the MH4U port
 constexpr const char *OFFICIAL_PAGE = "https://github.com/khorne-hub/gu-native";
+constexpr const char *DISCORD_INVITE = "https://discord.gg/sk5xEjEMwF";  // (an invite that never expires)
 constexpr const char *NO_BROWSER = "No app here can open web pages.";
-void open_official_page() {
-    if (SDL_OpenURL(OFFICIAL_PAGE)) {
-        fprintf(stderr, "[settings] the official page went to the browser (%s)\n", OFFICIAL_PAGE);
+void open_link(const char *what, const char *url) {
+    if (SDL_OpenURL(url)) {
+        fprintf(stderr, "[settings] the %s went to the browser (%s)\n", what, url);
         if (s.error == tr(NO_BROWSER))
             s.error.clear();
     } else {
-        fprintf(stderr, "[settings] the official page could not be opened (%s): %s\n", OFFICIAL_PAGE, SDL_GetError());
+        fprintf(stderr, "[settings] the %s could not be opened (%s): %s\n", what, url, SDL_GetError());
         s.error = tr(NO_BROWSER);
     }
+}
+void open_official_page() {
+    open_link("official page", OFFICIAL_PAGE);
+}
+void open_discord() {
+    open_link("community's Discord", DISCORD_INVITE);
 }
 // On / Off: a slot whose stud slides to the right and lights it green when on
 void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
@@ -640,7 +685,8 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
 }
 bool confirmation() {
     return s.view == View::CloseChanges || s.view == View::Exit || s.view == View::Restart ||
-           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove || s.view == View::OpenSite;
+           s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove || s.view == View::OpenSite ||
+           s.view == View::OpenDiscord;
 }
 // The guides a desktop's view shows at its bottom (0: none): all four on the tabs, Confirm and Back on a dialog, and
 // Navigation too on a page of rows (the licenses' scroll: no Confirm there). None while a key is being chosen, text
@@ -2798,6 +2844,11 @@ std::vector<Row> rows_for_view(bool *open) {
                 pop();
                 open_official_page();
             });
+        if (s.view == View::OpenDiscord)
+            action(r, "dialog.open", tr("Open"), []() {
+                pop();
+                open_discord();
+            });
         if (s.view == View::CloseChanges) {
             action(r, "dialog.save", tr("Save and close"), [open]() {
                 if (save())
@@ -3687,12 +3738,15 @@ std::string view_title() {
                     : s.view == View::ImportSave ? "Import this save? The characters here are replaced by its own and the game restarts; the current save is kept in a copy."
                     : s.view == View::Licenses   ? "Licenses"
                     : s.view == View::OpenSite   ? "Open the project's page?"
+                    : s.view == View::OpenDiscord ? "Open the community's Discord?"
                                                  : "Unsaved changes");
 }
 // What a dialog's question means, under it (empty: the question says it all)
 std::string view_detail() {
     return s.view == View::OpenSite
                ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save in the game first.")
+           : s.view == View::OpenDiscord
+               ? tr("It opens in your browser or the Discord app. On phones with little memory, Android may close the game, so save in the game first.")
                : "";
 }
 // The tab's notes under its rows (text, a warning)
@@ -3949,7 +4003,8 @@ void touch_panel(bool *open, const Config &before) {
     picker_keys(options);
     bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::Move;
     bool picking = s.dropdown.open && !options.empty();  // (the picker over the menu this frame: the menu dimmed)
-    // The header: Back at its left, the official page (GitHub's mark), Save and Close at its right, the title between
+    // The header: Back at its left, the community's Discord and the official page (their marks), Save and Close at its
+    // right, the title between
     float x0 = window->Pos.x, y0 = window->Pos.y, x1 = x0 + window->Size.x, y1 = y0 + window->Size.y;
     float band = std::max(.11f * H, f * 2.9f), side = band * .8f, by = y0 + (band - side) * .5f + line * .5f;
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), k.band);
@@ -3993,7 +4048,13 @@ void touch_panel(bool *open, const Config &before) {
             later = []() { push(View::OpenSite, "dialog.cancel"); };
         plate(dl, site, line, held, true);
         github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
-        right = site.Min.x - pad;
+        // (the community's Discord beside it, the same size: the title fits in what is left)
+        ImRect chat(site.Min.x - pad - side, by, site.Min.x - pad, by + side);
+        if (touch_button("###discord", chat, true, &held))  // (asks first, as the page)
+            later = []() { push(View::OpenDiscord, "dialog.cancel"); };
+        plate(dl, chat, line, held, true);
+        discord_mark(dl, chat.GetCenter(), side * .27f, held ? k.glow : k.ink);
+        right = chat.Min.x - pad;
     }
     {  // (the title; the tab's name or the submenu's after it. Where the header's buttons leave less room (a large Menu
        // size on a 4:3 screen), both smaller to fit, down to .6 of their size; narrower still, the name alone, its last
