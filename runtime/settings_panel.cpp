@@ -3705,7 +3705,7 @@ void touch_panel(bool *open, const Config &before) {
         navigate(s.dropdown.open ? options : rows, s.dropdown.open);
     bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::Move;
     bool picking = s.dropdown.open && !options.empty();  // (the picker over the menu this frame: the menu dimmed)
-    // The header: Back at its left, Save and Close at its right, the title between
+    // The header: Back at its left, the official page (GitHub's mark), Save and Close at its right, the title between
     float x0 = window->Pos.x, y0 = window->Pos.y, x1 = x0 + window->Size.x, y1 = y0 + window->Size.y;
     float band = std::max(.11f * H, f * 2.9f), side = band * .8f, by = y0 + (band - side) * .5f + line * .5f;
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), k.band);
