@@ -3464,7 +3464,7 @@ std::string view_title() {
 // What a dialog's question means, under it (empty: the question says it all)
 std::string view_detail() {
     return s.view == View::OpenSite
-               ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save first.")
+               ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save in the game first.")
                : "";
 }
 // The tab's notes under its rows (text, a warning)
