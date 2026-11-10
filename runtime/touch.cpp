@@ -689,6 +689,8 @@ uint64_t stale_limit(void) { return std::clamp<uint64_t>(3 * g_frame_ns.load(), 
 // (while the game is held - the settings menu, the layout editor, playing alone: overlay.cpp - its last picture stays on
 // the screen, and what it drew counts as just drawn: the editor's frames stay live)
 std::atomic<uint64_t> g_held_ns;
+std::atomic<uint64_t> g_part_moved_ns, g_step_ns;  // (a part of the HUD moved in the editor, the game's last step: touch_editor_step)
+std::atomic<float> g_aim_pitch_deg;  // (the aim's slide up or down, degrees not yet given to the aim: touch_aim_pitch)
 uint64_t hud_now(void) {
     uint64_t held = g_held_ns.load();
     return held ? held : SDL_GetTicksNS();
@@ -1440,6 +1442,7 @@ int part_hit(const State &s, float x, float y) {
 // A part dragged by (dx, dy) pixels, 1:1 on any shape of picture (in canvas units through the squeezes: hud_parts.h), its
 // frame kept on the picture (one already past an edge may come back)
 void part_move(State &s, int k, float dx, float dy) {
+    g_part_moved_ns = SDL_GetTicksNS();  // (the game draws it there: touch_editor_step)
     HudVals &v = s.layout.hud[s.edit_prof][k];
     Pic p = picture(s.w, s.h);
     bool live;
@@ -1452,6 +1455,7 @@ void part_move(State &s, int k, float dx, float dy) {
 }
 // A part sized (whole percents: back at 100 it is the game's size), and moved back onto the picture if it now leaves it
 void part_size(State &s, int k, float to) {
+    g_part_moved_ns = SDL_GetTicksNS();  // (the game draws it there: touch_editor_step)
     HudVals &v = s.layout.hud[s.edit_prof][k];
     v.k = std::clamp(roundf(to * 100.0f) / 100.0f, HUD_SIZE_MIN, HUD_SIZE_MAX);
     publish_hud(s.layout);
@@ -2454,6 +2458,19 @@ extern "C" void touch_edit_begin(void) {
 }
 
 extern "C" void touch_game_held(bool on) { g_held_ns = on ? SDL_GetTicksNS() : 0; }
+
+// (overlay.cpp, the game held for the editor: a part of the HUD dragged or sized since the last step - the item bar
+// above all, which the touch controls go by -, the game takes a step at most every EDIT_STEP so that it draws it where
+// it goes; the picture held stayed where the part was, and it looked as if it no longer moved: the owner's Galaxy)
+// (hle/mousecam.c, each update of the hunter: the degrees the aim's slide turns the aim up by, taken)
+extern "C" float touch_aim_pitch(void) { return g_aim_pitch_deg.exchange(0.0f); }
+
+extern "C" bool touch_editor_step(void) {
+    const uint64_t EDIT_STEP = 100 * MS, now = SDL_GetTicksNS();
+    if (g_part_moved_ns.load() <= g_step_ns.load() || now - g_step_ns.load() < EDIT_STEP) return false;
+    g_step_ns = now;
+    return true;
+}
 
 extern "C" bool touch_editor_open(void) {
     std::lock_guard<std::mutex> l(g_lock);

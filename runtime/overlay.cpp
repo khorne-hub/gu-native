@@ -671,6 +671,7 @@ void overlay_frame(void *cpu) {
         touch_game_held(true);
         uint64_t next = plat_now_ns();
         while (menu_holds_game()) {
+            if (touch_editor_step()) break;  // (a part of the HUD dragged in the editor: a step of the game draws it there)
             next += 16666667;
             uint64_t now = plat_now_ns();
             if (next < now) next = now;
