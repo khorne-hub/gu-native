@@ -382,6 +382,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   staging memory 5 to 9 times the old speed). On a desktop the staging ring's next 32 MB chunk is made ahead on its own thread: made on
   the spot it cost 34 ms inside a frame. `MHGU_TEX_ASYNC=0`, `MHGU_VK_SPARE_CHUNK=0`: off. A texture that changes on 120 frames in a
   row is named once in the log (`[tex] changed and uploaded ...`).
+- The safety nets, in case the page write tracking missed a write: the vertex cache copies each range in use again every 2-4 s,
+  2 MB a frame (Android; off on Windows: `MHGU_VK_VC_SAFETY=1` turns it on), and a texture is hashed whole every 120 frames, 4 MB a
+  frame (every second at 120 FPS). `MHGU_VK_VC_SAFETY=2` and `MHGU_TEX_NET_CHECK=1` (every texture every 2 s, any size) check the
+  tracking: a change with no write reported is logged, with counts (`[vk] vertex cache check`, `[tex] check`; a texture's is told
+  apart from a write reported that the sampling hash `fnv_sample` didn't see). `MHGU_VK_STATS`' `[vk] 2s copied` line splits the
+  copies and the hashing by cause. Off until measured: `MHGU_PERF_VCNET=1` (the vertex cache's every 30 s, 512 KB a frame),
+  `MHGU_PERF_TEXNET=1` (a texture's 30 s after its last whole hash on Android, 4 s on a desktop, 32 MB a second), and
+  `MHGU_PERF_TEXSAMPLE=1` (the sampling hash only where it is compared: the same decisions).
 - A Galaxy (Samsung) refuses every simpleperf event for apps (`cpu-clock`, `task-clock`, `cpu-cycles`): profile the CPU on another
   phone. Its frame is CPU-bound: the GPU span in `gpuprof` includes the gaps where the GPU waits for the render thread.
 - `[Performance] LowEnd` is Off, On or Toaster (2). On a phone (a desktop's: Building for Windows) everything that tests `low_end`

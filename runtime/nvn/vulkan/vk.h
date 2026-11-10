@@ -117,7 +117,10 @@ typedef struct TexBackend {
     VkImageAspectFlags aspect;
     bool gpu_owned, uploaded, dynamic;
     uint64_t data_hash, sample_hash, checked_frame, full_frame;
+    uint64_t full_t;     // (textures.c: MHGU_PERF_TEXNET, MHGU_TEX_NET_CHECK) when its last whole hash was, in ns
     uint32_t wgen;       // page write tracking generation at the last upload check
+    uint32_t hash_gen;   // (MHGU_TEX_NET_CHECK) and at its last whole hash
+    uint32_t chg_run;    // (textures.c: MHGU_PERF_TEXSTREAM) checks in a row that found its contents changed
     bool presented;
     void *pending_rgba;  // host-produced pixels waiting to be uploaded on the render thread
     uint32_t pending_w, pending_h, pending_stride;

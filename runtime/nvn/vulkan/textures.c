@@ -714,6 +714,13 @@ static uint64_t rec_hash(const UpRec *r) {
     return band_mix(acc, r->n);
 }
 
+// The bands' hash made the texture's (a copy of the same contents as before ends MHGU_PERF_TEXSTREAM's streak)
+static void rec_finish(const UpRec *r) {
+    uint64_t h = rec_hash(r);
+    if (h == r->b->data_hash) r->b->chg_run = 0;
+    r->b->data_hash = h;
+}
+
 static void run_job(const UpJob *j) {
     if (j->rec) j->rec->h[j->band] = hash_full(j->src, j->len);
     if (!j->dst) return;
@@ -756,7 +763,7 @@ static struct {
     pthread_cond_t go, idle;
     UpJob *q;
     int n, cap, next, busy, started;  // q[next .. n): not taken yet; busy: being run
-    UpRec *recs;                      // (vk_lock) first uploads waiting for their hashes
+    UpRec *recs;                      // (vk_lock) first uploads (and MHGU_PERF_TEXSTREAM's) waiting for their hashes
     UpRange rg[UP_RANGES], all;       // (vk_lock) what the queued bands read: a texture's each, and the span of them all
     int nr;
 } U = {PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, PTHREAD_COND_INITIALIZER};
@@ -851,7 +858,7 @@ void vk_upload_jobs_finish(void) {
     pthread_mutex_unlock(&U.mu);
     for (UpRec *r = U.recs, *nx; r; r = nx) {
         nx = r->next;
-        if (r->b) r->b->data_hash = rec_hash(r);
+        if (r->b) rec_finish(r);
         free(r);
     }
     U.recs = NULL;
@@ -980,6 +987,135 @@ static uint64_t plan(NvnTexture *t, TexBackend *b, const uint8_t *mem, int mode,
 static uint64_t full_hash_budget, full_hash_budget_frame;
 static uint64_t hl_hashed, hl_copied;  // ((debug) MHGU_HITCHLOG) what upload_texture just did: bytes hashed, uploaded
 
+// The safety net: a texture's whole hash now and then, a write reported or not (one the tracking missed would leave it
+// stale for good). By default every 120 frames, 4 MB of them a frame at most: every 4 s at 30 FPS, but every second at
+// 120, four times the hashing on the translating thread.
+//   MHGU_PERF_TEXNET=1     by time instead: tex_net_ns after its last whole hash (Android 30 s; a desktop 4 s),
+//                          staggered by up to 2 s, and TEX_NET_RATE bytes a second (up to 4 MB in one frame, as
+//                          before). MHGU_TEX_NET_CHECK below is what tells whether the tracking misses writes
+//   MHGU_PERF_TEXSAMPLE=1  the sampling hash (fnv_sample: 4096 reads spread over the texture) only where it is
+//                          compared: at a texture's first upload, and the check of one never changed that takes it.
+//                          A dynamic texture's is never compared again, and a whole hash that found no change found
+//                          the same samples, so nothing else needs it
+//   MHGU_PERF_TEXSTREAM=1  a texture whose contents changed at each of its last TEX_STREAM_RUN checks (data the game
+//                          writes on the CPU: in a hunt four 1 MB RGBA32F 1024x64 ones, one a frame, the PC's
+//                          MHGU_TEX_NET_CHECK named) is copied at once when a write is reported, each band hashed as it
+//                          is copied, as a first upload is: one read of it, not a hash and then a copy. The same
+//                          contents copied (the same hash) end the streak; a texture written but unchanged is then
+//                          copied once more than before, never left stale
+//   MHGU_TEX_NET_CHECK=1   (a test) every texture hashed whole 2 s after its last whole hash, whatever its size, and one
+//                          that changed with no write reported since its last check logged: a write the tracking
+//                          missed, or one it reported that the sampling hash didn't see (the samples the same), with
+//                          counts
+#define TEX_NET_RATE (32ull << 20)
+#define TEX_NET_CAP (4ull << 20)
+#define TEX_CHECK_NS 2000000000ull
+#define TEX_STREAM_RUN 4
+static int tex_net = -1, tex_sample_once, tex_check, tex_stream;  // (read once, at the first upload)
+static uint64_t tex_net_ns, tex_t;  // (tex_t: the frame's time, with either of tex_net and tex_check)
+// (MHGU_VK_STATS, exec.c) bytes hashed whole by checks, those of them no write reported (the safety net's), those where
+// nothing tracks writes, those found changed (uploaded again), those copied at once (MHGU_PERF_TEXSTREAM), the samplings
+uint64_t stat_tex_hashed, stat_tex_net, stat_tex_untracked, stat_tex_changed, stat_tex_streamed, stat_tex_samples;
+
+static void tex_net_init(void) {
+    const char *e = getenv("MHGU_PERF_TEXNET");
+    tex_net = e && atoi(e) == 1;
+    e = getenv("MHGU_PERF_TEXSAMPLE");
+    tex_sample_once = e && atoi(e) == 1;
+    e = getenv("MHGU_TEX_NET_CHECK");
+    tex_check = e && atoi(e) == 1;
+    e = getenv("MHGU_PERF_TEXSTREAM");
+    tex_stream = e && atoi(e) == 1;
+#ifdef __ANDROID__
+    tex_net_ns = 30000000000ull;
+#else
+    tex_net_ns = 4000000000ull;
+#endif
+    if (tex_net) LOG("[tex] safety net: a texture hashed whole %llu s after the last time, %llu MB a second (MHGU_PERF_TEXNET)\n",
+                     (unsigned long long)(tex_net_ns / 1000000000ull), (unsigned long long)(TEX_NET_RATE >> 20));
+    if (tex_sample_once) LOG("[tex] the sampling hash only where it is compared (MHGU_PERF_TEXSAMPLE)\n");
+    if (tex_stream) LOG("[tex] a texture changed at each of its last %d checks copied at once, hashed as it is copied "
+                        "(MHGU_PERF_TEXSTREAM)\n", TEX_STREAM_RUN);
+    if (tex_check)
+        LOG("[tex] check: every texture hashed whole every %llu s, and changes no write explains logged (MHGU_TEX_NET_CHECK)\n",
+            (unsigned long long)(TEX_CHECK_NS / 1000000000ull));
+}
+
+// (MHGU_TEX_NET_CHECK) a whole hash of t with no write reported since its last check, changed or not. Changed: asked
+// once more (a write just after the check is the next check's), then whether a check since its last whole hash had a
+// write reported (the sampling hash then said the same: its miss) or not (the tracking's)
+static void tex_check_note(NvnTexture *t, TexBackend *b, uint64_t total, bool changed, uint32_t hash_gen) {
+    static uint64_t compared, nchanged, missed, sampled, raced, said_t;
+    compared++;
+    if (changed) {
+        nchanged++;
+        uint32_t now;
+        const char *who = NULL;
+        if (vk_pages_changed(t->addr, total, b->wgen, &now) != 0) raced++;  // (b->wgen stays: the next check has them)
+        else if (pages_written(t->addr, total, hash_gen))
+            sampled++, who = "the sampling hash (a write reported, the samples the same)";
+        else missed++, who = "the write tracking";
+        if (who && missed + sampled <= 20)
+            LOG("[tex] check: fmt %#x %ux%u, %llu KB at %llx (%s), changed with no write reported since its last check: "
+                "missed by %s\n", t->format, t->width, t->height, (unsigned long long)(total >> 10), (unsigned long long)t->addr,
+                b->dynamic ? "dynamic" : "static", who);
+    }
+    if (compared % 5000 == 0 || tex_t - said_t >= 60000000000ull) {
+        said_t = tex_t;
+        LOG("[tex] check: %llu whole hashes with no write reported, %llu changed: %llu missed by the write tracking, %llu by the "
+            "sampling hash, %llu written just then\n", (unsigned long long)compared, (unsigned long long)nchanged,
+            (unsigned long long)missed, (unsigned long long)sampled, (unsigned long long)raced);
+    }
+}
+
+// (MHGU_TEX_NET_CHECK) a whole hash of t after a write was reported (or where nothing tracks writes) that found it
+// unchanged (its pages written, by the game or by whatever shares them, with its bytes the same): every minute the
+// bytes so hashed, and the textures that took most
+static void tex_check_same(NvnTexture *t, TexBackend *b, uint64_t total, uint32_t since, bool untracked) {
+    static struct { TexBackend *b; uint64_t addr, bytes, n, pages, written; uint32_t fmt, w, h; bool dyn, untracked; } top[64];
+    static uint64_t all_bytes, all_n, said_t;
+    int i = 0, lo = 0;
+    while (i < 64 && top[i].b && top[i].b != b) {
+        if (top[i].bytes < top[lo].bytes) lo = i;
+        i++;
+    }
+    if (i == 64) i = lo, top[i].b = NULL;  // (full: the smallest goes)
+    if (!top[i].b) memset(&top[i], 0, sizeof top[i]), top[i].b = b;
+    top[i].addr = t->addr, top[i].fmt = t->format, top[i].w = t->width, top[i].h = t->height;
+    top[i].dyn = b->dynamic, top[i].untracked = untracked;
+    top[i].bytes += total, top[i].n++;
+    top[i].pages += (t->addr + total + PT_PAGE - 1) / PT_PAGE - t->addr / PT_PAGE;
+    top[i].written += pages_written(t->addr, total, since);
+    all_bytes += total, all_n++;
+    if (tex_t - said_t < 60000000000ull) return;
+    said_t = tex_t;
+    LOG("[tex] check: %llu whole hashes after a write reported (or untracked) found the texture the same (%.1f MB) in the last "
+        "minute; most:\n", (unsigned long long)all_n, all_bytes / 1048576.0);
+    for (int k = 0; k < 6; k++) {
+        int m = -1;
+        for (int j = 0; j < 64; j++)
+            if (top[j].b && top[j].n && (m < 0 || top[j].bytes > top[m].bytes)) m = j;
+        if (m < 0) break;
+        LOG("[tex]   fmt %#x %ux%u at %llx (%s%s): %llu x %llu KB, %.1f of its %.1f pages written each time\n",
+            top[m].fmt, top[m].w, top[m].h, (unsigned long long)top[m].addr, top[m].dyn ? "dynamic" : "static",
+            top[m].untracked ? ", no tracking there" : "", (unsigned long long)top[m].n,
+            (unsigned long long)(top[m].bytes / top[m].n >> 10), (double)top[m].written / top[m].n,
+            (double)top[m].pages / top[m].n);
+        top[m].n = 0;
+    }
+    memset(top, 0, sizeof top);
+    all_bytes = all_n = 0;
+}
+
+// (MHGU_TEX_NET_CHECK, MHGU_PERF_TEXSTREAM) a texture found changed at 8 checks in a row: a line once (the first 8)
+static void say_streak(NvnTexture *t, TexBackend *b, uint64_t total) {
+    static int nsaid;
+    if (nsaid++ >= 8) return;
+    LOG("[tex] changed at each of its last 8 checks: fmt %#x %ux%u, %u levels, %llu KB at %llx (%s), uploaded again %u "
+        "frames in a row\n", t->format, t->width, t->height, t->levels, (unsigned long long)(total >> 10),
+        (unsigned long long)t->addr, t->flags & 0x10 ? "linear" : "block-linear", b->up_run);
+}
+
 // A texture whose contents change at every check, frame after frame, is uploaded whole each time: a line once (for the
 // first few such), saying what it is and who writes it.
 static void say_every_frame(NvnTexture *t, TexBackend *b, uint64_t total, uint32_t since) {
@@ -1007,11 +1143,24 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     uint64_t total = upload_extent(t);
     b->checked_frame = frame + 1;
     if (t->flags & 0x10) b->dynamic = true;
-    if (full_hash_budget_frame != frame + 1) { full_hash_budget_frame = frame + 1; full_hash_budget = 4 << 20; }
+    if (tex_net < 0) tex_net_init();
+    if (full_hash_budget_frame != frame + 1) {
+        full_hash_budget_frame = frame + 1;
+        if (!tex_net && !tex_check) full_hash_budget = 4 << 20;
+        else {  // (MHGU_PERF_TEXNET: TEX_NET_RATE bytes a second, up to TEX_NET_CAP)
+            uint64_t tn = plat_now_ns(), dt = tex_t && tn - tex_t < 1000000000ull ? tn - tex_t : 1000000000ull;
+            full_hash_budget += (uint64_t)((double)dt * (double)TEX_NET_RATE / 1e9);
+            if (full_hash_budget > TEX_NET_CAP) full_hash_budget = TEX_NET_CAP;
+            tex_t = tn;
+        }
+    }
     const uint8_t *mem = (const uint8_t *)G2H((uint32_t)t->addr);
     bool full = b->dynamic || !b->uploaded;
-    bool periodic = frame - b->full_frame >= 120 && full_hash_budget >= total;  // (safety net: a full hash now and then)
-    if (!full && periodic) { full = true; full_hash_budget -= total; }
+    uint64_t net_due = tex_net_ns + (((uintptr_t)b >> 6) & 255) * 8000000ull;  // (MHGU_PERF_TEXNET: staggered)
+    bool periodic = tex_check ? tex_t - b->full_t >= TEX_CHECK_NS
+                  : tex_net   ? tex_t - b->full_t >= net_due && full_hash_budget >= total
+                              : frame - b->full_frame >= 120 && full_hash_budget >= total;  // (safety net: a full hash now and then)
+    if (!full && periodic) { full = true; full_hash_budget -= full_hash_budget >= total ? total : full_hash_budget; }
     // page write tracking: texture memory the CPU hasn't written since the last check is not hashed at all
     uint32_t now = 0, since = b->wgen;
     int ch = vk_pages_changed(t->addr, total, b->wgen, &now);
@@ -1021,18 +1170,45 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     }
     if (!full) {
         uint64_t sh = fnv_sample(mem, total);
+        stat_tex_samples++;
         if (sh == b->sample_hash) return;
+        if (tex_sample_once) b->sample_hash = sh;
     }
+    uint32_t hash_gen = b->hash_gen;
     b->full_frame = frame;
-    b->sample_hash = fnv_sample(mem, total);
+    b->full_t = tex_t, b->hash_gen = b->wgen;
+    if (!tex_sample_once || (!b->uploaded && !b->dynamic)) b->sample_hash = fnv_sample(mem, total), stat_tex_samples++;
     bool fmt_ok = b->format == fmt_of(t->format).vf || b->astc_bw || b->bcn;
     bool async = fmt_ok && !b->bcn && !b->astc_bw && total >= UP_ASYNC && up_workers();
+    if (b->uploaded && tex_stream && fmt_ok && ch && b->chg_run >= TEX_STREAM_RUN) {  // (MHGU_PERF_TEXSTREAM) see above
+        uint32_t n = (uint32_t)plan(t, b, mem, P_COUNT, NULL, false);
+        UpRec *rec = malloc(sizeof *rec + (n ? n : 1) * sizeof *rec->h);
+        if (rec) {
+            rec->b = b, rec->n = n, rec->next = NULL;
+            hl_copied = total;
+            stat_tex_streamed += total;
+            plan(t, b, mem, P_UPLOAD, rec, async);
+            if (async) rec->next = U.recs, U.recs = rec;
+            else { rec_finish(rec); free(rec); }
+            b->up_run = b->up_last + 1 == frame ? b->up_run + 1 : 1;
+            b->up_last = frame;
+            if (b->up_run >= 120) say_every_frame(t, b, total, since);
+            return;
+        }
+    }
     if (b->uploaded) {  // a check: hashed here, and if it changed, copied (on the workers when big)
         uint64_t h = plan(t, b, mem, P_HASH, NULL, false);
         hl_hashed = total;
-        if (h == b->data_hash) { b->up_run = 0; return; }
+        stat_tex_hashed += total;
+        if (!ch) stat_tex_net += total;
+        if (ch < 0) stat_tex_untracked += total;
+        if (h != b->data_hash) stat_tex_changed += total;
+        if (tex_check && !ch) tex_check_note(t, b, total, h != b->data_hash, hash_gen);
+        if (tex_check && ch && h == b->data_hash) tex_check_same(t, b, total, since, ch < 0);
+        if (h == b->data_hash) { b->up_run = 0, b->chg_run = 0; return; }
         b->dynamic = true;
         b->data_hash = h;
+        if (++b->chg_run == 8 && (tex_check || tex_stream)) say_streak(t, b, total);
         if (!fmt_ok) return;
         hl_copied = total;
         plan(t, b, mem, P_UPLOAD, NULL, async);
@@ -1060,7 +1236,7 @@ static void upload_texture(NvnTexture *t, TexBackend *b) {
     if (async) {
         rec->next = U.recs, U.recs = rec;
     } else {
-        b->data_hash = rec_hash(rec);
+        rec_finish(rec);
         free(rec);
     }
 }
