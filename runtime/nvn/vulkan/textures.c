@@ -850,6 +850,12 @@ static struct {
 
 static void *up_worker(void *unused) {
     (void)unused;
+    {
+        static _Atomic int n;
+        char name[16];
+        snprintf(name, sizeof name, "upload-%d", atomic_fetch_add(&n, 1));
+        plat_thread_name(name);
+    }
     pthread_mutex_lock(&U.mu);
     for (;;) {
         while (U.next >= U.n) pthread_cond_wait(&U.go, &U.mu);

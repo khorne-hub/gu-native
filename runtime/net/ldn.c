@@ -421,6 +421,7 @@ static pthread_cond_t lag_cv = PTHREAD_COND_INITIALIZER;
 
 static void *lag_thread(void *arg) {
     (void)arg;
+    plat_thread_name("ldn-lag");
     pthread_mutex_lock(&lag_mu);
     for (;;) {
         while (!lag_head) pthread_cond_wait(&lag_cv, &lag_mu);
@@ -488,6 +489,7 @@ static void push_info_locked(int except) {  // to every station (and the hub ser
 typedef struct { hsock s; struct sockaddr_in from; uint32_t relay_pair; uint64_t relay_secret; } Accepted;
 
 static void *station_thread(void *arg) {
+    plat_thread_name("ldn-station");
     Accepted acc = *(Accepted *)arg;
     free(arg);
     static __thread uint8_t buf[MAX_FRAME];
@@ -590,6 +592,7 @@ static void *station_thread(void *arg) {
 // Accepts stations and answers LAN discovery probes until the listening sockets close.
 static void *host_thread(void *arg) {
     (void)arg;
+    plat_thread_name("ldn-host");
     uint64_t next_register = 0;
     for (;;) {
         hsock ls = L.listen_s, ds = L.disc_s;
@@ -802,6 +805,7 @@ static bool lobby_wait(uint32_t gen, int ms) {  // false: the network is gone
 }
 
 static void *lobby_attach_thread(void *arg) {
+    plat_thread_name("ldn-attach");
     LobbyTicket t = *(LobbyTicket *)arg;
     free(arg);
     static __thread uint8_t buf[MAX_FRAME];
@@ -824,6 +828,7 @@ static void *lobby_attach_thread(void *arg) {
 }
 
 static void *lobby_thread(void *arg) {
+    plat_thread_name("ldn-lobby");
     uint32_t gen = (uint32_t)(uintptr_t)arg;
     static __thread uint8_t buf[MAX_FRAME];
     uint8_t req[LOBBY_HEADER + NETINFO_SIZE], type;
@@ -952,6 +957,7 @@ static int lobby_list(const char *srv, const char *key, int connect_ms, LobbyLis
 }
 
 static void *lobby_list_thread(void *arg) {  // (while the LAN is searched; r->server set)
+    plat_thread_name("ldn-list");
     LobbyList *r = arg;
     static int last = HUB_ONLINE;
     r->state = lobby_list(r->server, NULL, 1500, r);
@@ -967,6 +973,7 @@ static void *lobby_list_thread(void *arg) {  // (while the LAN is searched; r->s
 typedef struct { uint32_t check; char server[LOBBY_NAME], key[sizeof g_config.ldn_key]; } HubCheck;
 
 static void *hub_check_thread(void *arg) {
+    plat_thread_name("ldn-hubcheck");
     HubCheck *c = arg;
     LobbyList *r = malloc(sizeof *r);
     int state = r ? lobby_list(c->server, c->key, 3000, r) : HUB_UNKNOWN;
@@ -1104,6 +1111,7 @@ static void host_stop(uint32_t reason) {  // (caller: not holding L.mu)
 // ---- station
 static void *uplink_thread(void *arg) {
     (void)arg;
+    plat_thread_name("ldn-uplink");
     static __thread uint8_t buf[MAX_FRAME];
     uint8_t type;
     int n, reason = DR_SIGNAL_LOST;
@@ -1140,6 +1148,7 @@ static void *uplink_thread(void *arg) {
 // The station's datagrams: hello (every 2 s once answered, else every 0.5 s) and the host's packets.
 static void *station_udp_thread(void *arg) {
     (void)arg;
+    plat_thread_name("ldn-udp");
     static __thread uint8_t buf[sizeof(UHdr) + sizeof(VPacket) + UDP_MAX_PAYLOAD];
     hsock us = L.us;
     uint64_t next_hello = 0;

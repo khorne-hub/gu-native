@@ -1178,6 +1178,7 @@ static void wav_header(FILE *f, uint32_t bytes) {
 
 static void *renderer_tick(void *arg) {
     Renderer *r = arg;
+    plat_thread_name("audren");
     plat_thread_priority(PLAT_PRIO_HIGH);  // (Windows: above normal, a frame mixed late is heard)
     float out[2 * 4096];
     uint32_t N = r->sample_count > 4096 ? 4096 : r->sample_count;
@@ -1766,6 +1767,7 @@ RT_ON_RESET(audio_reset) {
 // stream plays the role of the hardware queue. Without a device, buffers are released in real time.
 static void *audout_thread(void *arg) {
     AudioOut *a = arg;
+    plat_thread_name("audout");
     plat_thread_priority(PLAT_PRIO_HIGH);  // (Windows: above normal, as the renderer's mixer)
     uint32_t ch = a->channels ? a->channels : 2;
     int target = 0;

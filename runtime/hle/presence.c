@@ -150,6 +150,9 @@ static void quest_targets(uint32_t qd, char *out, size_t size) {
 
 // ---- once a second, from the game's input polling
 void presence_tick(void) {
+#ifdef __ANDROID__
+    if (!discord_running()) return;  // (MHGU_PERF_NODISCORD: nobody to tell)
+#endif
     static uint64_t next;
     static int64_t since;
     static int last_place = -2;

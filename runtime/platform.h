@@ -85,6 +85,14 @@ int plat_thread_create(void *(*fn)(void *), void *arg, size_t stack);
 #ifdef _WIN32
 void plat_thread_below_normal(void);  // the calling thread gives way to the game's (nvn/vulkan/exec.c: shader builds)
 #endif
+// The calling thread's name as the system's tools show it (top, simpleperf, /proc/<pid>/task/<tid>/comm; up to 15
+// characters): "vsync", "upload-2", "g44-50". Without it every thread the runtime makes is "SDLThread" on Android, the
+// name of the one that made it. MHGU_PERF_THREADNAMES=1 (Android; read once, by plat_init); else, and elsewhere, nothing.
+#ifdef __ANDROID__
+void plat_thread_name(const char *name);
+#else
+static inline void plat_thread_name(const char *name) { (void)name; }
+#endif
 const char *rt_out_of_memory_text(void);  // (runtime/kernel.c) the message when the system has no memory left
 
 // ---- thread priorities (Windows, runtime/platform/windows.c; elsewhere every thread keeps the system's default)
