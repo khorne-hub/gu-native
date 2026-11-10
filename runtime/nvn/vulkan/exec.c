@@ -1299,6 +1299,15 @@ static int hud_status_part(float x, float y, bool *nearest) {
     }
     return best;
 }
+// The target camera's pieces (layer 100): one large monster's icon at x 1200 (y 42 and 57) with the change-target
+// hint under it (y 82); two monsters' icons side by side at x 1170 and 1230 (y 42), the hint still at 1200 (measured on
+// a Motorola g06 in the Arena, 2026-11-09: only the one at 1200 was taken, and the two icons stayed under the Hunter Arts
+// the touch arrangement puts there, #79). Not the shoutout list's header on the same layer (y 79..80, x 1132..1228)
+static bool target_piece(float x, float y) {
+    if (fabsf(x - 1200.0f) < 1.0f) return y < 100.0f;
+    return (fabsf(x - 1170.0f) < 1.0f || fabsf(x - 1230.0f) < 1.0f) && y < 70.0f;
+}
+
 static bool hud_accept(int part, float z, float x, float y) {
     uint64_t now = plat_now_ns();
     for (int i = 0; i < HUD_SEEN; i++) {
@@ -3913,15 +3922,14 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // labels on the left and numbers on the right are one table) they stay Bottom like the rest of the layer.
                         vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f || (ui_menu_pass && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
-                        // to three rows) to the top right, the target camera's icons (x 1200, y < 100) left of them
+                        // to three rows) to the top right, the target camera's icons (target_piece) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's)
                         bool flat = !(fabsf(m[0]) > 2.0f && fabsf(m[5]) > 2.0f);
                         if (hunt_hud && flat && pos_x >= 700.0f && pos_x <= 900.0f && pos_y > 560.0f &&
                             hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) {
                             part = HP_ARTS, part_touch = true;
                             if (prof == HUD_TOUCH) vanchor = V_TOP;
-                        } else if (hunt_hud && fabsf(pos_x - 1200.0f) < 1.0f && pos_y < 100.0f &&
-                                   hud_accept(HP_TARGET, pos_z, pos_x, pos_y)) {
+                        } else if (hunt_hud && target_piece(pos_x, pos_y) && hud_accept(HP_TARGET, pos_z, pos_x, pos_y)) {
                             part = HP_TARGET, part_touch = true;
                         }
                     } else if (fabsf(pos_z - 103.0f) < 0.5f) {
