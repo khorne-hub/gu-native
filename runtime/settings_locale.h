@@ -326,6 +326,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Previous ammo", "Munición anterior"},
         {"Item bar: previous", "Barra de objetos: anterior"},
         {"Item bar: next", "Barra de objetos: siguiente"},
+        {"Sprint lock", "Candado de carrera"},
         {"Layout: melee", "Diseño: cuerpo a cuerpo"},
         {"Layout: ranged", "Diseño: a distancia"},
         {"Evade (B)", "Evasión (B)"},

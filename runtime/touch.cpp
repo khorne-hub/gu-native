@@ -100,6 +100,7 @@ enum Ctl {
     C_RFIRE, C_RSECOND, C_RAIM, C_RSPECIAL, C_RDODGE, C_RSHEATHE, C_AMMO_UP, C_AMMO_DOWN,  // (a bow's or a bowgun's)
     C_MPAD,                                                                                // (the menu pad, in menus)
     C_ITEML, C_ITEMR,                                                                      // (the item bar's arrows)
+    C_RUNLOCK,                                                                             // (the sprint lock's circle)
     C_STICK,                                                                               // (laid out: touch_layout.txt)
     C_ML, C_MR,          // (the menu pad's: its page tabs above it, as a controller's shoulders, placed from it;
     C_MZL, C_MZR,        // the other pair above them, when [Touch] ShowMenuZL / ZR say so; Minus below it, with the
@@ -184,6 +185,10 @@ const Def DEFS[C_COUNT] = {
     // port's; the editor moves them as the other controls, and their places are kept in touch_layout.txt
     {"item_left", "Item bar: previous", I_LEFT, "", 0, true, .64f, .085f, .052f},
     {"item_right", "Item bar: next", I_RIGHT, "", 0, true, .565f, .085f, .052f},
+    // the sprint lock's circle ([Touch] StickRun): this place only marks it as not placed by the player (it is then
+    // LOCK_AT above the stick, wherever the stick is: lock_spot); placed in the editor it stays where it was put. Its
+    // size: LOCK_R of the stick's radius, times its own
+    {"run_lock", "Sprint lock", I_RUN, "", 0, false, .29f, .546f, .0483f},
     {"stick", "Movement", I_STICK, "", 0, false, .29f, .27f, .115f},
     // the menu pad's (x, y unused: place(); what the tabs press: the game's option, mpad_buttons)
     {"ml", "L", I_LETTER, "L", B(BTN_L), true, 0, 0, .040f},  // (the shoulders: tabs in the item box, the shops)
@@ -229,6 +234,7 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     case C_R3: return TB_R3;
     case C_STICK: return TB_STICK;
     case C_ITEML: case C_ITEMR: return TB_ITEM_ARROWS;
+    case C_RUNLOCK: return TB_STICK_RUN;
     default: return -1;
     }
 }
@@ -249,6 +255,7 @@ bool in_mode(int i, bool menu) {
     // what a hunt can do without is off until asked for: [Touch] Show*)
     if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
     if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
+    if (i == C_RUNLOCK) return false;                // (drawn and armed with the stick: control, on_lock_circle)
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -275,6 +282,7 @@ bool in_mode(int i, bool menu) {
 bool in_editor(int i) {
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
+    if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
     return i < C_LAID && (in_mode(i, false) || in_mode(i, true));
 }
 const ImVec2 PILL_U(.766f, -.643f);  // the pill's axis on the screen (y down): up and to the right
@@ -471,12 +479,16 @@ struct Geo {
 float mpad_above(void) {  // (how far the menu pad's group reaches above it: the other pair of tabs shown, higher)
     return config_live_touch_show(TB_MENU_ZL) || config_live_touch_show(TB_MENU_ZR) ? MPAD_ABOVE2 : MPAD_ABOVE;
 }
-// an arrow of the item bar's the player has placed (else it follows the bar: arrow_follow, below)
+// an arrow of the item bar's, or the sprint lock's circle, the player has placed (else it follows the bar, the stick)
 bool arrow_placed(const Layout &l, int i) { return fabsf(l.x[i] - DEFS[i].x) > 1e-4f || fabsf(l.y[i] - DEFS[i].y) > 1e-4f; }
 Geo arrow_follow(const Layout &l, int i, float w, float h);
 Geo place(const Layout &l, int i, float w, float h) {
     const Def &d = DEFS[i];
     if ((i == C_ITEML || i == C_ITEMR) && !arrow_placed(l, i)) return arrow_follow(l, i, w, h);
+    if (i == C_RUNLOCK && !arrow_placed(l, i)) {  // (not placed: above the stick, with it)
+        Geo s = place(l, C_STICK, w, h);
+        return {lock_spot(s.c.x, s.c.y, s.r, h), LOCK_R * s.r * l.scale[i]};
+    }
     if (i == C_CORNER) {  // (c: the centre of its bend; a larger band stays against the edges)
         float r = d.r * l.scale[i] * h, in = r * (1 + BAND_T);
         return {ImVec2(w - l.x[i] * h - in, h - l.y[i] * h - in), r};
@@ -1153,10 +1165,11 @@ Geo arrow_follow(const Layout &l, int i, float w, float h) {
     if (bar.ok) return item_arrow(bar, i == C_ITEML ? -1 : 1, w, h, l.scale[i]);
     return {ImVec2(w * .5f + (i == C_ITEML ? -.34f : .34f) * h, h * .85f), ITEM_ARROW * l.scale[i] * h};
 }
-// (the editor: an arrow that follows the bar, dragged, keeps the place it had as its own, then moves from there)
+// (the editor: an arrow that follows the bar, or the sprint lock's circle that follows the stick, dragged, keeps the place
+// it had as its own, then moves from there)
 void pin_arrow(State &s, int i) {
     Geo g = place(s.layout, i, s.w, s.h);
-    s.layout.x[i] = (s.w - g.c.x) / s.h, s.layout.y[i] = (s.h - g.c.y) / s.h;
+    s.layout.x[i] = (DEFS[i].right ? s.w - g.c.x : g.c.x) / s.h, s.layout.y[i] = (s.h - g.c.y) / s.h;
     s.layout.scale[i] = std::clamp(g.r / (DEFS[i].r * s.h), .5f, 2.2f);
 }
 
@@ -1191,8 +1204,8 @@ void run_end(State &s, const char *why) {
 // The thumb at (x, y) is on the lock circle, past the rim (a stick placed high has the circle clamped near it)
 bool on_lock_circle(const State &s, float x, float y) {
     float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
-    ImVec2 spot = lock_spot(s.bx, s.by, r, s.h);
-    return hypotf(x - s.bx, y - s.by) > r && hypotf(x - spot.x, y - spot.y) < LOCK_GRAB * r;
+    Geo lg = place(s.layout, C_RUNLOCK, s.w, s.h);  // (where it is: above the stick, or where the editor put it)
+    return hypotf(x - s.bx, y - s.by) > r && hypotf(x - lg.c.x, y - lg.c.y) < LOCK_GRAB / LOCK_R * lg.r;
 }
 // A thumb from Guard keeps R as it slides ([Touch] GuardSlide): with the weapon out, no menu of the game's open
 bool guard_slide(const State &s) { return config_live_touch_show(TB_GUARD_SLIDE) && s.drawn == 1 && !s.menu; }
@@ -1618,7 +1631,7 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         } else if (f->ctl >= ZONE_SEL) {
             part_move(s, f->ctl - ZONE_SEL, dx, dy);
         } else if (f->ctl >= 0) {
-            if ((f->ctl == C_ITEML || f->ctl == C_ITEMR) && !arrow_placed(s.layout, f->ctl)) pin_arrow(s, f->ctl);
+            if ((f->ctl == C_ITEML || f->ctl == C_ITEMR || f->ctl == C_RUNLOCK) && !arrow_placed(s.layout, f->ctl)) pin_arrow(s, f->ctl);
             s.layout.x[f->ctl] += (DEFS[f->ctl].right ? -dx : dx) / s.h;
             s.layout.y[f->ctl] -= dy / s.h;
             clamp_place(s, f->ctl);
@@ -1944,8 +1957,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
             stick_to(s, x, y);
             // (a new thumb may lock from wherever it landed, slid up into the circle again - not one that landed in it,
             // which a stick placed high has near)
-            ImVec2 spot = lock_spot(s.bx, s.by, g.r, s.h);
-            if (hypotf(x - spot.x, y - spot.y) >= LOCK_GRAB * g.r) s.run_armed = true;
+            Geo lg = place(s.layout, C_RUNLOCK, s.w, s.h);
+            if (hypotf(x - lg.c.x, y - lg.c.y) >= LOCK_GRAB / LOCK_R * lg.r) s.run_armed = true;
         } else {
             f->kind = F_CAMERA;
         }
@@ -3556,6 +3569,10 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
         item_arrow_disc(dl, g, i == C_ITEML ? -1 : 1, false, a);
         return;
     }
+    if (i == C_RUNLOCK) {  // (the editor's: in a hunt it shows as the thumb pushes toward it, with the stick)
+        lock_circle(dl, g.c, g.r, a * .8f, false, false);
+        return;
+    }
     if (i == C_STICK) {
         if ((s.stick_on || s.run_free) && !s.edit) {
             // (a locked run going on by itself: the knob held at the rim, forward)
@@ -3563,14 +3580,16 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
             stick(dl, base, knob, g.r, a, true);
             // the sprint lock's circle: faded in as the thumb pushes up past the rim while a lock could start; lit with
             // the thumb on it (armed) and locked
+            // (toward the circle, wherever the editor put it: above the stick unless moved)
             float v = s.run_lock || s.run_over ? 1.0f : 0.0f;
-            ImVec2 spot = lock_spot(s.bx, s.by, g.r, h);
+            Geo lg = place(l, C_RUNLOCK, w, h);
             if (!s.run_lock && !s.run_over && s.run_can && s.stick_on) {
-                float dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy), up = d > 1.0f ? -dy / d : 0.0f;
-                float reach = std::max(1.0f, (s.by - spot.y) - (LOCK_R + .9f) * g.r);
+                float ux = lg.c.x - s.bx, uy = lg.c.y - s.by, ud = std::max(1.0f, hypotf(ux, uy));
+                float dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy), up = d > 1.0f ? (dx * ux + dy * uy) / (d * ud) : 0.0f;
+                float reach = std::max(1.0f, ud - lg.r - .9f * g.r);
                 v = std::clamp((d - .9f * g.r) / reach, 0.0f, 1.0f) * std::clamp((up - LOCK_UP) / .15f, 0.0f, 1.0f);
             }
-            lock_circle(dl, spot, LOCK_R * g.r, a * v, s.run_over, s.run_lock);
+            lock_circle(dl, lg.c, lg.r, a * v, s.run_over, s.run_lock);
             if (s.run) {  // (running: a gold ring round the rim, and streaks behind the knob)
                 dl->AddCircle(base, g.r * 1.12f, fade(GLOW, a * .85f), 48, g.r * .07f);
                 float dx = knob.x - s.bx, dy = knob.y - s.by, n = std::max(1.0f, hypotf(dx, dy));
@@ -3882,15 +3901,6 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     for (int i = 0; i < C_LAID && touch; i++) {
         if (!in_editor(i)) continue;  // (the controls no longer there stay in the file's order only)
         control(dl, font, s.layout, i, w, h, s, 1.0f);
-        if (i == C_STICK && config_live_touch_show(TB_STICK_RUN)) {  // (the sprint lock's circle above it: StickRun)
-            Geo g = place(s.layout, i, w, h);
-            ImVec2 spot = lock_spot(g.c.x, g.c.y, g.r, h);
-            float cr = LOCK_R * g.r;
-            lock_circle(dl, spot, cr, .8f, false, false);
-            const char *rt = T("Run");
-            float fs = .02f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, rt).x;
-            text_center(dl, font, fs, ImVec2(spot.x + cr * 1.35f + tw * .5f, spot.y), GOLD, rt, w);
-        }
         if (i == C_MPAD)  // (its tabs and Minus with it, where it puts them)
             for (int j = C_ML; j <= C_MMINUS; j++)
                 if (mpad_member(j)) control(dl, font, s.layout, j, w, h, s, 1.0f);
