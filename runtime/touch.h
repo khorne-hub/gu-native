@@ -21,12 +21,19 @@ void touch_right_stick(int *rx, int *ry);
 // the item bar turned a step (a desktop's wheel, ItemLeft / ItemRight; dir < 0 left): a hunter's items, a Prowler's
 // Support Moves (L + Y / A)
 void touch_item_step(int dir);
+// (MHGU_PERF_INPUT_WAKE, runtime/ui.c) a finger down, or something of theirs going on by the clock (a timed press, the
+// locked run, the lock-on, a locked shot, the item bar held open, the editor): the window loop keeps its pace
+bool touch_busy(void);
 // game thread (runtime/overlay.cpp): drawn over the game, under the port's menus
 bool touch_visible(void);
 // (something of them is on the screen: hidden, the settings button alone, or the lock-on's padlock by the target camera's
 // icon while it is on, whatever the player plays with; or the HUD editor)
 bool touch_drawn(void);
 void touch_draw(float display_w, float display_h);
+// (MHGU_PERF_OVERLAY_REUSE, runtime/overlay.cpp) touch_draw keeps what each frame is made of from now on; and whether the
+// controls would draw the very same lists as in the frame drawn last (nothing of theirs moving by itself)
+void touch_reuse_begin(void);
+bool touch_draw_unchanged(float display_w, float display_h);
 void touch_edit_begin(void);  // the layout editor (settings menu: Controls), once the menu is closed
 void touch_edit_cancel(void);  // (the settings menu's unsaved-changes dialog cancelled: it stays open)
 // an editor is open, the touch layout's or a desktop's HUD editor: a controller's B cancels it (host_input.c)

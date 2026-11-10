@@ -156,6 +156,29 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 - `MHGU_FSR_LOG=1` (FSR, and Low-end mode's plain scaling too) names the draw where the HUD starts and the 3D effects kept with
   the scene before it (vertices, depth test, the textures' sizes, `r` for a render target); `MHGU_FSR_SCENE_FX=0` lets those
   effects start the HUD again, as before 0.1.9.
+- Performance switches (`MHGU_PERF_<NAME>=0|1`, read once at the start; until one is measured its default is the old way,
+  and the log's `[perf]` lines say which are set):
+  - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
+    runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
+    the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings
+    menu, a scripted press, an event in the last 500 ms);
+    otherwise it waits up to 16 ms on a semaphore that SDL's event watch, each frame presented, a rumble changing and the
+    menu's requests post. Woken by an event it brings the controls' state up to date first, as the pass 3 ms before did. The
+    touch controls' timings are those of the 3 ms loop. Once a minute the log counts the passes of each kind.
+  - `MHGU_PERF_OVERLAY_REUSE=1`: a frame with the touch controls alone on the overlay (no menu, notice, chat, stats, credits or
+    plugin's drawing) whose key (`touch.cpp DrawKey`: their state, what shows and where, the HUD parts' places, the settings'
+    generation, the game's buttons on the badges, the screen) is the one of the frame built last is not built again
+    (`overlay.cpp frame_once`): the render thread draws the copy it has. Nothing moving (a finger, the run, the lock-on's
+    pulse, the menu pad's fade) gives no key; once a second a frame is built anyway. `=2` is a check: those frames are built
+    and compared with the copy, and a difference is logged. The log counts built and reused frames each minute.
+  - `MHGU_PERF_MENU_PRESENT=1` (Android): while the settings menu holds the game (`overlay_frame`), the held picture is
+    presented again only when the menu's draw lists changed byte for byte (`snap_same`), when the window needs it
+    (`vk_present_needed`: back from the background, a new size, VSync) and once a second; the menu is still built 60 times
+    a second. Each hold logs its presents and the frames it didn't present again.
+  - `MHGU_PERF_NO_ACCEL=1` (Android): SDL's accelerometer listener (50 events a second on the app's main thread, which nothing
+    reads: the game's motion sensors are always at rest) is not registered; the display's rotation reaches SDL from a
+    `DisplayManager` listener instead (`GameActivity.GameSurface`), as `onNativeRotationChanged`. With the variable set,
+    0 or 1, the log names each display orientation SDL reports.
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 

@@ -2309,6 +2309,33 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     said_run = s.run;
 }
 
+// (MHGU_PERF_INPUT_WAKE) What touch_input does by the clock, between events: a finger down (the long presses, the
+// stick's run, an ammo arrow held, the menu pad), a timed press (a tap's, an art's, the camera's double tap), the run
+// held back after X, the locked run, the lock-on (its follow comes back LOCK_AFTER_TURN after a turn), a locked shot,
+// a Hunter Art on the right stick, the item bar held open, the editor. While any is on the window loop polls every 3 ms
+// as always
+extern "C" bool touch_busy(void) {
+    std::lock_guard<std::mutex> l(g_lock);
+    const State &s = g_s;
+    uint64_t now = SDL_GetTicksNS();
+    for (const Finger &f : s.f)
+        if (f.kind != F_NONE) return true;
+    for (const Pulse &p : s.pulse)
+        if (p.until > now) return true;
+    if (s.stick_on || s.run || s.run_lock || s.run_free || s.lock || s.bar_open || s.edit || s.edit_request || s.pinch)
+        return true;
+    if (s.held || s.tapped || s.pad_held || s.cam_dx != 0 || s.cam_dy != 0 || g_tap_due) return true;
+    if (now < s.ammo_hold || now < s.ammo_ready || now < s.run_x_until || now < s.lit_until || now < s.rs_until ||
+        now < s.item_flash || now < s.art_flash || now - s.tap_ns < 350 * MS)
+        return true;
+    if (s.combo_t0 || s.assist_wait || now < s.assist_until || now < s.assist_fire || s.keep_r || now < s.replay_until)
+        return true;
+#ifndef __ANDROID__
+    if (s.hud_edit || s.hud_request || g_hud_hold) return true;
+#endif
+    return false;
+}
+
 extern "C" bool touch_visible(void) { return g_visible; }
 extern "C" uint64_t touch_menu_buttons(void) { return g_menu_buttons; }
 #ifndef __ANDROID__
@@ -3941,9 +3968,81 @@ bool under_mpad(const Layout &l, int i, float w, float h) {
     return hypotf(g.c.x - p.c.x, g.c.y - p.c.y) < p.r + g.r;
 }
 
+// (MHGU_PERF_OVERLAY_REUSE, runtime/overlay.cpp) Everything touch_draw's picture is made of, for one frame: the controls'
+// state (its clocks that draw nothing cleared, those that do as what they draw), what shows and where (in_mode, the HUD
+// parts' places), the settings (their generation), the weapon's layout, the game's buttons named on the badges, the
+// screen. Two frames with the same key draw the same lists. false: something moves by itself (a finger down, the stick, a
+// run, the lock-on's pulse, the menu pad coming or going, the editor): no frame stands for the next
+struct DrawKey {
+    State s;
+    float w, h;
+    int flags, ranged, bow_type, style, edit_set, config_gen, nrows;
+    float pad_a, mpad_out, rows[3][2], parts[3][5];  // (parts: the target camera's, the item bar's, the arts' zone_rect)
+    uint64_t camera, modes;
+    char target[8];
+};
+static_assert(C_COUNT <= 64, "DrawKey.modes: a bit per control");
+bool g_reuse_on;      // (touch_reuse_begin: the overlay reuses frames, touch_draw keeps the key of each)
+DrawKey g_drawn;      // (game thread) the key of the frame touch_draw drew last...
+bool g_drawn_ok;      // ...and whether it may stand for another
+bool draw_key(float w, float h, DrawKey *k) {
+    memset(k, 0, sizeof *k);
+    {
+        std::lock_guard<std::mutex> l(g_lock);
+        memcpy(&k->s, &g_s, sizeof k->s);
+    }
+    State &s = k->s;
+    uint64_t now = SDL_GetTicksNS();
+    bool lit = s.lit_until && now < s.lit_until, item_lit = now < s.item_flash, art_lit = now < s.art_flash;
+    float untouched = s.last_ns ? (now - s.last_ns) / 1e9f : 99.0f;  // (as touch_draw: dimmer after 5 s untouched)
+    bool idle = untouched > 5.0f;
+    k->pad_a = s.menu ? std::min(1.0f, (float)(now - s.menu_on_ns) / (float)MPAD_IN) * mpad_fade(now) : 0.0f;
+    k->mpad_out = s.menu ? mpad_fade(now) : 0.0f;
+    if (s.edit || s.edit_request || s.stick_on || s.run || s.run_lock || s.run_free || s.lock || g_lock_mark)
+        return false;
+#ifndef __ANDROID__
+    if (s.hud_edit || g_hud_edit) return false;
+#endif
+    for (const Finger &f : s.f)
+        if (f.kind != F_NONE) return false;
+    if ((k->pad_a > 0 && k->pad_a < 1) || (k->mpad_out > 0 && k->mpad_out < 1)) return false;
+    // (clocks: those that draw something as what they draw; the others, which move while nothing changes, cleared)
+    s.last_ns = s.menu_on_ns = s.item_flash = s.art_flash = s.lit_until = 0;
+    s.hunt_ns = s.hunter_ns = s.cam_ns = s.tap_ns = s.step_ns = s.others_ns = s.stuck_ns = 0;
+    k->flags = (int)g_visible | (int)g_gear_only << 1 | (int)overlay_menu_open() << 2 | (int)lit << 3 | (int)item_lit << 4 |
+               (int)art_lit << 5 | (int)idle << 6 | (int)menu_pages_zl() << 7;
+    k->w = w, k->h = h;
+    k->ranged = g_ranged.load(), k->bow_type = g_bow_type.load(), k->style = g_style.load(), k->edit_set = g_edit_set.load();
+    k->config_gen = config_live_generation();
+    k->camera = camera_buttons();
+    snprintf(k->target, sizeof k->target, "%s", target_letter());
+    for (int i = 0; i < C_COUNT; i++)
+        if (in_mode(i, s.menu)) k->modes |= 1ull << i;
+    Zones z = zones();
+    const int parts[3] = {HP_TARGET, HP_ITEMS, HP_ARTS};
+    for (int i = 0; i < 3; i++) {
+        Rect r = zone_rect(z, parts[i], w, h);
+        if (!r.ok) continue;
+        float *v = k->parts[i];
+        v[0] = r.x0, v[1] = r.y0, v[2] = r.x1, v[3] = r.y1, v[4] = 1;
+    }
+    k->nrows = arts_rows(z, w, h, k->rows);
+    return true;
+}
+
 }  // namespace
 
+// (MHGU_PERF_OVERLAY_REUSE, runtime/overlay.cpp: the game thread, once at the start) touch_draw keeps each frame's key
+extern "C" void touch_reuse_begin(void) { g_reuse_on = true; }
+// (the game thread, before a frame is built) the controls would draw the very same lists as in the frame drawn last
+extern "C" bool touch_draw_unchanged(float w, float h) {
+    if (!g_drawn_ok) return false;
+    DrawKey k;
+    return draw_key(w, h, &k) && !memcmp(&k, &g_drawn, sizeof k);
+}
+
 extern "C" void touch_draw(float w, float h) {
+    if (g_reuse_on) g_drawn_ok = draw_key(w, h, &g_drawn);  // (MHGU_PERF_OVERLAY_REUSE: what this frame is made of)
 #ifndef __ANDROID__
     if ((!g_visible && !g_gear_only && !g_lock_mark && !g_hud_edit) || overlay_menu_open()) return;
 #else

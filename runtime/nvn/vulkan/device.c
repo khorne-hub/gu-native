@@ -1474,6 +1474,7 @@ void backend_present(NvnTexture *t) {
     if (g_frames == 120) gpu_driver_good();  // (a driver of the player's own has drawn: it stays)
 #endif
     touch_hud_frame();  // (the touch controls: where this frame's HUD parts were, runtime/touch.cpp)
+    ui_loop_wake();  // (a frame: the window loop runs a pass now if it waits between events, MHGU_PERF_INPUT_WAKE, ui.c)
 #ifndef __ANDROID__
     mousemenu_frame();  // (and the mouse in the game's menus: where this frame's menu pieces were, runtime/hle/mousemenu.c)
 #endif
@@ -1544,6 +1545,22 @@ bool vk_present_again(void) {
     }
     vk_unlock();
     return true;
+}
+
+// (runtime/overlay.cpp, the settings menu holding the game with MHGU_PERF_MENU_PRESENT=1) the window needs a present
+// whatever the menu shows: back from the background (a new surface to make), no swapchain, the window's size or the
+// VSync setting changed (frame_begin makes it again)
+bool vk_present_needed(void) {
+#ifdef __ANDROID__
+    if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE)) return true;
+#endif
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(ui_window(), &w, &h);
+    vk_lock();
+    bool need = !g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
+                config_live_vsync() != swapchain_vsync;
+    vk_unlock();
+    return need;
 }
 
 // ================================================================== init

@@ -23,18 +23,28 @@
 static int launch_argc;
 static char **launch_argv;
 static SDL_AtomicInt requested_action, action_failed;
+// MHGU_PERF_INPUT_WAKE=1 (Android; read once, ui_init): between events the window loop waits on this semaphore instead of
+// polling every 3 ms (ui_run). SDL's event watch, each frame presented (nvn/vulkan/device.c), the game's rumble changing
+// (hle/input.c) and the settings menu's requests post it. NULL: the loop as before
+static SDL_Semaphore *loop_sem;
+static bool log_orientation;  // (MHGU_PERF_NO_ACCEL set, 0 or 1: the display's orientation events are logged, ui_run)
+void ui_loop_wake(void) {
+    SDL_Semaphore *sem = __atomic_load_n(&loop_sem, __ATOMIC_ACQUIRE);
+    if (sem) SDL_SignalSemaphore(sem);
+}
+static void request(int action) { SDL_SetAtomicInt(&requested_action, action), ui_loop_wake(); }
 void ui_capture_launch_args(int argc, char **argv) { launch_argc = argc; launch_argv = argv; }
-void ui_request_action(bool restart) { SDL_SetAtomicInt(&requested_action, restart ? 2 : 1); }
+void ui_request_action(bool restart) { request(restart ? 2 : 1); }
 bool ui_action_failed(void) { return SDL_SetAtomicInt(&action_failed, 0) != 0; }
-void ui_request_licenses(void) { SDL_SetAtomicInt(&requested_action, 3); }
-void ui_request_game_folder(void) { SDL_SetAtomicInt(&requested_action, 4); }
-void ui_request_save_import(void) { SDL_SetAtomicInt(&requested_action, 5); }
-void ui_request_share_log(void) { SDL_SetAtomicInt(&requested_action, 6); }
-void ui_request_save_export(void) { SDL_SetAtomicInt(&requested_action, 7); }
-void ui_request_import(int kind) { SDL_SetAtomicInt(&requested_action, 9 + kind); }  // (0 cheats, 1 a mod, 2 DLC)
-void ui_request_save_folder(void) { SDL_SetAtomicInt(&requested_action, 12); }
+void ui_request_licenses(void) { request(3); }
+void ui_request_game_folder(void) { request(4); }
+void ui_request_save_import(void) { request(5); }
+void ui_request_share_log(void) { request(6); }
+void ui_request_save_export(void) { request(7); }
+void ui_request_import(int kind) { request(9 + kind); }  // (0 cheats, 1 a mod, 2 DLC)
+void ui_request_save_folder(void) { request(12); }
 #ifdef __ANDROID__
-void ui_request_gpu_driver(void) { SDL_SetAtomicInt(&requested_action, 8); }
+void ui_request_gpu_driver(void) { request(8); }
 static void activity_call(const char *method) {  // (a static void method of GameActivity: as restart_application)
     JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
     jobject act = env ? (jobject)SDL_GetAndroidActivity() : NULL;
@@ -187,6 +197,14 @@ static bool android_lifecycle(void *ud, SDL_Event *e) {
 }
 #endif
 
+#ifdef __ANDROID__
+static bool loop_event(void *ud, SDL_Event *e) {  // (any thread: an event queued wakes the window loop)
+    (void)ud, (void)e;
+    ui_loop_wake();
+    return true;
+}
+#endif
+
 void ui_init(void) {
     // Touches are not mouse clicks (a click is X / A and the mouse turns the camera: host_input.c; on a PC with a touch
     // screen every touch was an attack too): the fingers are the touch controls' and the menus' (runtime/touch.cpp)
@@ -227,6 +245,18 @@ void ui_init(void) {
     if (g_config.display_mode != DISPLAY_WINDOWED) set_fullscreen(true);
 #ifdef __ANDROID__
     SDL_AddEventWatch(android_lifecycle, NULL);
+    const char *wake = getenv("MHGU_PERF_INPUT_WAKE");  // (read once: ui_run's waits)
+    if (wake && atoi(wake) == 1) {
+        SDL_Semaphore *sem = SDL_CreateSemaphore(0);
+        if (sem) SDL_AddEventWatch(loop_event, NULL), __atomic_store_n(&loop_sem, sem, __ATOMIC_RELEASE);
+    }
+    if (wake) LOG("[perf] MHGU_PERF_INPUT_WAKE=%d\n", loop_sem != NULL);
+    // MHGU_PERF_NO_ACCEL=1 (read once): SDL's accelerometer listener off, the display's rotation from a DisplayListener
+    // instead (GameActivity.perfNoAccel: nothing here reads the accelerometer)
+    const char *accel = getenv("MHGU_PERF_NO_ACCEL");
+    if (accel && atoi(accel) == 1) activity_call("perfNoAccel");
+    log_orientation = accel != NULL;
+    if (accel) LOG("[perf] MHGU_PERF_NO_ACCEL=%d\n", accel && atoi(accel) == 1);
 #endif
 }
 
@@ -238,6 +268,10 @@ void ui_toggle_fullscreen(void) {
 int ui_run(void) {
     plat_thread_name("ui");  // (the host's main thread: SDL's events, the touch controls' input)
     int background = config_live_background_input();
+#ifdef __ANDROID__
+    uint64_t input_ns = 0;  // (MHGU_PERF_INPUT_WAKE: the last event)
+    uint64_t waits[HIB_COUNT] = {0}, since = plat_now_ns();  // (...the passes after a wait and after a 3 ms sleep, by why)
+#endif
     for (;;) {
         if (HITCH_ON) hitch_frame(HT_INPUT, 0);  // ((debug) MHGU_HITCHLOG: one pass, runtime/hitchlog.c)
         int wanted_background = config_live_background_input();
@@ -249,8 +283,34 @@ int ui_run(void) {
 #ifdef __ANDROID__
         // (SDL's WaitEventTimeout spins on Android - a whole core in its joystick polling and timed mutex waits, measured
         // on a Galaxy S25: the events are taken as they are, then a 3 ms sleep)
+        if (loop_sem)
+            while (SDL_TryWaitSemaphore(loop_sem)) {}  // (what woke the loop until now: its events are taken next)
         bool got = SDL_PollEvent(&e);
-        if (!got) SDL_Delay(3), got = SDL_PollEvent(&e);
+        if (!got && !loop_sem) {
+            SDL_Delay(3), got = SDL_PollEvent(&e);
+        } else if (!got) {
+            // MHGU_PERF_INPUT_WAKE=1: the same 3 ms sleep while anything runs by the clock (host_input_busy: the touch
+            // controls' timed presses and long presses end exactly as before) or an event came in the last 500 ms;
+            // otherwise a wait of up to 16 ms that an event, a frame presented, a rumble or a request ends at once.
+            // Woken by an event, the controls' state is brought up to date first (host_input_update with nothing new:
+            // the pass the 3 ms loop made just before it), so the event finds it as fresh as before
+            uint64_t now = plat_now_ns();
+            int busy = now - input_ns < 500000000ull ? HIB_EVENT : host_input_busy();
+            if (busy) SDL_Delay(3);
+            else if (SDL_WaitSemaphoreTimeout(loop_sem, 16) && SDL_HasEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST)) host_input_update();
+            waits[busy]++;
+            got = SDL_PollEvent(&e);
+            if (now - since >= 60000000000ull) {  // (once a minute: how the loop went, and what kept the 3 ms pace)
+                LOG("[perf] input loop: %llu passes after a wait, after 3 ms %llu for an event, %llu the touch controls, %llu a "
+                    "button or stick, %llu a controller, %llu the rumble, %llu a menu, %llu a script (a minute)\n",
+                    (unsigned long long)waits[0], (unsigned long long)waits[HIB_EVENT], (unsigned long long)waits[HIB_TOUCH],
+                    (unsigned long long)waits[HIB_OUTPUT], (unsigned long long)waits[HIB_PAD],
+                    (unsigned long long)waits[HIB_RUMBLE], (unsigned long long)(waits[HIB_MENU] + waits[HIB_PADMAP]),
+                    (unsigned long long)waits[HIB_SCRIPT]);
+                memset(waits, 0, sizeof waits), since = now;
+            }
+        }
+        if (got && loop_sem) input_ns = plat_now_ns();
         if (got) {
 #else
         if (SDL_WaitEventTimeout(&e, 4)) {
@@ -261,6 +321,10 @@ int ui_run(void) {
                     overlay_request_close();
                     continue;
                 }
+#ifdef __ANDROID__
+                if (e.type == SDL_EVENT_DISPLAY_ORIENTATION && log_orientation)
+                    LOG("[ui] display orientation %d (SDL_DisplayOrientation)\n", (int)e.display.data1);
+#endif
                 host_input_event(&e);
             } while (SDL_PollEvent(&e));
         }
