@@ -3102,8 +3102,9 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     float right = rect.Max.x - font * .6f - (r.remove ? forget_side() + font * .4f : 0);  // (draw_rows' x at the right)
     if (r.current)  // (the picker: the choice the row has now)
         diamond(dl, ImVec2(right - font * .3f, cy), font * .24f, k.glow);
-    // (a tap goes on - to a page, a screen of the app's, a question: a mark at the right, as in the MH4U port)
-    bool goes_on = r.action && r.enabled && r.id != "save" && !plated && !toggle;
+    // (a tap goes on - to a page, a screen of the app's, a question: a mark at the right, as in the MH4U port; not a
+    // picker's choice, which only picks, as there)
+    bool goes_on = r.action && r.enabled && r.id != "save" && r.id.compare(0, 7, "choice.") && !plated && !toggle;
     if (goes_on)
         chevron(dl, ImVec2(right - font * .35f, cy), font * .28f, 1, lit ? ink : fade(k.rule, .8f), std::max(2.f, s.m.line));
     if (toggle) {

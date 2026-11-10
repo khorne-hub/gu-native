@@ -341,7 +341,6 @@ static inline const char *settings_text(int language, const char *english) {
         {"Controller button", "Botón del mando"},
         {"That button of a controller does the same, and no longer does what it did.",
          "Ese botón del mando hace lo mismo, y deja de hacer lo que hacía."},
-        {"Clear", "Borrar"},
         {"Map a controller", "Mapear un mando"},
         {"For a controller the game does not read well: press each button once and it works from then on.",
          "Para un mando que el juego no lee bien: aprieta cada botón una vez y queda funcionando."},
