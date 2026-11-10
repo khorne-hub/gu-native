@@ -419,11 +419,44 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Built for API 28, every `__thread` variable is emulated TLS: a call to `__emutls_get_address` and a `pthread_getspecific` per access.
   `rt_dispatch`'s cache was one, on every indirect jump of the game (a tenth of a game thread on a Moto g06): it is now per `Cpu`, through a
   pointer in `Cpu._pad` (`dispatch.c`, bytes the game's code never touches; `cpu.h` itself must not change). Keep `__thread` out of hot paths.
+  That cache never kept HLE functions, so every call of one went through `dispatch_slow` (PC, quest 101's camp at 30 FPS: 266,000 a
+  second on the render thread, its NVN calls, and 56,000 on the update thread), and addresses 16 KB apart evict each other, each
+  miss a binary search over all the game's functions (2,500 a second on the update thread). `MHGU_PERF_DISPATCH=1` (0.1.9's perf
+  pass, off until measured) keeps the hit path and changes the miss: a second way of 4096 entries indexed by a hash (a hit there
+  swaps the two), HLE functions cached too (their `rt_unwind_point` does nothing: nothing sets `g_rt_unwind`; a reboot that sets
+  it would have to empty the caches), and a lookup searches only its 4 KB page's functions (`page_first`, the same lower bound).
+  The same function for each address; then about 2,700 misses a second on the update thread, all found in the second way.
+  The RG406V at Low-end 60 in the camp: before, 316,000 HLE calls a second through `dispatch_slow` on the render thread and
+  64,000 plus 3,900 binary searches on the update thread; with it, 4,500 misses a second on the update thread, all in the
+  second way, and the render thread's too few to log.
+  `MHGU_PERF_DISPATCH_STATS=1` logs each thread's misses every 10 s, either way.
+- Locks and write tracking, counted (`MHGU_HITCHLOG=1`, `MHGU_WT_STATS=1`), the RG406V at Low-end 60 in quest 101's camp: the
+  renderer's lock waited for 3 times in 2 minutes, vkAcquireNextImageKHR 0.08 ms a frame, no wait for the frames in flight,
+  1.8 write faults a second (2 blocks armed a second, 4,500 queries): nothing there to gain.
 - Profiling: a test APK with `<profileable android:shell="true"/>` (put it in, build, take it out), NDK `simpleperf record --app` on the
   device, `binary_cache_builder.py -lib native/build/arm64-v8a`. `--call-graph fp` stops at the Mali driver; `dwarf` gets through. The
   stripped Mali library shows its own code as `stdlibp_neon_f32x16_to_f16x16`: that is the driver recording draws, not a conversion.
 - The audio renderer had 70 effect slots of 1.7 KB, searched for every order number on every mix: over half the audio thread. `fx_order`
   lists them once after an update (`services/audio.c`). `getenv` walks the whole environment: never call it per frame, cache it.
+  MHGU has 1152 splitter destinations and every frame copied their 96 bytes of volumes (prev <- vol), 200 times a second: a fifth
+  of the mixer in a Moto g06 profile. `MHGU_PERF_AUDIO_SDEST=1` (0.1.9's perf pass, off until measured) copies only those an
+  update changed (`sd_dirty`; in a quest about 1 in 6600); `MHGU_PERF_AUDIO_ADPCM=1` decodes DSP ADPCM a 14-sample frame at a
+  time (`adpcm_block`, the same integer steps). Both give the same samples bit for bit: `MHGU_PERF_AUDIO_CHECK=1` compares them
+  with the old way as the game runs and logs any difference every 10 s (PC, quest 101: 100 s, 5.6 million ADPCM samples,
+  none; the RG406V: 6 million, none; the decoder's fuzz test, 400 million samples on x86-64 and on the RG406V, none). The
+  RG406V at Low-end 60 in quest 101's camp, standing (93 s each, on the charger): the mixer thread 0.16 CPU-s a second, 0.13
+  to 0.14 with both; the process 119 CPU-s a minute, 116 to 117.
+- The guest's `SleepThread` sleeps precisely (`plat_sleep_until_ns`: a 1 us timer slack set for good on the thread, the last 50 us
+  spun with `sched_yield`), and the game polls with it. The SDK's SleepThread (0x24a31c4) is a leaf, so at the SVC lr is the game's
+  call of main's stub 0x15efdb8 (`kernel.c` `sleep_call_site`). `MHGU_SLEEP_LOG=1` logs each call site's calls every 10 s. PC, quest
+  101's camp at 30 FPS: 0xdffcac 190 a second (5 ms each, one thread), 0xdffcd8 30-44 (20 ms), the frame limiter 0xda5d2c 30, 0x5cd704
+  about 18 (50 ms), the SDK's own 10 (100 ms); the job loop's 100 us retries for a job's dependency (0xdc7bb8) and a busy lock's 1 ms
+  backoffs (0x1431030, 0x143108c) did not show there. `MHGU_PERF_SLEEP_COARSE=1` (Android, 0.1.9's perf pass, off until measured):
+  the game's own calls but the limiter's, and the audio mixer's 200 Hz tick (its queue holds about 45 ms), sleep once to their time
+  with the thread's timer slack as it is (the system's 50 us on a thread that never slept precisely) and no spin
+  (`plat_sleep_coarse_until_ns`), some tens of microseconds later; the SDK's own sleeps and the vsync tick stay precise.
+  The RG406V at Low-end 60 in the camp: the same sites and rates (0xdffcac 188 a second); coarse, a 5 ms sleep took 5.18 ms
+  instead of 5.06, and the process's CPU time moved less than the noise (118.3 CPU-s a minute against 118.7 and 119.1).
 - `gpuprof` shows the window image's pass (the game's picture copied in, the overlay) as its last line. The game's own passes all load
   their attachments; one whose first commands clear an attachment whole begins with `LOAD_OP_CLEAR` and those values instead
   (`noload_clears`, `render_pass`), and the clears it already did are skipped (`pass_skip_clear`). Not `DONT_CARE` plus the clears: an
