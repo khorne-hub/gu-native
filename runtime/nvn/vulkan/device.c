@@ -619,6 +619,9 @@ static void create_device(void) {
     if (g_vk.stencil_export) ext[n_ext++] = VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME;
     no_exclusive = surface_caps2 && has_ext(ep, ne, "VK_EXT_full_screen_exclusive") && !getenv("MHGU_VK_EXCLUSIVE");
     if (no_exclusive) ext[n_ext++] = "VK_EXT_full_screen_exclusive";
+#ifdef __ANDROID__
+    if (vk_pacing_device_ext(ep, ne)) ext[n_ext++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;  // (MHGU_PERF_PRESENT_TIME)
+#endif
 #ifndef __ANDROID__
     mem_budget_ext = has_ext(ep, ne, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);  // (how much mem_reserve may set aside)
     if (mem_budget_ext) ext[n_ext++] = VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
@@ -642,6 +645,19 @@ static void create_device(void) {
     g_vk.has_timeline = g_vk.api12 && f12_have.timelineSemaphore;
     g_vk.mirror_clamp = g_vk.api12 ? f12_have.samplerMirrorClampToEdge : mirror_ext;
     maxwell_no_int64 = !have.features.shaderInt64 || getenv("MHGU_VK_NO_INT64");  // (the env: tests)
+    // The translator's performance switches, read once here, before any program is translated; on unless set to 0.
+    // NMin / NMax / NClamp only on Vulkan 1.2 drivers but a PowerVR's, until others are checked (old Adreno drivers are 1.1)
+    {
+        const char *e;
+        // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
+        bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
+        maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : true;
+        if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
+            LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
+                nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
+    }
     if (!g_vk.has_timeline) {
         VkPhysicalDeviceSubgroupProperties sg = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES};
         VkPhysicalDeviceProperties2 p2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &sg};
@@ -731,6 +747,7 @@ static void create_device(void) {
     one_compiler_install();  // (PowerVR: before anything is compiled)
 #ifdef __ANDROID__
     gpu_driver_check();
+    vk_pacing_device();  // (MHGU_PERF_PRESENT_TIME: present_pacing.c)
     {   // (Vulkan 1.2's, and only by the device: the libvulkan of an older Android doesn't know them)
         PFN_vkWaitSemaphores wait = (PFN_vkWaitSemaphores)vkGetDeviceProcAddr(g_vk.dev, "vkWaitSemaphores");
         PFN_vkGetSemaphoreCounterValue value = (PFN_vkGetSemaphoreCounterValue)vkGetDeviceProcAddr(g_vk.dev, "vkGetSemaphoreCounterValue");
@@ -941,12 +958,27 @@ void vk_set_msaa(uint32_t n) {
 // ================================================================== swapchain
 static int swapchain_vsync = -1;
 static int configured_msaa = -1;
+static bool swapchain_paced;  // FIFO, its presents timed to the display's vsyncs (Android: present_pacing.c)
+#ifdef __ANDROID__
+// Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on, the FPS limit a whole fraction
+// of the display's rate; never with MHGU_VK_PRESENT or MHGU_VSYNC given)
+static bool paced_wanted(void) {
+    static int env = -1;
+    if (env < 0) env = getenv("MHGU_VK_PRESENT") || getenv("MHGU_VSYNC");
+    return !env && config_live_vsync() && vk_pacing_fifo();
+}
+#endif
 static VkPresentModeKHR present_mode(void) {
     swapchain_vsync = config_live_vsync();
     // MAILBOX by default: no tearing, and the game paces itself (its own 30 fps vsync waits); with FIFO the game's frames
     // also queued behind the display's, dropping to ~26 fps on the R9. FIFO where there is no mailbox.
     const char *e = getenv("MHGU_VK_PRESENT"), *v = getenv("MHGU_VSYNC");
     if (!e && v) e = atoi(v) ? "fifo" : "immediate";
+    swapchain_paced = false;
+#ifdef __ANDROID__
+    // (FIFO for presents timed to the display: MAILBOX would let a newer picture replace one waiting for its time)
+    if (!e && paced_wanted()) e = "fifo", swapchain_paced = true;
+#endif
     if (!e) e = swapchain_vsync ? "mailbox" : "immediate";  // (mhgurecomp.ini VSync)
     VkPresentModeKHR want = !strcmp(e, "fifo") ? VK_PRESENT_MODE_FIFO_KHR
                           : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_MAILBOX_KHR;
@@ -962,6 +994,38 @@ static VkPresentModeKHR present_mode(void) {
 
 static VkRenderPass sc_pass;
 static VkFramebuffer sc_fb[VK_SC_MAX];
+// The window image drawn turned for the panel (Android, MHGU_PERF_PREROTATE=1): a phone's panel is portrait, and a picture
+// presented upright in landscape (IDENTITY) is turned by the system on every frame. Where the display hardware turns it
+// as it scans out (an Anbernic RG406V's DPU) that costs nothing, but a Moto g06's MediaTek composer sends the layer through
+// its MDP block ("MM" in dumpsys SurfaceFlinger), which reads the whole picture and writes a turned copy every frame. So
+// the swapchain takes the surface's own transform and portrait size, and its one pass draws turned:
+// the game's picture (exec.c vk_present_draw), the overlay (overlay.cpp) and a screenshot's pixels turned back upright.
+// sc_extent stays the window's (landscape) size, what everything is drawn for; sc_phys is the images' own.
+// Only at 90 degrees (transform 0x2: the Moto, the Anbernic and the Galaxy as they are usually held): there the screen
+// shows the same pixels as upright (the settings menu held over a frame, both ways: 0 of 691200 differ). At 270 (0x8)
+// a pixel centre right on an edge goes to the other side of it (Vulkan draws one on a top or left edge, and the turn makes
+// ImGui's glyph edges, which sit on half pixels across, bottom and top ones): 266 pixels of the menu's text differed, up
+// to 48 levels. There the system keeps turning the picture, as before ("prerotate 2" in the control file tries it).
+static int sc_turn;           // quarter turns the window image is drawn with: 0, 1 (90 degrees) or 3 (270)
+static VkExtent2D sc_phys;    // the window images' own size (sc_extent turned when sc_turn is odd)
+static VkSurfaceTransformFlagBitsKHR sc_transform;  // the swapchain's preTransform
+int vk_window_turn(void) { return sc_turn; }
+#ifdef __ANDROID__
+int g_prerotate_test = -1;  // (MHGU_CONTROL "prerotate 0|1|2": tests, the same frame both ways, 2 at 270 too; -1: the switch)
+static bool sc_wants_turn;     // (the switch or a test on: the panel's transform looked at again at a SUBOPTIMAL)
+// The quarter turns to draw with for the surface as it is now: 1 at 90 degrees with the switch on, else 0
+static int turn_wanted(const VkSurfaceCapabilitiesKHR *caps) {
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("MHGU_PERF_PREROTATE");
+        on = e ? *e == '1' : 1;  // (unset: on)
+    }
+    int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED), want = t >= 0 ? t : on;
+    VkSurfaceTransformFlagsKHR cur = caps->currentTransform;
+    if (!want || !(caps->supportedTransforms & cur)) return 0;
+    return cur == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ? 1 : cur == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR && want == 2 ? 3 : 0;
+}
+#endif
 
 static void create_swapchain(void) {
     VkSurfaceCapabilitiesKHR caps;
@@ -1002,7 +1066,15 @@ static void create_swapchain(void) {
         ext.width = ext.height, ext.height = t;
     }
     if (caps.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
+    sc_turn = w > 0 && h > 0 ? turn_wanted(&caps) : 0;
+    {
+        VkSurfaceCapabilitiesKHR any = caps;
+        any.currentTransform = VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, any.supportedTransforms = ~0u;
+        sc_wants_turn = turn_wanted(&any) != 0;  // (the switch on: a swapchain left upright looks again at a SUBOPTIMAL)
+    }
+    if (sc_turn) transform = caps.currentTransform;  // (MHGU_PERF_PREROTATE: drawn turned for the panel)
 #endif
+    VkExtent2D phys = sc_turn ? (VkExtent2D){ext.height, ext.width} : ext;
     // (Android drivers often only offer INHERIT)
     VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha))
@@ -1025,7 +1097,7 @@ static void create_swapchain(void) {
     VkSwapchainKHR old = g_vk.swapchain;
     VkSwapchainCreateInfoKHR ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_vk.surface, .minImageCount = count,
-        .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = ext, .imageArrayLayers = 1,
+        .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = phys, .imageArrayLayers = 1,
         .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = transform,
         .compositeAlpha = alpha, .presentMode = present_mode(), .clipped = VK_TRUE,
@@ -1052,6 +1124,7 @@ static void create_swapchain(void) {
     if (sc_pass && sf.format != g_vk.sc_format) { vkDestroyRenderPass(g_vk.dev, sc_pass, NULL); sc_pass = VK_NULL_HANDLE; }
     g_vk.sc_format = sf.format;
     g_vk.sc_extent = ext;
+    sc_phys = phys, sc_transform = transform;
     if (!sc_pass) {  // the window image: cleared, then presented (copied from for screenshots first)
         VkAttachmentDescription a = {.format = sf.format, .samples = VK_SAMPLE_COUNT_1_BIT, .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
                                      .storeOp = VK_ATTACHMENT_STORE_OP_STORE, .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
@@ -1077,11 +1150,15 @@ static void create_swapchain(void) {
                                     .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
         VK_CHECK(vkCreateImageView(g_vk.dev, &vi, NULL, &g_vk.sc_views[i]));
         VkFramebufferCreateInfo fi = {.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO, .renderPass = sc_pass, .attachmentCount = 1,
-                                      .pAttachments = &g_vk.sc_views[i], .width = ext.width, .height = ext.height, .layers = 1};
+                                      .pAttachments = &g_vk.sc_views[i], .width = phys.width, .height = phys.height, .layers = 1};
         VK_CHECK(vkCreateFramebuffer(g_vk.dev, &fi, NULL, &sc_fb[i]));
     }
-    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d\n", ext.width, ext.height, g_vk.sc_count, count,
-        caps.minImageCount, sf.format);
+    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d%s%s\n", ext.width, ext.height, g_vk.sc_count, count,
+        caps.minImageCount, sf.format, swapchain_paced ? ", FIFO with presents timed to the display" : "",
+        sc_turn == 1 ? ", drawn turned 90 degrees for the panel" : sc_turn == 3 ? ", drawn turned 270 degrees for the panel" : "");
+#ifdef __ANDROID__
+    vk_pacing_swapchain();  // (the display's period, the cadence anew)
+#endif
 }
 
 static void recreate_swapchain(void) {
@@ -1177,6 +1254,14 @@ static bool frame_begin(void) {
     if (msaa != configured_msaa) { vk_set_msaa((uint32_t)msaa); configured_msaa = msaa; }
     if (!g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
         config_live_vsync() != swapchain_vsync) recreate_swapchain();
+#ifdef __ANDROID__
+    else if (paced_wanted() != swapchain_paced) recreate_swapchain();  // (the FPS limit or the display's rate changed)
+    else if (__atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED) >= 0) {  // (a test's switch: made again when it changes)
+        static int was = -1;
+        int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED);
+        if (t != was) was = t, recreate_swapchain();
+    }
+#endif
     if (!g_vk.swapchain) return false;
     slot = (slot + 1) % FRAMES;
     if (!acquire_sem[slot]) acquire_sem[slot] = binary_semaphore();
@@ -1196,11 +1281,11 @@ static bool frame_begin(void) {
     vk_full_barrier(cb);  // (the game's image is complete before it is sampled)
     VkClearValue black = {.color.float32 = {0, 0, 0, 1}};
     VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = sc_pass,
-                                .framebuffer = sc_fb[cur_frame.image], .renderArea = {{0, 0}, g_vk.sc_extent},
+                                .framebuffer = sc_fb[cur_frame.image], .renderArea = {{0, 0}, sc_phys},
                                 .clearValueCount = 1, .pClearValues = &black};
     vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
-    VkViewport vp = {0, 0, (float)g_vk.sc_extent.width, (float)g_vk.sc_extent.height, 0, 1};
-    VkRect2D sc = {{0, 0}, g_vk.sc_extent};
+    VkViewport vp = {0, 0, (float)sc_phys.width, (float)sc_phys.height, 0, 1};
+    VkRect2D sc = {{0, 0}, sc_phys};
     vkCmdSetViewport(cb, 0, 1, &vp);
     vkCmdSetScissor(cb, 0, 1, &sc);
     cur_frame.ok = true;
@@ -1208,9 +1293,17 @@ static bool frame_begin(void) {
 }
 
 // A screenshot being written: the window image's pixels (B8G8R8A8 or R8G8B8A8), made RGBA and saved as PNG.
-typedef struct { char path[300]; uint8_t *px; uint32_t w, h; bool bgr; } ShotJob;
+typedef struct { char path[300]; uint8_t *px; uint32_t w, h; bool bgr; int turn; } ShotJob;
 static void *shot_thread(void *arg) {
     ShotJob *j = arg;
+    if (j->px && j->turn) {  // (drawn turned for the panel: the window's w x h from the image's h x w, MHGU_PERF_PREROTATE)
+        uint32_t *src = (uint32_t *)j->px, *dst = malloc((size_t)j->w * j->h * 4), W = j->w, H = j->h;
+        for (uint32_t y = 0; dst && y < H; y++)
+            for (uint32_t x = 0; x < W; x++)
+                dst[(size_t)y * W + x] = j->turn == 1 ? src[(size_t)x * H + (H - 1 - y)] : src[(size_t)(W - 1 - x) * H + y];
+        free(j->px);
+        j->px = (uint8_t *)dst;
+    }
     if (j->px) {
         uint64_t n = (uint64_t)j->w * j->h;
         for (uint64_t i = 0; j->bgr && i < n; i++) { uint8_t t = j->px[i * 4]; j->px[i * 4] = j->px[i * 4 + 2]; j->px[i * 4 + 2] = t; }
@@ -1224,8 +1317,9 @@ static void *shot_thread(void *arg) {
     return NULL;
 }
 
-// End the window image's render pass and present it. shot_path: also save the window image as PNG.
-static void frame_end(const char *shot_path) {
+// End the window image's render pass and present it. shot_path: also save the window image as PNG. new_frame: a game
+// frame (false: the last picture again, the settings menu holding the game).
+static void frame_end(const char *shot_path, bool new_frame) {
     if (!cur_frame.ok) return;
     VkCommandBuffer cb = vk_cmd();
     vkCmdEndRenderPass(cb);
@@ -1233,7 +1327,7 @@ static void frame_end(const char *shot_path) {
     VkSpan shot = {0};
     uint32_t img = cur_frame.image;
     if (shot_path) {  // PRESENT_SRC -> TRANSFER_SRC, copy, back
-        uint32_t w = g_vk.sc_extent.width, h = g_vk.sc_extent.height;
+        uint32_t w = sc_phys.width, h = sc_phys.height;
         shot = vk_readback((uint64_t)w * h * 4);
         VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
                                   .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT, .oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
@@ -1254,6 +1348,11 @@ static void frame_end(const char *shot_path) {
     vk_submit_extra(cur_frame.acquired, done_sem[img]);
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
+#ifdef __ANDROID__
+    if (swapchain_paced) vk_pacing_present(&pi, new_frame);  // (its time on the display's vsync grid: present_pacing.c)
+#else
+    (void)new_frame;
+#endif
     uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
     VkResult r = vkQueuePresentKHR(g_vk.queue, &pi);
     if (HITCH_ON) hitch_add(HC_PRESENT, plat_now_ns() - t0, 0);
@@ -1262,6 +1361,16 @@ static void frame_end(const char *shot_path) {
     // portrait panel held sideways): the compositor turns it, which is fine; remaking the swapchain for it drained the
     // GPU every frame - half the frame time on a Galaxy S25. Only a swapchain out of date is made again.)
     if (r == VK_ERROR_OUT_OF_DATE_KHR) recreate_swapchain();
+    else if (r == VK_SUBOPTIMAL_KHR && sc_wants_turn) {  // (MHGU_PERF_PREROTATE: the phone turned round since? 4 a second at most)
+        static uint64_t asked;
+        uint64_t now = plat_now_ns();
+        VkSurfaceCapabilitiesKHR caps;
+        if (now - asked >= 250000000ull && (asked = now) &&
+            vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_vk.phys, g_vk.surface, &caps) == VK_SUCCESS && turn_wanted(&caps) != sc_turn) {
+            LOG("[vk] the panel's transform is now 0x%x: the swapchain made again\n", caps.currentTransform);
+            recreate_swapchain();
+        }
+    }
 #else
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
 #endif
@@ -1271,7 +1380,7 @@ static void frame_end(const char *shot_path) {
         vk_wait_seq(seq);
         ShotJob *j = malloc(sizeof *j);
         if (!j) { LOG("[vk] saving %s failed: out of memory\n", shot_path); return; }
-        j->w = g_vk.sc_extent.width, j->h = g_vk.sc_extent.height;
+        j->w = g_vk.sc_extent.width, j->h = g_vk.sc_extent.height, j->turn = sc_turn;
         j->bgr = g_vk.sc_format == VK_FORMAT_B8G8R8A8_UNORM || g_vk.sc_format == VK_FORMAT_B8G8R8A8_SRGB;
         j->px = malloc((size_t)j->w * j->h * 4);
         snprintf(j->path, sizeof j->path, "%s", shot_path);
@@ -1318,6 +1427,8 @@ void backend_present(NvnTexture *t) {
     extern void vi_frame_presented(void);
     vi_frame_presented();  // (the frame rate target back in place; MHGU_STEPLOG's count: runtime/hle/vi.c)
     vk_lock();
+    extern void vk_color_fill_flush(TexBackend *b);
+    vk_color_fill_flush(NULL);  // (MHGU_PERF_HUDSTART_FUSE, MHGU_PERF_FXAA_COPYDRAW: a picture still to be drawn, now)
     if (g_fsr_on) t = vk_fsr_present(t);  // FSR: its output-size picture with the HUD (fsr.c)
     g_last_picture = t;
     TexBackend *b = vk_tex(t, true);
@@ -1338,7 +1449,7 @@ void backend_present(NvnTexture *t) {
         if (vh > wh) vh = wh, vw = wh * a;
         vk_present_draw(vk_cmd(), b, (float)((ww - vw) / 2), (float)((wh - vh) / 2), (float)vw, (float)vh);
         OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
-                            g_vk.sc_extent.width, g_vk.sc_extent.height};
+                            g_vk.sc_extent.width, g_vk.sc_extent.height, sc_turn};
         overlay_draw(vk_cmd(), &ot);  // (Forge plugins' ImGui overlay, over the game: runtime/overlay.cpp)
         char path[300];
         extern char g_shot_request[256];  // (runtime/host_input.c: MHGU_CONTROL "shot <name>")
@@ -1354,7 +1465,7 @@ void backend_present(NvnTexture *t) {
             if (g_shot_request[0]) { snprintf(path, sizeof path, "%s", g_shot_request); g_shot_request[0] = 0; }
             else snprintf(path, sizeof path, "shots/frame_%05llu.png", (unsigned long long)(g_frames + 1));
         }
-        frame_end(shot ? path : NULL);
+        frame_end(shot ? path : NULL, true);
     } else {
         vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
@@ -1364,6 +1475,7 @@ void backend_present(NvnTexture *t) {
     if (g_frames == 120) gpu_driver_good();  // (a driver of the player's own has drawn: it stays)
 #endif
     touch_hud_frame();  // (the touch controls: where this frame's HUD parts were, runtime/touch.cpp)
+    ui_loop_wake();  // (a frame: the window loop runs a pass now if it waits between events, MHGU_PERF_INPUT_WAKE, ui.c)
 #ifndef __ANDROID__
     mousemenu_frame();  // (and the mouse in the game's menus: where this frame's menu pieces were, runtime/hle/mousemenu.c)
 #endif
@@ -1426,14 +1538,30 @@ bool vk_present_again(void) {
         void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, float vw, float vh);  // (exec.c)
         vk_present_draw(vk_cmd(), b, (float)((ww - vw) / 2), (float)((wh - vh) / 2), (float)vw, (float)vh);
         OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
-                            g_vk.sc_extent.width, g_vk.sc_extent.height};
+                            g_vk.sc_extent.width, g_vk.sc_extent.height, sc_turn};
         overlay_draw(vk_cmd(), &ot);
-        frame_end(NULL);
+        frame_end(NULL, false);
     } else {
         vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
     vk_unlock();
     return true;
+}
+
+// (runtime/overlay.cpp, the settings menu holding the game with MHGU_PERF_MENU_PRESENT=1) the window needs a present
+// whatever the menu shows: back from the background (a new surface to make), no swapchain, the window's size or the
+// VSync setting changed (frame_begin makes it again)
+bool vk_present_needed(void) {
+#ifdef __ANDROID__
+    if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE)) return true;
+#endif
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(ui_window(), &w, &h);
+    vk_lock();
+    bool need = !g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
+                config_live_vsync() != swapchain_vsync;
+    vk_unlock();
+    return need;
 }
 
 // ================================================================== init

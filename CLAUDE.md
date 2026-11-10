@@ -156,6 +156,64 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 - `MHGU_FSR_LOG=1` (FSR, and Low-end mode's plain scaling too) names the draw where the HUD starts and the 3D effects kept with
   the scene before it (vertices, depth test, the textures' sizes, `r` for a render target); `MHGU_FSR_SCENE_FX=0` lets those
   effects start the HUD again, as before 0.1.9.
+- Performance switches (`MHGU_PERF_<NAME>=0|1`, read once at the start). Unset, each has its default: on where 0.1.9's
+  performance pass measured a win (the list below), off (the old way) for the others; `=0` or `=1` in `env.txt` or the
+  environment overrides it for a test, and the log's `[perf]` lines say which are set:
+  - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
+    runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
+    the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings
+    menu, a scripted press, an event in the last 500 ms);
+    otherwise it waits up to 16 ms on a semaphore that SDL's event watch, each frame presented, a rumble changing and the
+    menu's requests post. Woken by an event it brings the controls' state up to date first, as the pass 3 ms before did. The
+    touch controls' timings are those of the 3 ms loop. Once a minute the log counts the passes of each kind.
+  - `MHGU_PERF_OVERLAY_REUSE=1`: a frame with the touch controls alone on the overlay (no menu, notice, chat, stats, credits or
+    plugin's drawing) whose key (`touch.cpp DrawKey`: their state, what shows and where, the HUD parts' places, the settings'
+    generation, the game's buttons on the badges, the screen) is the one of the frame built last is not built again
+    (`overlay.cpp frame_once`): the render thread draws the copy it has. Nothing moving (a finger, the run, the lock-on's
+    pulse, the menu pad's fade) gives no key; once a second a frame is built anyway. `=2` is a check: those frames are built
+    and compared with the copy, and a difference is logged. The log counts built and reused frames each minute.
+  - `MHGU_PERF_MENU_PRESENT=1` (Android): while the settings menu holds the game (`overlay_frame`), the held picture is
+    presented again only when the menu's draw lists changed byte for byte (`snap_same`), when the window needs it
+    (`vk_present_needed`: back from the background, a new size, VSync) and once a second; the menu is still built 60 times
+    a second. Each hold logs its presents and the frames it didn't present again.
+  - `MHGU_PERF_NO_ACCEL=1` (Android): SDL's accelerometer listener (50 events a second on the app's main thread, which nothing
+    reads: the game's motion sensors are always at rest) is not registered; the display's rotation reaches SDL from a
+    `DisplayManager` listener instead (`GameActivity.GameSurface`), as `onNativeRotationChanged`. With the variable set,
+    0 or 1, the log names each display orientation SDL reports.
+  - The others, each described with its part of the runtime below: the translator's `NMINMAX`, `IPA` and `VSTRIM`; its per-draw
+    work's `DRAWS` (`GETENV`, `DRVTAB`, `TEXSCAN`, `TEXTIME`, `PIPEMEMO`, `LAZYIDX`, `IDXCOPY`), `DYNUBO` and the check `CHECK`; the
+    safety nets' `VCNET`, `TEXNET`, `TEXSAMPLE` and `TEXSTREAM`; the render passes' `RODEPTH`, `SHADOW_CLEAR`, `HUDSTART_FUSE`,
+    `FXAA_COPYDRAW` and `FMTLIST`; pacing and threads' `ADPF70`, `EFFICIENT`, `LIMITER`, `MEMTHREAD`, `THREADNAMES` and `NODISCORD`;
+    the window image's `PRESENT_TIME` and `PREROTATE`; the audio's `AUDIO_SDEST` and `AUDIO_ADPCM` (the check `AUDIO_CHECK`), the
+    guest's `SLEEP_COARSE` and the dispatch's `DISPATCH`. Each works on its own and with all the others: the RG406V (Mali-G57, its
+    own settings: 75 %, 60 FPS, Shadows On, FXAA Off), quest 101's camp, standing, all of them on at once (`SHADOW_CLEAR=2`,
+    `HUDSTART_FUSE=3`): the game's and the settings menus as before, and of five shots of each run, the 143,715 pixels that stayed
+    the same within both runs (the near ground, the HUD) the same in both, 0 differing; the rest moves as much within a run as
+    between the two. With the checks on as well (`CHECK=1`, `OVERLAY_REUSE=2`, `AUDIO_CHECK=1`, `MHGU_TEX_NET_CHECK=1`,
+    `MHGU_VK_VC_SAFETY=2`) 8.5 million per-draw comparisons, the mixer's splitter volumes and ADPCM blocks, the vertex cache's
+    slices, every texture's whole hash and the reused overlay frames found no difference. That phone has no ADPF session (API 33):
+    `ADPF70` and `EFFICIENT` do nothing there.
+  - Measured (0.1.9's performance pass, the quest-101 camp standing, the Anbernic RG406V (Mali-G57) and the Moto g06 (Mali-G52);
+    the picture 0 pixels different where the scene stood still with each one, no errors, no device lost) and so ON by default:
+    the render passes and translator together (`SHADOW_CLEAR=2`, `RODEPTH`, `FXAA_COPYDRAW`, `NMINMAX`, `IPA`, `VSTRIM`): the
+    RG406V's GPU frame -16 % at 75 % (p99 33.4 -> 17.0 ms) and -20 % at 100 % (45.9 -> 53.3 FPS), not measured on the Moto;
+    `HUDSTART_FUSE=3` (the default is 3): the Moto at Low-end 60 GPU frame -10 %, the draw giving the blit's bytes; `DRAWS` (all
+    seven) and `DYNUBO`: the Moto's translating thread -7.5 %, descriptor sets reused 25 % -> 67 % (the RG406V: `DRAWS` a small
+    win, `DYNUBO` neutral); the safety nets (`VCNET`, `TEXNET`, `TEXSAMPLE`, `TEXSTREAM`): the Moto's uploads -66 %, bytes copied
+    -33 % (the RG406V: the same CPU, the work moved to the workers); `PRESENT_TIME`: the Moto at Toaster 30, 98-99 % of the
+    intervals exactly two vsyncs (76-79 % before), p90 49.9 -> 33.3 ms; `LIMITER`, `MEMTHREAD`, `SLEEP_COARSE`, `AUDIO_SDEST`,
+    `AUDIO_ADPCM`, `INPUT_WAKE`, `OVERLAY_REUSE`, `NO_ACCEL` and `NODISCORD` together: the RG406V's app CPU -3.9 % (the old
+    `[mem]` line took 8-15 ms of the presenting thread once a minute); `PREROTATE`: exact, the Moto's layer from the MediaTek
+    MDP rotator straight to the panel (`UI`, transform 0), nothing on the RG406V (its DPU turns it); `THREADNAMES` (names only).
+    The PC build shares the runtime and has the same defaults (measured there: the safety nets only); `PREROTATE`,
+    `PRESENT_TIME`, `INPUT_WAKE`, `NO_ACCEL`, `NODISCORD`, `MEMTHREAD` and `SLEEP_COARSE` are Android's alone.
+  - Measured and left OFF: `ADPF70` (the Moto's CPU -3.8 %, but its watts unknown: the phones were charging; measure them
+    unplugged before turning it on), `EFFICIENT` (nothing at the camp), `DISPATCH` (no change). Not measured, OFF: `FMTLIST`,
+    `MENU_PRESENT`, and the checks `CHECK`, `AUDIO_CHECK` (and `OVERLAY_REUSE=2`).
+  - Not yet checked on an Adreno (Galaxy S25) or a PowerVR: `RODEPTH`, `SHADOW_CLEAR`, `HUDSTART_FUSE`, `FXAA_COPYDRAW` (each
+    checks itself on the GPU before it acts, and logs it), `NMINMAX` (Vulkan 1.2 drivers but a PowerVR's), `PREROTATE` (the
+    Galaxy held at 90 degrees: `dumpsys SurfaceFlinger`'s layer, the menu's text), `PRESENT_TIME` at 120 Hz (the swapchain line
+    once, not again and again).
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
@@ -196,6 +254,32 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `MHGU_VK_IMAGES=<n>` asks for that many.
 - Samsung ignores the manifest's game category. Only the one set by the installer counts: see `GameFolderActivity.declareGame`.
 - On Android, a `SUBOPTIMAL` result from present must not recreate the swapchain: doing so cost two thirds of the frame rate.
+- Frame pacing at an FPS limit that is a whole fraction of the refresh rate (30 on 60 Hz): presented as soon as drawn (MAILBOX),
+  the frames land on either side of a vsync and show for 16 and 50 ms in turn. Anbernic RG406V, Low-end 50 %, 30 FPS, standing
+  at the quest-101 camp, display side (MH4U's `scripts/pacing/probe.sh` and `report.py`): 7.7 % of the intervals a vsync short or
+  long, 1% low 20 fps, p99 50 ms, 62 intervals of 50 ms a minute. `MHGU_PERF_PRESENT_TIME=1` (`nvn/vulkan/present_pacing.c`, read
+  once; on by default since the measurements above) presents FIFO at those limits, each frame timed on the display's vsync grid
+  (`VK_GOOGLE_display_timing`, MH4U for Android's rule; the margin is `GameActivity.presentationDeadlineNs` and 4 ms, raised 2 ms
+  for good at a second late frame within 30 s): 0.04 % of the intervals off, 1% low 27.9 to 29.3, p99 33.5 ms, game time 1.00x.
+  `vkGetRefreshCycleDurationGOOGLE` said 16.65 to 16.68 ms where the vsyncs come every 16.667: the period is measured from the
+  presents' own times, and every slot put on the newest vsync's grid (chained on the period given, the slots drifted half a
+  period in 15 s and a frame showed a vsync late each time). `MHGU_PRESENT_MARGIN=<us>` fixes the margin (tests). At the refresh
+  rate itself (60 on 60 Hz) nothing changes: MAILBOX drops 0.6-0.8 % of the frames drawn there (shown 59.5-59.6 of 59.96 a
+  second, 1% low 33-36), under the 1-2 % that would pay for FIFO's latency. The game never asks `nn::vi` for its vsync event
+  (`vi.c`'s thread doesn't start): its pace is the engine's limiter alone, on the host's clock.
+- `MHGU_PERF_PREROTATE=1` (`device.c` `sc_turn`, read once; on by default, `=0` the old way): the window image drawn turned for the
+  panel. Presented upright in landscape (IDENTITY), the picture is turned by the system every frame: an Anbernic RG406V's DPU does
+  it as it scans out (`dumpsys SurfaceFlinger`'s composer table: DPU, transform 90), but a Moto g06's MediaTek composer sends the
+  layer through its MDP block (`MM` in that table), which reads the whole picture and writes a turned copy. Turned by the app the
+  layer goes straight to the panel (`UI`, transform 0). The swapchain takes the surface's transform and portrait size;
+  `vk_present_draw` (`exec.c`) turns its rectangle and samples the picture turned back, the overlay draws a turned copy of its
+  snapshot (`overlay.cpp`: vertices, and its scissors as whole pixels turned, as the backend cuts them upright) and a screenshot
+  is turned back upright. Only at 90 degrees (transform 0x2, as the three phones are usually held): the settings menu held over
+  a frame, screen captures with and without it are identical (0 of 691200 pixels). At 270 (0x8) Vulkan's top-left rule puts
+  pixel centres on ImGui's glyph edges (on half pixels across) on the other side: 266 pixels of the menu's text differed, up to
+  48 levels, so the system keeps turning there. A 180-degree turn of the phone makes the swapchain again (a `SUBOPTIMAL` checks the
+  transform, 4 a second at most). `prerotate 0|1|2` in the control file switches it in a running game (2: at 270 too), for
+  comparing the same held frame both ways.
 - The hunter has one class per weapon: never compare against one vtable. Virtual 94 tells a hunter of any weapon and whether the
   weapon is out (`runtime/hle/weapon.c`). The `sPlayer` slot can hold another object that points to the hunter.
 - Don't trust an offset measured in one session: check it in another one.
@@ -233,6 +317,17 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   no more than two runs of one setting differ from each other. The shadow pass is 6.2 ms of a 29 ms GPU frame there, Off 25 ms: at 30 FPS the
   GPU drops a clock step instead of idling (Off, its other passes took about 10 % longer), so the 6 ms saved little power.
   A Galaxy denies those files: use `dumpsys battery` (Charge counter, in steps of 4.9 mAh); its `dumpsys thermalservice` repeats a stale value.
+- Pacing and threads, 0.1.9's performance pass (each read once at the start; `LIMITER`, `MEMTHREAD`, `THREADNAMES` and `NODISCORD` on
+  by default, `ADPF70` and `EFFICIENT` off; `=0` / `=1` override): `MHGU_PERF_ADPF70` the ADPF target 70 % of the frame period at FPS limits of 60 and below, as in MH4U
+  (at all of it the system lowers the clocks until the busiest thread fills the period: the Moto at Toaster 30 worked 25.5 ms a frame on
+  average, 33 at most, of 33.3), the efficient cores then judged against the period. `MHGU_PERF_EFFICIENT` a frame over the target on
+  its own neither turns the efficient cores off nor keeps them away (`efficiency_follow`; two in a window, or another within 30
+  windows, still do); `MHGU_ADPF_EFFICIENT=force` holds them on, to measure what they can save. `MHGU_PERF_LIMITER` the engine's frame limiter
+  (main 0xda5824) sleeps until its frame's time less a margin instead of turning 1-2 ms a frame on the clock (`runtime/hle/limiter.c`;
+  `MHGU_LIMITER_LOG=1` its sleeps and turns, on or off). `MHGU_PERF_MEMTHREAD` the minute's `[mem]` line on a thread of its own, off the
+  update thread (with `MHGU_ADPF_LOG=1` each line says what it cost). `MHGU_PERF_THREADNAMES` names the runtime's threads (`g44-10a` the
+  game's by priority and handle, `game+render`, `submit`, `vsync`, `audren`, `upload-N`, `shader-N`, `fence`, `ui`...): otherwise all are
+  `SDLThread`, and the MH4U port's pacing probe (`threads.py`) can't tell them apart. `MHGU_PERF_NODISCORD` no Discord thread on Android.
 - `MHGU_FS_NEW=1` logs each fragment program the first time it draws; `MHGU_FS_WATCH=<hash>` saves the frames where one draws. A hit draws
   `cc207b43683737c8`, a 17-sample radial blur. The device's `shots` folder keeps old files: go by the names in the log, not by what's there.
 - Started with the phone locked or upright, the display says portrait: the 3D picture came out 720x576 with black at the sides. `config.c` now
@@ -359,19 +454,119 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Built for API 28, every `__thread` variable is emulated TLS: a call to `__emutls_get_address` and a `pthread_getspecific` per access.
   `rt_dispatch`'s cache was one, on every indirect jump of the game (a tenth of a game thread on a Moto g06): it is now per `Cpu`, through a
   pointer in `Cpu._pad` (`dispatch.c`, bytes the game's code never touches; `cpu.h` itself must not change). Keep `__thread` out of hot paths.
+  That cache never kept HLE functions, so every call of one went through `dispatch_slow` (PC, quest 101's camp at 30 FPS: 266,000 a
+  second on the render thread, its NVN calls, and 56,000 on the update thread), and addresses 16 KB apart evict each other, each
+  miss a binary search over all the game's functions (2,500 a second on the update thread). `MHGU_PERF_DISPATCH=1` (0.1.9's perf
+  pass, off: measured without a change) keeps the hit path and changes the miss: a second way of 4096 entries indexed by a hash (a hit there
+  swaps the two), HLE functions cached too (their `rt_unwind_point` does nothing: nothing sets `g_rt_unwind`; a reboot that sets
+  it would have to empty the caches), and a lookup searches only its 4 KB page's functions (`page_first`, the same lower bound).
+  The same function for each address; then about 2,700 misses a second on the update thread, all found in the second way.
+  The RG406V at Low-end 60 in the camp: before, 316,000 HLE calls a second through `dispatch_slow` on the render thread and
+  64,000 plus 3,900 binary searches on the update thread; with it, 4,500 misses a second on the update thread, all in the
+  second way, and the render thread's too few to log.
+  `MHGU_PERF_DISPATCH_STATS=1` logs each thread's misses every 10 s, either way.
+- Locks and write tracking, counted (`MHGU_HITCHLOG=1`, `MHGU_WT_STATS=1`), the RG406V at Low-end 60 in quest 101's camp: the
+  renderer's lock waited for 3 times in 2 minutes, vkAcquireNextImageKHR 0.08 ms a frame, no wait for the frames in flight,
+  1.8 write faults a second (2 blocks armed a second, 4,500 queries): nothing there to gain.
 - Profiling: a test APK with `<profileable android:shell="true"/>` (put it in, build, take it out), NDK `simpleperf record --app` on the
   device, `binary_cache_builder.py -lib native/build/arm64-v8a`. `--call-graph fp` stops at the Mali driver; `dwarf` gets through. The
   stripped Mali library shows its own code as `stdlibp_neon_f32x16_to_f16x16`: that is the driver recording draws, not a conversion.
 - The audio renderer had 70 effect slots of 1.7 KB, searched for every order number on every mix: over half the audio thread. `fx_order`
   lists them once after an update (`services/audio.c`). `getenv` walks the whole environment: never call it per frame, cache it.
+  MHGU has 1152 splitter destinations and every frame copied their 96 bytes of volumes (prev <- vol), 200 times a second: a fifth
+  of the mixer in a Moto g06 profile. `MHGU_PERF_AUDIO_SDEST=1` (0.1.9's perf pass, on by default) copies only those an
+  update changed (`sd_dirty`; in a quest about 1 in 6600); `MHGU_PERF_AUDIO_ADPCM=1` decodes DSP ADPCM a 14-sample frame at a
+  time (`adpcm_block`, the same integer steps). Both give the same samples bit for bit: `MHGU_PERF_AUDIO_CHECK=1` compares them
+  with the old way as the game runs and logs any difference every 10 s (PC, quest 101: 100 s, 5.6 million ADPCM samples,
+  none; the RG406V: 6 million, none; the decoder's fuzz test, 400 million samples on x86-64 and on the RG406V, none). The
+  RG406V at Low-end 60 in quest 101's camp, standing (93 s each, on the charger): the mixer thread 0.16 CPU-s a second, 0.13
+  to 0.14 with both; the process 119 CPU-s a minute, 116 to 117.
+- The guest's `SleepThread` sleeps precisely (`plat_sleep_until_ns`: a 1 us timer slack set for good on the thread, the last 50 us
+  spun with `sched_yield`), and the game polls with it. The SDK's SleepThread (0x24a31c4) is a leaf, so at the SVC lr is the game's
+  call of main's stub 0x15efdb8 (`kernel.c` `sleep_call_site`). `MHGU_SLEEP_LOG=1` logs each call site's calls every 10 s. PC, quest
+  101's camp at 30 FPS: 0xdffcac 190 a second (5 ms each, one thread), 0xdffcd8 30-44 (20 ms), the frame limiter 0xda5d2c 30, 0x5cd704
+  about 18 (50 ms), the SDK's own 10 (100 ms); the job loop's 100 us retries for a job's dependency (0xdc7bb8) and a busy lock's 1 ms
+  backoffs (0x1431030, 0x143108c) did not show there. `MHGU_PERF_SLEEP_COARSE=1` (Android, 0.1.9's perf pass, on by default):
+  the game's own calls but the limiter's, and the audio mixer's 200 Hz tick (its queue holds about 45 ms), sleep once to their time
+  with the thread's timer slack as it is (the system's 50 us on a thread that never slept precisely) and no spin
+  (`plat_sleep_coarse_until_ns`), some tens of microseconds later; the SDK's own sleeps and the vsync tick stay precise.
+  The RG406V at Low-end 60 in the camp: the same sites and rates (0xdffcac 188 a second); coarse, a 5 ms sleep took 5.18 ms
+  instead of 5.06, and the process's CPU time moved less than the noise (118.3 CPU-s a minute against 118.7 and 119.1).
 - `gpuprof` shows the window image's pass (the game's picture copied in, the overlay) as its last line. The game's own passes all load
   their attachments; one whose first commands clear an attachment whole begins with `LOAD_OP_CLEAR` and those values instead
   (`noload_clears`, `render_pass`), and the clears it already did are skipped (`pass_skip_clear`). Not `DONT_CARE` plus the clears: an
   Adreno 830 then drew the scene black but for some tiles. Anbernic (Mali-G57) GPU frame -6 %, Adreno 830 -0.7 %. `MHGU_VK_NOLOAD=0`: off.
+- Render pass power switches (0.1.9's performance pass): `RODEPTH`, `SHADOW_CLEAR` (2) and `FXAA_COPYDRAW` on by default,
+  `HUDSTART_FUSE` 3, `FMTLIST` off; `MHGU_PERF_<NAME>` in the environment (`env.txt`) overrides each, read once at start and named in the log (`[perf]`); with `MHGU_VK_STATS=1` a `[perf] 2s` line counts what they did.
+  - `MHGU_PERF_RODEPTH=1`: a draw that samples its pass's own depth target without writing depth or stencil (the two after the
+    scene's pass, every frame) reads it where it is, the pass begun again with that target `DEPTH_STENCIL_READ_ONLY_OPTIMAL`
+    (`RP_RO_DEPTH`), instead of a copy of it (`resolve_feedback`'s snapshot); a later depth or stencil write ends such a pass. Not
+    with MSAA or an FSR stand-in. RX 6800 XT: 240 snapshots in 2 s down to 120 (the other is a colour one).
+  - `MHGU_PERF_SHADOW_CLEAR=1|2` (Shadows On): the atlas's pass reads last frame's 12.6 MB back in, though each cascade begins with a
+    draw writing one depth over all of it. An atlas's first frame begins it filled with a marker depth and reads each such draw's
+    rectangle back (`at_check`): every texel the same value, never the marker, the rectangles the whole atlas. From then on its pass
+    begins cleared to that value, in frames whose commands, read ahead (`at_look`), have those draws again; each is compared as it
+    comes (`at_sig`: programs, vertices, constants, state), and one that differs turns it off for that atlas (logged). `=2` also leaves
+    such a draw out where nothing was drawn over its rectangle since (`at_mark`, 32x32 tiles). RX 6800 XT, quest 101: three draws
+    writing 1.0, all three left out every frame, the atlas's dump the same as without.
+  - `MHGU_PERF_HUDSTART_FUSE=1|2|3` (plain scaling, Low-end mode), bits: 1, the HUD's output-size depth stand-in is cleared as the
+    first pass that renders into it begins (`LOAD_OP_CLEAR`, far and 0 as before) instead of by a clear of its own that pass then
+    read back in (`fsr.c hud_start`, `vk_depth_clear_later`); 2, H is scaled into H' as that pass's first draw (`fill_draw`, a
+    full-screen triangle sampling H bilinearly at each pixel's centre) instead of by a blit before it, once the first frame's draw
+    and blit are read back and give the same bytes on that GPU (`fill_check`, logged; else the blit stays). Anything that reads
+    H' or that depth target first, or a pass that doesn't cover it whole, gets the old blit or clear first. RX 6800 XT, 50 %:
+    806x360 -> 1612x720, the same bytes.
+  - `MHGU_PERF_FXAA_COPYDRAW=1` (FXAA Off, not with FSR or plain scaling): `fxaa_skipped`'s copy of the FXAA pass's input into its
+    target is drawn as the first draw of the next pass when that pass draws into the target (with Bloom On the game adds the
+    bloom there next), its target begun cleared under it, instead of a copy that pass then read back in; checked once against
+    the copy as bit 2 above (`copy.frag`, each texel fetched). Any other pass, copy or dispatch first gets the copy. With Bloom
+    Off the next pass draws into the input instead, so nothing changes. RX 6800 XT, 100 %: 1612x720, the same bytes.
+  - `MHGU_PERF_FMTLIST`: set at all, the log says what the driver makes of `VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT` (`fmt_probe`: an RGBA8
+    image's memory with it, with a format list, without it; a compressed image needs more, its metadata) and names each image / view
+    format pair the game asks for. `=1`: images no view of the game reads as another format (decoded BCn and ASTC, widened, fallback
+    formats) get their own format and its sRGB / UNORM twin as their list, or no flag. RX 6800 XT: 4194304 bytes for a 1024x1024
+    target with the flag, 4211056 with a list or without it (AMD's colour compression: off with the bare flag).
+  Left out, with why: Shadows Off skipping the shadow mask's pass (its draws write the scene's depth, and what they write depends on
+  each frame's receivers, so no check proves a frame's draws change nothing); FXAA Off sampling its input in place of its target
+  (the target is drawn into right after, over a load, or its input is drawn into while the target is read: hence the copy drawn
+  in that next pass instead).
 - Descriptor sets: `stage_set` reuses one written earlier in the same submission when every write is the same (about a quarter of the
   sets), and draw skips binding the same two again (`SS_SETS`; any other graphics bind forgets them). Zeros, the identity rescale table,
   the alpha reference and each stage's driver constants are copied once per submission (`shared_*`, `zero_ubo`), or every set would be
   new; a storage buffer of zeros is shared only by shaders without `uses_gmem_store`. `MHGU_VK_SETREUSE=0`, `MHGU_VK_SHARED=0`: off.
+- The translator's performance switches, on by default since 0.1.9's performance pass (`MHGU_PERF_<NAME>=0` in `env.txt` or the environment, read
+  once at the start; the log's `[shader] translator switches` line says which are on). The program cache's stamp includes them, so a run
+  with others translates every program again: `MHGU_NO_PROGRAM_CACHE=1` in both arms of an A/B. `MHGU_PERF_NMINMAX`: fmin, fmax and
+  saturate as GLSL.std.450's NMin, NMax and NClamp (`glsl_prelude_nminmax`; Vulkan 1.2 drivers but a PowerVR's), Maxwell's NaN rules in
+  one instruction each instead of compares and selects. `MHGU_PERF_IPA`: where a shader multiplies a varying by w and by 1 / w (an
+  IPA.MULTIPLY by the MUFU.RCP of position w's IPA, `ipa_w_track`) the varying is read as it comes, 1704 of the 1736 such reads of the
+  quest-101 camp's 211 fragment shaders; not bit-exact (the old product was 1-2 ulp off the interpolated value). `MHGU_PERF_VSTRIM`: a
+  vertex shader's outputs its fragment shader doesn't read become plain variables (`maxwell_trim_outputs`; 771 of the camp's 1381),
+  dead code to the driver's compiler. Checked on an RX 6800 XT with the scene held still (a test build's hook: the engine's frame step
+  near 0) and each switch's programs translated anew in the same run, shot between two shots with the switches off: NMINMAX and VSTRIM
+  change no more pixels than translating anew with them off does (9 and 44 against 10 and 45 of 921,600, at the noise's 1-6 / 255), IPA
+  0.14 % of them, single pixels scattered over textured ground and rock, most by 1-4 / 255 (at most 32). The old functions against
+  NMin / NMax / NClamp over every pair of special values (+-0, +-inf, NaNs, denormals) on the GPU: the same bits on a Mali-G52 MC2 and a
+  Mali-G57 but NaN payloads; the RX 6800 XT also flushes a denormal returned beside a NaN. The RG406V (Mali-G57, 100 %, no frame cap),
+  the same held scene, which stands fully still there: NMINMAX and VSTRIM change no pixel, IPA 0.17 % of them by 1-7 / 255; `gpuprof`,
+  four frames of each between frames with the switches off (4.5-4.7 ms main pass, 21.4-22.1 ms GPU frame): the main pass 4.25 ms
+  with NMINMAX, 4.37 with IPA, 4.48 with VSTRIM, 3.78 with the three, the frame 20.9, 21.4, 22.1 and 20.1. The shadow atlas, whose
+  vertex outputs VSTRIM all leaves out, didn't move: that driver may already drop them, or the pass isn't held up there.
+- The translator's per-draw work has test switches (0.1.9's performance pass, `nvn/vulkan/exec.c` `perf_init`), each read once at
+  start and named in the log's `[perf] draws` line, all on by default (`=0` in `env.txt`: the old way): `MHGU_PERF_GETENV` (debug
+  switches read once, not by `getenv` at every depth clamp command), `MHGU_PERF_DRVTAB` (the driver constants' 256-byte storage
+  buffer table compared before their 2 KB are zeroed), `MHGU_PERF_TEXSCAN` (a draw's textures looked up once for the movie, MSAA
+  and feedback checks; the MSAA one skipped until a pass rendered multisampled), `MHGU_PERF_TEXTIME` (a texture bind with nothing
+  to upload isn't timed), `MHGU_PERF_PIPEMEMO` (a draw with the last draw's pipeline key takes its pipeline without the hash),
+  `MHGU_PERF_LAZYIDX` (a draw's largest index found only when a stream's copy needs it: none at a camp) and `MHGU_PERF_IDXCOPY`
+  (16 / 32-bit indices copied once per submission per range, as uniform buffers are: the same mesh in the shadow, depth, mask and
+  main passes); `MHGU_PERF_DRAWS=0` turns all seven off (a switch of its own still wins). `MHGU_PERF_DYNUBO=1` binds uniform buffers with dynamic offsets (the game's
+  per-object ones first, then the compiler's and the driver's constants, up to the GPU's `maxDescriptorSetUniformBuffersDynamic`
+  a program, logged: 8 on an RX 6800 XT), so a copy's place in the staging ring is no longer part of the set and `stage_set` reuses
+  most sets (quest 101's camp on the RX 6800 XT: 28 % reused before, 69 % with it); it changes the programs' pipeline layouts, so
+  the driver's pipeline cache is cold once (every pipeline built again at the first start with it: warm up before measuring).
+  `MHGU_PERF_CHECK=1` does the old work beside each cut that is on and counts what differs (`[perf] 2s check`; 0 in every run so
+  far); with `MHGU_VK_STATS=1` a `[perf] 2s` line says what the switches did.
 - Texture uploads (`nvn/vulkan/textures.c`): a texture's first upload is hashed and copied into staging memory by three worker
   threads in bands of about 1 MB, and the submission waits for them (`vk_upload_jobs_finish`): nothing draws early or half uploaded.
   The list's own CPU-side writes (ClearBuffer, CopyBufferToBuffer, UpdateUniformBuffer, ReportCounter) run at once, so one over
@@ -382,6 +577,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   staging memory 5 to 9 times the old speed). On a desktop the staging ring's next 32 MB chunk is made ahead on its own thread: made on
   the spot it cost 34 ms inside a frame. `MHGU_TEX_ASYNC=0`, `MHGU_VK_SPARE_CHUNK=0`: off. A texture that changes on 120 frames in a
   row is named once in the log (`[tex] changed and uploaded ...`).
+- The safety nets, in case the page write tracking missed a write: the vertex cache copies each range in use again every 2-4 s,
+  2 MB a frame (Android; off on Windows: `MHGU_VK_VC_SAFETY=1` turns it on), and a texture is hashed whole every 120 frames, 4 MB a
+  frame (every second at 120 FPS). `MHGU_VK_VC_SAFETY=2` and `MHGU_TEX_NET_CHECK=1` (every texture every 2 s, any size) check the
+  tracking: a change with no write reported is logged, with counts (`[vk] vertex cache check`, `[tex] check`; a texture's is told
+  apart from a write reported that the sampling hash `fnv_sample` didn't see). `MHGU_VK_STATS`' `[vk] 2s copied` line splits the
+  copies and the hashing by cause. On by default (`=0`: the old way): `MHGU_PERF_VCNET=1` (the vertex cache's every 30 s, 512 KB a frame),
+  `MHGU_PERF_TEXNET=1` (a texture's 30 s after its last whole hash on Android, 4 s on a desktop, 32 MB a second),
+  `MHGU_PERF_TEXSAMPLE=1` (the sampling hash only where it is compared: the same decisions) and `MHGU_PERF_TEXSTREAM=1` (a
+  texture changed at each of its last 4 checks is copied at once when written, hashed as it is copied: a hunt has four 1 MB
+  RGBA32F 1024x64 textures, one written a frame, hashed and then copied). The checks found no write missed: on the RG406V
+  (Mali-G57) standing at the camps of quests 101, 302 and 630 (18 min, three town and quest loads) 31446 whole texture hashes
+  with no write reported and 11095 vertex cache slices, none changed; on the PC 14422 and 8000. Standing at the quest-101 camp
+  (ABBA, 200 s runs), the four on: the RG406V at its 60 FPS, the translating thread's exec 668 -> 622 ms per 2 s, `uploads` 64
+  -> 12, copied 218 -> 161 MB; the RX 6800 XT PC at 60 FPS, the vertex cache's net on in both, 298 -> 269, 28 -> 11, 170 -> 94.
 - A Galaxy (Samsung) refuses every simpleperf event for apps (`cpu-clock`, `task-clock`, `cpu-cycles`): profile the CPU on another
   phone. Its frame is CPU-bound: the GPU span in `gpuprof` includes the gaps where the GPU waits for the render thread.
 - `[Performance] LowEnd` is Off, On or Toaster (2). On a phone (a desktop's: Building for Windows) everything that tests `low_end`

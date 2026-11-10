@@ -135,6 +135,9 @@ extern volatile uint64_t g_present_count;  // frames the game presented (the ren
 union SDL_Event;
 void host_input_event(const union SDL_Event *e);
 void host_input_update(void);            // recompute the controller state the game reads (each loop pass)
+int host_input_busy(void);               // (MHGU_PERF_INPUT_WAKE) something runs by the clock (HIB_*): the loop keeps its pace
+enum { HIB_OUTPUT = 1, HIB_PADMAP, HIB_SCRIPT, HIB_PAD, HIB_RUMBLE, HIB_MENU, HIB_TOUCH, HIB_EVENT, HIB_COUNT };
+void ui_loop_wake(void);                 // (MHGU_PERF_INPUT_WAKE) any thread: the window loop runs a pass now (a frame, a rumble)
 bool host_input_press(const char *button, unsigned frames);  // scripted press from the next frame (UI thread)
 void quickhunt_poll(void);               // (debug) MHGU_QUICKHUNT's presses (runtime/hle/quickhunt.c; UI thread)
 
