@@ -130,8 +130,8 @@ struct Def {
 // buttons on an arc above it; the menus in a column at the left edge, below the status
 const Def DEFS[C_COUNT] = {
     {"attack", "Attack  A / X", I_ATTACK, "", 0, true, .255f, .27f, .085f},
-    {"dodge", "Dodge  B", I_DODGE, "B", B(BTN_B), true, .10f, .12f, .056f},
-    {"guard", "Guard  R", I_SHIELD, "R", B(BTN_R), true, .505f, .095f, .058f},
+    {"dodge", "Evade  B", I_DODGE, "B", B(BTN_B), true, .10f, .12f, .056f},
+    {"guard", "Guard / dash  R", I_SHIELD, "R", B(BTN_R), true, .505f, .095f, .058f},
     {"zr", "Special  ZR", I_BURST, "ZR", B(BTN_ZR), true, .075f, .68f, .045f},
     {"target", "Target  ZL", I_TARGET_SELECT, "ZL", B(BTN_ZL), true, .19f, .70f, .045f},
     {"camera", "Camera / lock-on  L", I_CAMERA, "L", B(BTN_L), true, .31f, .64f, .045f},
@@ -167,7 +167,7 @@ const Def DEFS[C_COUNT] = {
     {"second", "Reload / melee", I_RELOAD, "", 0, true, .365f, .13f, .07f},
     {"aim", "Aim", I_SCOPE, "", 0, true, .415f, .29f, .07f},
     {"rspecial", "Crouching fire / coating", I_CROUCH, "", 0, true, .33f, .445f, .058f},
-    {"rdodge", "Dodge  B", I_DODGE, "B", B(BTN_B), true, .085f, .10f, .056f},
+    {"rdodge", "Evade  B", I_DODGE, "B", B(BTN_B), true, .085f, .10f, .056f},
     {"rsheathe", "Sheathe  Y", I_SHEATHE, "Y", B(BTN_Y), true, .175f, .47f, .046f},
     {"ammo_up", "Next ammo", I_UP, "", 0, true, .56f, .30f, .05f},
     {"ammo_down", "Previous ammo", I_DOWN, "", 0, true, .56f, .13f, .05f},
@@ -1006,9 +1006,15 @@ void art_tap(State &s, int row, uint64_t now) {
                 (unsigned long long)(p.stick ? (uint64_t)p.stick : p.buttons));
 }
 // The item bar's arrows ([Touch] ShowItemArrows): beside the bar, wherever it has been moved to
-Geo item_arrow(const Rect &item, int d, float h) {
-    float r = .052f * h;
-    return {ImVec2(d < 0 ? item.x0 - r * 1.15f : item.x1 + r * 1.15f, (item.y0 + item.y1) * .5f), r};
+// The item bar's arrows, one each side of the bar at its middle: ITEM_ARROW screen heights in radius, smaller where the
+// screen's edge leaves less room beside the bar (both the same size, at least ITEM_ARROW_MIN). The MH4U port's touch.cpp
+// places its own by the same rule
+const float ITEM_ARROW = .052f, ITEM_ARROW_MIN = .03f;
+Geo item_arrow(const Rect &item, int d, float w, float h) {
+    float room = std::min(item.x0, w - item.x1) / 2.2f;  // (a radius and a little gap each side)
+    float r = std::max(std::min(ITEM_ARROW * h, room), ITEM_ARROW_MIN * h);
+    float x = d < 0 ? item.x0 - r * 1.15f : item.x1 + r * 1.15f;
+    return {ImVec2(std::clamp(x, r, std::max(r, w - r)), (item.y0 + item.y1) * .5f), r};
 }
 
 // The stick is fixed at its place (the layout's: the editor moves it); a thumb on its base or a little past its rim
@@ -1675,7 +1681,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         int arrow = 0;
         if (c < 0 && item.ok && !s.menu && config_live_touch_show(TB_ITEM_ARROWS))
             for (int d = -1; d <= 1; d += 2) {
-                Geo g = item_arrow(item, d, s.h);
+                Geo g = item_arrow(item, d, s.w, s.h);
                 if (hypotf(x - g.c.x, y - g.c.y) < g.r * 1.2f) arrow = d;
             }
         if (c >= 0) {
@@ -3475,7 +3481,8 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1;
     float line = .004f * h;
     plate(dl, panel, line, 1.0f, false);
-    text_center(dl, font, .034f * h, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * h), GLOW, T("Controls and HUD"));
+    ImFont *title = ImGui::GetIO().Fonts->Fonts.Size > 1 ? ImGui::GetIO().Fonts->Fonts[1] : font;  // (the serif: overlay.cpp)
+    text_center(dl, title, .034f * h, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * h), GLOW, T("Controls and HUD"));
     const char *say = T(s.sel == C_MPAD     ? "Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size"
                         : part >= 0 && hud[part].hidden ? "Hidden: Show brings it back"
                         : s.sel >= 0        ? "Drag to move  -  pinch or use - / + for its size"
@@ -3615,6 +3622,23 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
 }
 #endif
 
+// A hunt button under the menu pad's group (its tabs reach ZR, ZL and L at their usual places): it fades out as the pad
+// comes in and back as it goes, as in the MH4U port (its under_mpad); there the pad's group takes the finger first (hit).
+// Never the attacks nor B (a menu's confirm and back)
+bool under_mpad(const Layout &l, int i, float w, float h) {
+    if (of_mpad(i) || i == C_SETTINGS || i == C_ATTACK || i == C_CORNER || i == C_HEAVY || i == C_LIGHT || i == C_DODGE)
+        return false;
+    Geo g = place(l, i, w, h);
+    for (int m : {C_ML, C_MR, C_MZL, C_MZR, C_MMINUS}) {
+        if (!mpad_member(m)) continue;
+        Geo t = place(l, m, w, h);
+        float hw = is_tab(m) ? t.r * TAB_W : t.r, hh = is_tab(m) ? t.r * TAB_H : t.r;
+        if (fabsf(g.c.x - t.c.x) < hw + g.r && fabsf(g.c.y - t.c.y) < hh + g.r) return true;
+    }
+    Geo p = place(l, C_MPAD, w, h);
+    return hypotf(g.c.x - p.c.x, g.c.y - p.c.y) < p.r + g.r;
+}
+
 }  // namespace
 
 extern "C" void touch_draw(float w, float h) {
@@ -3679,15 +3703,21 @@ extern "C" void touch_draw(float w, float h) {
         if (dbg && m && was > 0.0f && out <= 0.0f) rt_logf("[touch] menu pad gone, %.0f ms after the last menu window\n", (now - m) / 1e6);
         was = out;
     }
-    for (int i = 0; i < C_COUNT; i++)
-        if (in_mode(i, s.menu)) control(dl, font, s.layout, i, w, h, s, of_mpad(i) ? a * pad_a : a);
+    // (in a menu of the game's the player's buttons stay, at half strength so its window reads under them, as in the
+    // MH4U port; the menu pad's group over them at full)
+    for (int i = 0; i < C_COUNT; i++) {
+        if (!in_mode(i, s.menu)) continue;
+        float k = of_mpad(i) ? pad_a : s.menu ? .5f : 1.0f;
+        if (!of_mpad(i) && pad_a > 0 && under_mpad(s.layout, i, w, h)) k *= 1 - pad_a;
+        if (k > .01f) control(dl, font, s.layout, i, w, h, s, a * k);
+    }
     // the HUD parts that answer a finger: the item bar's turn, the art performed (the item bar's arrows as
     // in a hunt while a menu is open too: nothing changes as one opens, though they turn nothing then)
     Rect item = zone_rect(z, HP_ITEMS, w, h), arts = zone_rect(z, HP_ARTS, w, h);
     if (item.ok && config_live_touch_show(TB_ITEM_ARROWS)) {
         for (int d = -1; d <= 1; d += 2) {
             bool lit = now < s.item_flash && s.item_dir == d;
-            Geo g = item_arrow(item, d, h);
+            Geo g = item_arrow(item, d, w, h);
             disc(dl, g.c, g.r, lit, a);
             float ch = g.r * .42f;
             dl->AddTriangleFilled(ImVec2(g.c.x + d * ch, g.c.y), ImVec2(g.c.x - d * ch * .6f, g.c.y - ch), ImVec2(g.c.x - d * ch * .6f, g.c.y + ch),

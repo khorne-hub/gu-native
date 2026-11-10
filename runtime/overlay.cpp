@@ -425,6 +425,15 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
 #endif
     ImFont *font = font_path ? io.Fonts->AddFontFromFileTTF(font_path, g_font_size, &cfg) : nullptr;
     if (!font) io.Fonts->AddFontDefaultVector(&cfg);
+#ifdef __ANDROID__
+    // (the titles' serif, as the game's own and the MH4U port's: the second font, settings_panel.cpp title_font; a phone
+    // without one has the main font there)
+    const char *serif = nullptr;
+    for (const char *p : {"/system/fonts/NotoSerif-Bold.ttf", "/system/fonts/NotoSerif-Regular.ttf"})
+        if (!serif && access(p, R_OK) == 0) serif = p;
+    if (serif && io.Fonts->AddFontFromFileTTF(serif, g_font_size, &cfg))
+        LOG("[forge] titles in %s\n", serif);
+#endif
 #ifdef _WIN32
     // (ImGui's own font has Latin-1 only: what it lacks - the thank-you's em dash, a licence's quotes, a chat line in another
     // script - comes from Windows' Segoe UI, merged after it; the font itself stays as it was)

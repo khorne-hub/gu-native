@@ -47,6 +47,7 @@ struct Row {
     std::string key, help;  // its ini key (config.c g_settings; its help: config_help), or a help text of its own
     bool enabled = true, cold = false, action = false, warn = false;
     bool header = false, current = false;  // a section title (not a row to select); the choice a dropdown has now
+    bool note = false;                     // (a header) a line of text between the rows: the MH4U port's notes
     bool menu = false;                     // Confirm opens a dropdown of its choices
     int toggle = -1;                       // On / Off (1 / 0; -1: not a switch): the phone draws a switch
     bool number = false;                   // a number: left / right step it (the phone: - and + buttons on the row)
@@ -361,12 +362,22 @@ void diamond(ImDrawList *dl, ImVec2 c, float d, ImU32 col) {
     ImVec2 q[4] = {ImVec2(c.x, c.y - d), ImVec2(c.x + d, c.y), ImVec2(c.x, c.y + d), ImVec2(c.x - d, c.y)};
     dl->AddConvexPolyFilled(q, 4, col);
 }
-// Text with a dark shadow under it (readable on the gold of the picked row, as the game's)
-void shadow_text(ImDrawList *dl, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
+// Text with a dark shadow under it (readable on the gold of the picked row, as the game's), in a font of its own
+void shadow_text(ImDrawList *dl, ImFont *font, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
     float o = std::max(1.f, size * .06f);
-    dl->AddText(ImGui::GetFont(), size, ImVec2(p.x + o, p.y + o), fade(IM_COL32(0, 0, 0, 170), ((col >> 24) & 0xff) / 255.f),
-                text, nullptr, wrap);
-    dl->AddText(ImGui::GetFont(), size, p, col, text, nullptr, wrap);
+    dl->AddText(font, size, ImVec2(p.x + o, p.y + o), fade(IM_COL32(0, 0, 0, 170), ((col >> 24) & 0xff) / 255.f), text,
+                nullptr, wrap);
+    dl->AddText(font, size, p, col, text, nullptr, wrap);
+}
+void shadow_text(ImDrawList *dl, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
+    shadow_text(dl, ImGui::GetFont(), size, p, col, text, wrap);
+}
+// The titles' font: a serif, as the game's own titles and the MH4U port's (overlay.cpp loads the phone's Noto Serif as
+// the second font), else the main one: the menu's title, its sections, the picked row's help, a list's title, the
+// credits' and the thank-you's
+ImFont *title_font() {
+    ImGuiIO &io = ImGui::GetIO();
+    return io.Fonts->Fonts.Size > 1 ? io.Fonts->Fonts[1] : ImGui::GetFont();
 }
 // A finger's button: a dark square plate with an edge and a rule inside (the touch controls' discs, made square), gold
 // studs on its corners (Hunter); lit while held, faded while it does nothing
@@ -414,10 +425,11 @@ void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
     diamond(dl, knob.GetCenter(), side * .2f, on ? IM_COL32(28, 20, 15, 255) : IM_COL32(60, 48, 40, 255));
 }
 // The Mods tab: the mods folder's state (modorder.h), which is saved with the rest of the settings
-constexpr int PAGES = 9, MODS_PAGE = 5, CHEATS_PAGE = 6, APP_PAGE = 7, ABOUT_PAGE = 8;
-const char *const page_names[PAGES] = {"Display", "Graphics & Audio", "Controls", "Multiplayer",
-                                       "Misc",    "Mods",             "Cheats",   "Menu Options",
-                                       "Credits & Licenses"};
+// (the tabs in the MH4U port's order and names: Graphics & Audio first, then Display, Controls, Gameplay, Multiplayer)
+constexpr int PAGES = 9, GFX_PAGE = 0, DISPLAY_PAGE = 1, CONTROLS_PAGE = 2, GAMEPLAY_PAGE = 3, NET_PAGE = 4, MODS_PAGE = 5,
+              CHEATS_PAGE = 6, APP_PAGE = 7, ABOUT_PAGE = 8;
+const char *const page_names[PAGES] = {"Graphics & Audio", "Display", "Controls", "Gameplay", "Multiplayer",
+                                       "Mods",             "Cheats",  "Menu Options", "Credits & Licenses"};
 // The thank-you shown once, after the credits of the first start (draw_thanks, further down), and on Credits & Licenses
 constexpr const char *THANKS_TEXT =
     "To everyone who created this game, and to everyone who kept it alive over the years: thank you. This work is a love "
@@ -908,6 +920,15 @@ void number(std::vector<Row> &r, const std::string &id, const std::string &name,
         r, id, name, [p]() { return (double)*p; }, [p](double v) { *p = (float)v; }, low, high, step, false,
         key);
 }
+// A line of text between the rows (not selectable), after a small diamond, wrapped: Credits & Licenses' (the MH4U port's)
+void note(std::vector<Row> &rows, const std::string &id, const std::string &text) {
+    Row r;
+    r.id = id;
+    r.title = text;
+    r.header = r.note = true;
+    r.enabled = false;
+    rows.push_back(std::move(r));
+}
 // A section's title between the rows (not selectable)
 void header(std::vector<Row> &rows, const std::string &id, const std::string &title) {
     Row r;
@@ -1176,20 +1197,25 @@ void keybind_rows(std::vector<Row> &r) {
 void reset_section() {
     Config f = config_defaults(), &c = s.draft;
     switch (s.page) {
-    case 0:
+    case DISPLAY_PAGE:
         c.display_mode = f.display_mode;
         c.width = f.width;
         c.height = f.height;
         c.render_w = f.render_w;
         c.render_h = f.render_h;
+#ifndef __ANDROID__  // (a phone's 3D resolution is in Graphics & Audio)
         c.render_scale = f.render_scale;
+#endif
         c.aspect_ratio = f.aspect_ratio;
         c.fov = f.fov;
         c.ui_anchor = f.ui_anchor;
         c.fill_screen = f.fill_screen;
         break;
-    case 1:
+    case GFX_PAGE:
         SDL_strlcpy(c.gpu, f.gpu, sizeof c.gpu);
+#ifdef __ANDROID__
+        c.render_scale = f.render_scale;
+#endif
         c.low_end = f.low_end;
         c.shadows = f.shadows;
         c.bloom = f.bloom;
@@ -1215,7 +1241,7 @@ void reset_section() {
         c.volume = f.volume;
         c.mute_in_background = f.mute_in_background;
         break;
-    case 2:
+    case CONTROLS_PAGE:
         c.face_buttons = f.face_buttons;
         c.menu_confirm = f.menu_confirm;
         c.button_icons = f.button_icons;
@@ -1236,7 +1262,7 @@ void reset_section() {
         SDL_strlcpy(c.chat_key, f.chat_key, sizeof c.chat_key);
         memcpy(c.binds, f.binds, sizeof c.binds);
         break;
-    case 3:
+    case NET_PAGE:
         c.ldn_port = f.ldn_port;
         SDL_strlcpy(c.ldn_join, f.ldn_join, sizeof c.ldn_join);
         SDL_strlcpy(c.ldn_server, f.ldn_server, sizeof c.ldn_server);
@@ -1244,7 +1270,7 @@ void reset_section() {
         c.sync_small_monsters = f.sync_small_monsters;
         c.village_in_hub = f.village_in_hub;
         break;
-    case 4:
+    case GAMEPLAY_PAGE:
         c.hp = f.hp;
         quest_keys();
         break;
@@ -1640,6 +1666,30 @@ void mods_rows(std::vector<Row> &r) {
         mods.scan.reset();
     });
 }
+// The 3D resolution (RenderScale, Auto: the 3D picture in percent of the screen's; the nearest of the presets; with FSR its
+// quality sets the 3D size). A phone's is in Graphics & Audio by Low-end mode and the frame rate, as in the MH4U port; a
+// desktop's in Display, by its Render resolution
+void scale_row(std::vector<Row> &r) {
+    const Config &c = s.draft;
+    if ((c.fsr && !c.low_end) || c.render_w)
+        return;
+    static const int scales[] = {100, 90, 80, 75, 66, 50, 40, 33, 25};
+    int pick = 0;
+    for (int i = 1; i < (int)std::size(scales); i++)
+        if (std::abs(scales[i] - c.render_scale) < std::abs(scales[pick] - c.render_scale))
+            pick = i;
+    add_choice(
+        r, "render.scale", "3D resolution", pick, {"100%", "90%", "80%", "75%", "66%", "50%", "40%", "33%", "25%"},
+        [](int v) { s.draft.render_scale = scales[v]; }, ini("RenderScale"));
+    if (scales[pick] != c.render_scale)  // (another value set in the file: shown as it is)
+        r.back().value = std::to_string(c.render_scale) + "%";
+#ifdef __ANDROID__
+    r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer.");
+#else  // (config.c: below 100, the HUD at the screen's size over the smaller picture, fsr.c's plain scaling; the menus'
+       // models drawn after its start get none of the anti-aliasing, as with FSR: nvn/vulkan/exec.c models_aa)
+    r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer; the HUD and the text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D models in the menus get no anti-aliasing.");
+#endif
+}
 std::vector<Row> main_rows() {
     std::vector<Row> r;
     Config &c = s.draft;
@@ -1663,7 +1713,7 @@ std::vector<Row> main_rows() {
     const bool fsr_next = c.fsr && !c.low_end;
 #endif
     switch (s.page) {
-    case 0:
+    case DISPLAY_PAGE:
 #ifndef __ANDROID__  // (a phone: the window is the screen, at its own resolution; the 3D in percent of it below)
         add_choice(
             r, "display.mode", "Window mode", c.display_mode,
@@ -1690,26 +1740,8 @@ std::vector<Row> main_rows() {
             number(r, "render.width", "Width", &c.render_w, 320, 16384, 80, ini("RenderResolution"));
             number(r, "render.height", "Height", &c.render_h, 180, 16384, 45, ini("RenderResolution"));
         } else
+            scale_row(r);
 #endif
-        if ((!c.fsr || c.low_end) && !c.render_w) {  // (Auto: the 3D picture in percent of the screen's, RenderScale; the nearest of the presets;
-                              // with FSR its quality sets the 3D size)
-            static const int scales[] = {100, 90, 80, 75, 66, 50, 40, 33, 25};
-            int pick = 0;
-            for (int i = 1; i < (int)std::size(scales); i++)
-                if (std::abs(scales[i] - c.render_scale) < std::abs(scales[pick] - c.render_scale))
-                    pick = i;
-            add_choice(
-                r, "render.scale", "3D resolution", pick, {"100%", "90%", "80%", "75%", "66%", "50%", "40%", "33%", "25%"},
-                [](int v) { s.draft.render_scale = scales[v]; }, ini("RenderScale"));
-            if (scales[pick] != c.render_scale)  // (another value set in the file: shown as it is)
-                r.back().value = std::to_string(c.render_scale) + "%";
-#ifdef __ANDROID__
-            r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer.");
-#else  // (config.c: below 100, the HUD at the screen's size over the smaller picture, fsr.c's plain scaling; the menus'
-       // models drawn after its start get none of the anti-aliasing, as with FSR: nvn/vulkan/exec.c models_aa)
-            r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer; the HUD and the text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D models in the menus get no anti-aliasing.");
-#endif
-        }
 #ifndef __ANDROID__  // (a phone: not worth a row)
         add_choice(
             r, "aspect.auto", "Automatic aspect ratio", c.aspect_ratio == 0 ? 0 : 1,
@@ -1733,7 +1765,7 @@ std::vector<Row> main_rows() {
 #endif
         add_bool(r, "fill", "Fill the screen", &c.fill_screen, ini("FillScreen"));
         break;
-    case 1:
+    case GFX_PAGE:
 #ifndef __ANDROID__  // (a phone has one GPU)
         {  // [Display] GPU: Automatic, or a device by its name (nvn/vulkan/device.c pick_device), at the next start
             const char *names[16];
@@ -1838,7 +1870,7 @@ std::vector<Row> main_rows() {
         r.back().help = tr("The most frames a second. Unlimited: as many as the PC can draw, with VSync off; with VSync on, the monitor's refresh rate is the most. On a PC that can't hold 60, 30 is steadier: Toaster sets it, and Low-end mode leaves the frame rate as it is.");
 #endif
         {  // left / right: one frame per second more or less; Confirm: the common ones
-            static const int presets[] = {30, 60, 90, 120, 150, 240,
+            static const int presets[] = {30, 60, 90, 120, 144, 240,  // (the MH4U port's same list)
 #ifndef __ANDROID__
                                           FPS_UNLIMITED,
 #endif
@@ -1861,12 +1893,13 @@ std::vector<Row> main_rows() {
 #ifndef __ANDROID__  // (a phone: not worth a row)
         add_bool(r, "vsync", "VSync", &c.vsync, ini("VSync"));
 #endif
-#ifdef __ANDROID__
-        add_bool(r, "stats", "Show FPS and temperature", &c.show_stats, ini("ShowStats"));
-#else  // (a desktop: Off, Basic (the file's On) or Full: runtime/perfstats.cpp, platform/win_stats.c)
-        add_choice(r, "stats", "Show FPS and PC stats", c.show_stats, {tr("Off"), tr("Basic"), tr("Full")},
-                   [](int v) { s.draft.show_stats = v; }, ini("ShowStats"));
-        r.back().help = tr("Basic: frames per second, frame time, the longest frame and the GPU's temperature. Full adds a line on the GPU (use, temperature, clock, video memory) and one on the CPU (the game's use and memory, the CPU's clock, the time the game's and the render threads take per frame). The CPU's temperature is not shown: Windows lets no program read it without installing a driver.");
+#ifdef __ANDROID__  // (the three that trade looks for speed together, as in the MH4U port: Low-end mode, the frame rate, the
+                    // 3D resolution, with the Adreno fix that can raise it)
+        scale_row(r);
+        if (vk_gpu_adreno_fix_applies()) {  // (an Adreno on a Vulkan 1.1 driver: device.c msaa_floor)
+            add_choice(r, "adrenofix", "Adreno fix", c.adreno_fix ? 1 : 0, {tr("Auto"), tr("Off")},
+                       [](int v) { s.draft.adreno_fix = v; }, ini("AdrenoFix"));
+        }
 #endif
 #ifndef __ANDROID__  // (a phone: not worth a row)
         add_bool(r, "prewarm", "Shader prewarm", &c.shader_prewarm, ini("ShaderPrewarm"));
@@ -1919,11 +1952,6 @@ std::vector<Row> main_rows() {
         }
 #ifndef __ANDROID__  // (a phone: not worth a row)
         add_bool(r, "smooth", "Smooth gradients", &c.smooth_gradients, ini("SmoothGradients"));
-#endif
-        number(r, "volume", "Volume (%)", &c.volume, (int)lo("Volume"), (int)hi("Volume"), 1, ini("Volume"));
-        add_bool(r, "reverb", "Reverb", &c.reverb, ini("Reverb"));
-#ifndef __ANDROID__  // (a phone: not worth a row)
-        add_bool(r, "mutebg", "Mute in background", &c.mute_in_background, ini("MuteInBackground"));
 #endif
         add_bool(r, "fsr", "FSR", &c.fsr, ini("FSR"));
 #ifndef __ANDROID__  // (measured on an RX 6800 XT: FSR 3.1 Quality's frame 3.7 ms, 1.8 to 2.3 without FSR and with FXAA)
@@ -1983,19 +2011,75 @@ std::vector<Row> main_rows() {
             add_bool(r, "fsr.surfaces", "Animated surfaces", &c.fsr_animsurf, ini("AnimSurf"));
 #endif
         }
+        // (the sound and the frame rate's readout under a header of their own, as in the MH4U port)
+        header(r, "audio.head", tr("Audio and readout"));
+        number(r, "volume", "Volume", &c.volume, (int)lo("Volume"), (int)hi("Volume"), 1, ini("Volume"));
+        r.back().value = std::to_string(c.volume) + "%";
+        add_bool(r, "reverb", "Reverb", &c.reverb, ini("Reverb"));
+#ifndef __ANDROID__  // (a phone: not worth a row)
+        add_bool(r, "mutebg", "Mute in background", &c.mute_in_background, ini("MuteInBackground"));
+#endif
+#ifdef __ANDROID__
+        add_bool(r, "stats", "FPS counter", &c.show_stats, ini("ShowStats"));
+#else  // (a desktop: Off, Basic (the file's On) or Full: runtime/perfstats.cpp, platform/win_stats.c)
+        add_choice(r, "stats", "Show FPS and PC stats", c.show_stats, {tr("Off"), tr("Basic"), tr("Full")},
+                   [](int v) { s.draft.show_stats = v; }, ini("ShowStats"));
+        r.back().help = tr("Basic: frames per second, frame time, the longest frame and the GPU's temperature. Full adds a line on the GPU (use, temperature, clock, video memory) and one on the CPU (the game's use and memory, the CPU's clock, the time the game's and the render threads take per frame). The CPU's temperature is not shown: Windows lets no program read it without installing a driver.");
+#endif
 #ifdef __ANDROID__
         if (vk_gpu_adreno()) {
             action(r, "gpu.driver", tr("GPU driver"), []() { ui_request_gpu_driver(); });
             r.back().value = *gpu_driver_name() ? gpu_driver_name() : tr("System");
             r.back().help = tr("Adreno only, at your own risk: load a Vulkan driver of your own. By default the system's is used.");
         }
-        if (vk_gpu_adreno_fix_applies()) {  // (an Adreno on a Vulkan 1.1 driver: device.c msaa_floor)
-            add_choice(r, "adrenofix", "Adreno fix", c.adreno_fix ? 1 : 0, {tr("Auto"), tr("Off")},
-                       [](int v) { s.draft.adreno_fix = v; }, ini("AdrenoFix"));
-        }
 #endif
         break;
-    case 2:
+    case CONTROLS_PAGE: {
+        // (a phone's: the touch controls first, then the controller's, under headers, with the MH4U port's names; the
+        // touch controls' rows where there is a touch screen to work them, Lock-on a controller's too)
+        bool fingers = touch_rows();
+        if (fingers) {
+            header(r, "touch.head", tr("Touch controls"));
+            add_choice(r, "touch", "Show the touch controls", c.touch_controls, {tr("Auto"), tr("Always"), tr("Never")},
+                       [](int v) { c.touch_controls = v; }, ini("Controls"));
+            number(r, "touch.opacity", tr("Opacity"), &c.touch_opacity, lo("Opacity"), hi("Opacity"), .05f, ini("Opacity"));
+            r.back().value = std::to_string((int)std::lround(c.touch_opacity * 100)) + "%";
+            number(r, "touch.camera", tr("Camera speed"), &c.touch_camera, lo("CameraSpeed"), hi("CameraSpeed"), .05f, ini("CameraSpeed"));
+            r.back().value = fmt("%.2fx", c.touch_camera);
+            action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
+            r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");
+            {
+                int shown = 0;
+                for (int i = 0; i < TB_COUNT; i++)
+                    shown += c.touch_show[i] != 0;
+                r.back().value = std::to_string(shown) + " / " + std::to_string(TB_COUNT);
+            }
+            if (touch_screen()) {  // (the layout editor is worked by fingers)
+                action(r, "touch.edit", tr("Customize controls and HUD"), []() {
+                    touch_edit_begin();  // (the editor starts once the menu is closed: one back, or the unsaved-changes dialog)
+                    request_back.store(true);
+                });
+                r.back().help = tr("Move and resize each button on the screen and each part of the game's HUD: drag it, pinch or use - / + for its size, hide a part, then Save. HUD: controller edits the HUD shown without the touch controls.");
+            }
+            add_bool(r, "touch.hud", "Move the HUD for touch", &c.touch_hud, ini("MoveHUD"));
+#ifdef __ANDROID__  // (the phone's vibrator: elsewhere runtime/haptics.c does nothing)
+            add_bool(r, "touch.vibration", "Vibrate on touch", &c.touch_vibration, ini("Vibration"));
+            add_bool(r, "phone.rumble", "Game rumble on the phone", &c.phone_rumble, ini("PhoneRumble"));
+#endif
+        }
+        auto lock_row = [&r]() {
+#ifdef __ANDROID__
+            add_bool(r, "lock.on", "Lock-on (hold L)", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
+            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
+#else
+            add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));
+            r.back().help = tr("The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
+#endif
+        };
+        if (fingers) {
+            lock_row();
+            header(r, "pad.head", tr("Controller"));
+        }
         add_choice(r, "face", "Face buttons", c.face_buttons, {tr("Position"), tr("Label")},
                    [](int v) { c.face_buttons = v; }, ini("FaceButtons"));
 #ifndef __ANDROID__  // (a phone: not worth a row)
@@ -2016,40 +2100,10 @@ std::vector<Row> main_rows() {
         number(r, "mouse", tr("Mouse sensitivity"), &c.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
         add_bool(r, "mouse.menus", "Mouse in the game's menus", &c.mouse_menus, ini("MouseMenus"));  // (hle/mousemenu.c)
 #endif
-        {  // (the touch controls' rows where there is a touch screen to work them; Lock-on is a controller's too)
-            bool fingers = touch_rows();
-            if (fingers) {
-                add_choice(r, "touch", "Touch controls", c.touch_controls, {tr("Auto"), tr("On"), tr("Off")},
-                           [](int v) { c.touch_controls = v; }, ini("Controls"));
-                add_bool(r, "touch.hud", "Move the HUD for touch", &c.touch_hud, ini("MoveHUD"));
-            }
-#ifdef __ANDROID__
-            add_bool(r, "lock.on", "Lock-on (hold L)", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
-            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
-#else
-            add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));
-            r.back().help = tr("The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.");
-#endif
-            if (fingers) {
-                action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
-                r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");
-                number(r, "touch.camera", tr("Touch camera speed"), &c.touch_camera, lo("CameraSpeed"), hi("CameraSpeed"), .05f, ini("CameraSpeed"));
-                number(r, "touch.opacity", tr("Touch controls opacity"), &c.touch_opacity, lo("Opacity"), hi("Opacity"), .05f, ini("Opacity"));
-            } else {  // (a controller's button or a key presses them: that view's combined buttons alone)
-                action(r, "touch.combos", tr("Combined buttons"), []() { push(View::TouchButtons, "tc.0"); });
-                r.back().help = tr("Buttons of your own that press several of the game's at once: on a controller's button, or on a key in Keybinds.");
-            }
-#ifdef __ANDROID__  // (the phone's vibrator: elsewhere runtime/haptics.c does nothing)
-            add_bool(r, "touch.vibration", "Vibrate on touch", &c.touch_vibration, ini("Vibration"));
-            add_bool(r, "phone.rumble", "Game rumble on the phone", &c.phone_rumble, ini("PhoneRumble"));
-#endif
-            if (touch_screen()) {  // (the layout editor is worked by fingers)
-                action(r, "touch.edit", tr("Customize controls and HUD"), []() {
-                    touch_edit_begin();  // (the editor starts once the menu is closed: one back, or the unsaved-changes dialog)
-                    request_back.store(true);
-                });
-                r.back().help = tr("Move and resize each button on the screen and each part of the game's HUD: drag it, pinch or use - / + for its size, hide a part, then Save. HUD: controller edits the HUD shown without the touch controls.");
-            }
+        if (!fingers) {  // (a controller's button or a key presses them: that view's combined buttons alone)
+            lock_row();
+            action(r, "touch.combos", tr("Combined buttons"), []() { push(View::TouchButtons, "tc.0"); });
+            r.back().help = tr("Buttons of your own that press several of the game's at once: on a controller's button, or on a key in Keybinds.");
         }
         action(r, "pad.map", tr("Map a controller"), []() { push(View::PadList, "pad.0"); });
         r.back().help = tr("For a controller the game does not read well: press each button once and it works from then on.");
@@ -2058,7 +2112,8 @@ std::vector<Row> main_rows() {
         r.back().help = tr("The keys and mouse buttons for the Switch controller's buttons, for moving, the camera, the item bar and the combined buttons, and the chat key.");
 #endif
         break;
-    case 3:  // Multiplayer: the internet first (a hub server, the default one already set), then the local network
+    }
+    case NET_PAGE:  // Multiplayer: the internet first (a hub server, the default one already set), then the local network
         header(r, "online.header", tr("Over the internet"));
         server_row(r);
         text(r, "key", "Matchmaking key", c.ldn_key, sizeof c.ldn_key, *c.ldn_key ? c.ldn_key : tr("Public"), ini("Key"));
@@ -2075,7 +2130,7 @@ std::vector<Row> main_rows() {
         add_bool(r, "discord.hunter", "Show hunter name and HR", &c.discord_hunter, ini("ShowHunter"));
 #endif
         break;
-    case 4: {
+    case GAMEPLAY_PAGE: {
         const char *per_quest =
             tr("HP multipliers for single quests, by their quest ID: in those quests they are used instead of the ones above.");
         header(r, "hp.header", tr("Monster HP Scaling"));
@@ -2152,11 +2207,17 @@ std::vector<Row> main_rows() {
     case APP_PAGE:
         add_choice(r, "language", "Language", c.language, {"English", "Español"},
                    [](int v) { c.language = v; }, ini("Language"));
-#ifndef __ANDROID__  // (a phone: not worth a row)
-        add_choice(r, "theme", "Menu theme", c.menu_theme, {tr("Gold"), tr("Blue"), tr("Hunter")},
-                   [](int v) { c.menu_theme = v; }, ini("Theme"));
-#endif
-        number(r, "scale", "Interface scale (%)", &c.menu_scale, (int)lo("MenuScale"), (int)hi("MenuScale"), 10, ini("MenuScale"));
+        {  // (on a phone too, listed as in the MH4U port: Hunter, Gold, Blue; the file keeps its own order, THEME_*)
+            static const int themes[] = {THEME_HUNTER, THEME_GOLD, THEME_BLUE};
+            int pick = 0;
+            for (int i = 0; i < 3; i++)
+                if (themes[i] == c.menu_theme)
+                    pick = i;
+            add_choice(r, "theme", "Menu colours", pick, {tr("Hunter"), tr("Gold"), tr("Blue")},
+                       [](int v) { c.menu_theme = themes[v]; }, ini("Theme"));
+        }
+        number(r, "scale", "Menu size", &c.menu_scale, (int)lo("MenuScale"), (int)hi("MenuScale"), 10, ini("MenuScale"));
+        r.back().value = std::to_string(c.menu_scale) + "%";
         add_bool(r, "pause.bg", "Pause in the background", &c.pause_background, ini("PauseInBackground"));
 #ifdef __ANDROID__  // (runtime/overlay.cpp)
         add_bool(r, "pause.menu", "Pause in this menu", &c.pause_menu, ini("PauseInMenu"));
@@ -2171,6 +2232,7 @@ std::vector<Row> main_rows() {
         add_bool(r, "updates", "Check for updates", &c.updates, ini("Updates"));
 #endif
         add_bool(r, "bonus", "Bonus content", &c.bonus_content, ini("BonusContent"));
+        header(r, "data.head", tr("Your game"));  // (the MH4U port's two headers)
 #ifdef __ANDROID__
         action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
         r.back().help = tr("Where the game's exefs and romfs are read from. A new folder is used the next time the game starts.");
@@ -2192,6 +2254,7 @@ std::vector<Row> main_rows() {
         action(r, "log.open", tr("Log folder"), []() { ui_request_share_log(); });
         r.back().help = tr("Opens the folder with log.txt, the game's log, to send it to whoever is helping you with a problem.");
 #endif
+        header(r, "app.head", tr("The app"));
         if (!touch_ui()) {  // (the phone's menu fills the screen: nothing to move)
             action(r, "detach", tr(s.floating ? "Attach menu" : "Detach menu"), []() {
                 s.floating = !s.floating;
@@ -2211,11 +2274,25 @@ std::vector<Row> main_rows() {
             });
         action(r, "restart", tr("Restart"), []() { push(View::Restart, "dialog.cancel"); });
         action(r, "exit", tr("Exit game"), []() { push(View::Exit, "dialog.cancel"); });
+#ifdef __ANDROID__  // (as the header's X: unsaved changes asked about first)
+        action(r, "back.game", tr("Back to the game"), []() { request_back.store(true); });
+#endif
         break;
-    case ABOUT_PAGE: // (who made it, where the official one is, the licences and the legal notice)
+    case ABOUT_PAGE:  // (who made it, where the official one is, the licences and the legal notice: shown, as in the
+                      // MH4U port, not in a help)
         header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);
+        note(r, "about.by", tr("Made by khorne-hub. Free."));
+        note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
+        note(r, "about.base", tr("Based on MHGURecomp."));
+        note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
+#ifdef __ANDROID__
+        note(r, "about.legal", tr("This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
+#else
+        note(r, "about.legal", tr("This program includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
+#endif
+        note(r, "about.paid", tr("Only the links khorne-hub gives are official. If you got it anywhere else, paid for it, or it came with ads, it is not the official one."));
         action(r, "credits", tr("Show the credits"), []() { credits_show(); });
-        r.back().help = tr("Made by khorne-hub. Free. Only the links khorne-hub gives are official: if you got it anywhere else, paid for it, or it came with ads, it is not the official one. Official page: github.com/khorne-hub/gu-native. Based on MHGURecomp. Also by khorne-hub: MH4U for Android, github.com/khorne-hub/4u-native.");
+        r.back().help = tr("Shows again the credits that appear when the app opens.");
 #ifdef __ANDROID__
         action(r, "licenses", tr("Licenses"), []() { ui_request_licenses(); });
         r.back().help = tr("The licenses of the software this app is made with, and the legal notice: this app includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
@@ -2223,7 +2300,9 @@ std::vector<Row> main_rows() {
         action(r, "licenses", tr("Licenses"), []() { push(View::Licenses, "dialog.cancel"); });
         r.back().help = tr("The legal notice and the licenses of the software this program is made with: it includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
 #endif
-        header(r, "about.thanks", tr("Thank you"));  // (its text: page_notes)
+        header(r, "about.thanks", tr("Thank you"));
+        note(r, "thanks.body", tr(THANKS_TEXT));
+        note(r, "thanks.sign", thanks_signature());
         action(r, "thanks", tr("Show the thanks"), []() { thanks_show(); });
         r.back().help = tr("Shows the thank-you again, as it showed the first time the game opened.");
         break;
@@ -2289,10 +2368,10 @@ void menu_hint_seen() {
 }
 #endif
 // Which of the game's buttons are on the screen, and the player's own
-const char *const TB_TITLES[TB_COUNT] = {"Attacks", "Dodge (B)", "Guard (R)", "Sheathe (Y)", "Game menu (+)", "Minus (-)", "D-pad",
+const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard / dash (R)", "Sheathe (Y)", "Game menu (+)", "Minus (-)", "D-pad",
                                          "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
-                                         "Crouching fire / coating", "Ammo arrows", "Item arrows", "ZL in menus", "ZR in menus",
+                                         "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
                                          "Menu pad", "Run with the stick", "Keep guarding while sliding"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
@@ -2614,7 +2693,8 @@ const PhoneHelp PHONE_HELP[] = {
     {"Sharpness", "How sharp FSR leaves the picture.", "Qué tan nítida deja FSR la imagen."},
     {"FaceButtons", "How A, B, X and Y are read on a controller. Position: as on the Switch. Label: by the letter printed on the button.",
      "Cómo se leen A, B, X e Y en un mando. Posición: como en la Switch. Etiqueta: según la letra impresa en el botón."},
-    {"Controls", "Auto: they show while no controller is connected.", "Automático: se ven mientras no haya un mando conectado."},
+    {"Controls", "Auto: they show while no controller is connected. Never: only the settings button stays.",
+     "Automático: se ven mientras no haya un mando conectado. Nunca: solo queda el botón de opciones."},
     {"MoveHUD", "On: with the touch controls the HUD has an arrangement of its own, out of your thumbs' way. Off: the same HUD as without them.", "Activado: con los controles táctiles el HUD tiene un acomodo propio, lejos de los pulgares. Desactivado: el mismo HUD que sin ellos."},
     {"CameraSpeed", "How far the camera turns for a drag.", "Cuánto gira la cámara al arrastrar."},
     {"Opacity", "How solid the touch controls look.", "Qué tan sólidos se ven los controles táctiles."},
@@ -2628,7 +2708,8 @@ const PhoneHelp PHONE_HELP[] = {
     {"HubHP", "A Village quest played in the Hub first multiplies the monster's health by this.",
      "Una misión de la aldea jugada en el Hub primero multiplica la vida del monstruo por este valor."},
     {"Language", "The language of this menu.", "El idioma de este menú."},
-    {"MenuScale", "The size of this menu.", "El tamaño de este menú."},
+    {"MenuScale", "The size of this menu, 50 % to 200 %.", "El tamaño de este menú, de 50 % a 200 %."},
+    {"Theme", "The colours of this menu.", "Los colores de este menú."},
     {"PauseInBackground", "The game stops while you are out of the app.", "El juego se detiene mientras estás fuera de la app."},
     {"PauseInMenu", "The game waits while this menu is open, when you play alone. With others online or in Local Play it goes on.",
      "El juego espera mientras este menú está abierto, cuando juegas solo. Con otros, en línea o en juego local, sigue."},
@@ -2821,6 +2902,10 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     float right = rect.Max.x - font * .6f;
     if (r.current)  // (the picker: the choice the row has now)
         diamond(dl, ImVec2(right - font * .3f, cy), font * .24f, k.glow);
+    // (a tap goes on - to a page, a screen of the app's, a question: a mark at the right, as in the MH4U port)
+    bool goes_on = r.action && r.enabled && r.id != "save" && !plated && !toggle;
+    if (goes_on)
+        chevron(dl, ImVec2(right - font * .35f, cy), font * .28f, 1, lit ? ink : fade(k.rule, .8f), std::max(2.f, s.m.line));
     if (toggle) {
         ImRect slot(right - font * 2.6f, cy - font * .6f, right, cy + font * .6f);
         switch_mark(dl, slot, r.toggle == 1);
@@ -2829,9 +2914,9 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     } else if (!r.value.empty() && !plated) {
         std::string value = r.value + (r.cold ? " *" : "");
         float bs = stepper ? std::min(s.m.row * .84f, font * 2.3f) : 0;
-        fit(value, stepper ? room - bs * 2 - font * .4f : room - font * (r.menu ? 1.4f : .3f));
+        fit(value, stepper ? room - bs * 2 - font * .4f : room - font * (r.menu || goes_on ? 1.4f : .3f));
         ImVec2 size = ImGui::CalcTextSize(value.c_str());
-        float vx = stepper ? right - room * .5f - size.x * .5f : right - size.x - (r.menu && r.enabled ? font * 1.1f : 0);
+        float vx = stepper ? right - room * .5f - size.x * .5f : right - size.x - ((r.menu && r.enabled) || goes_on ? font * 1.1f : 0);
         ImU32 value_ink = r.warn ? IM_COL32(255, 110, 96, 255) : !r.enabled ? t.text_off : lit ? ink : k.rule;
         shadow_text(dl, font, ImVec2(vx, cy - size.y * .5f), value_ink, value.c_str());
         if (r.menu && r.enabled) {  // (a tap lists the choices)
@@ -2871,13 +2956,24 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
     int step = 0;
     for (int i = 0; i < (int)rows.size(); i++) {
         Row &r = rows[i];
+        if (r.note) {  // (a line of text: a diamond, then the text in the dimmer colour, wrapped to the list)
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            float size = std::floor(font * .86f), indent = font * 1.15f, wrap = width - indent - font * .3f;
+            ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, wrap, r.title.c_str());
+            float top = font * .3f;
+            ImGui::Dummy(ImVec2(width, ts.y + top * 2));
+            diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + size * .55f), size * .18f, theme().accent);
+            w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top), theme().text_dim, r.title.c_str(),
+                                 nullptr, wrap);
+            continue;
+        }
         if (r.header) {  // (a section's title: accent-coloured, a little apart from the rows above it)
             ImVec2 p = ImGui::GetCursorScreenPos();
             float h = font * (i ? 2.2f : 1.6f);
             ImGui::Dummy(ImVec2(width, h));
-            w->DrawList->AddText(ImGui::GetFont(), font, ImVec2(p.x + font * .25f, p.y + h - font * 1.35f),
-                                 theme().accent, r.title.c_str());
-            float end = p.x + font * .75f + ImGui::CalcTextSize(r.title.c_str()).x, y = p.y + h - font * .85f;
+            ImFont *tf = title_font();
+            w->DrawList->AddText(tf, font, ImVec2(p.x + font * .25f, p.y + h - font * 1.35f), theme().accent, r.title.c_str());
+            float end = p.x + font * .75f + tf->CalcTextSizeA(font, FLT_MAX, 0, r.title.c_str()).x, y = p.y + h - font * .85f;
             if (touch && end < p.x + width)  // (the phone: a rule after it, as the game's section titles)
                 w->DrawList->AddLine(ImVec2(end, y), ImVec2(p.x + width, y), fade(theme().accent, .45f),
                                      std::max(1.f, s.m.line * .5f));
@@ -3311,17 +3407,13 @@ std::string view_title() {
 // The tab's notes under its rows (text, a warning)
 std::vector<std::pair<const char *, bool>> page_notes() {
     std::vector<std::pair<const char *, bool>> notes;
-    if (s.page == 1 && (s.draft.fsr || g_config.fsr))
+    if (s.page == GFX_PAGE && (s.draft.fsr || g_config.fsr))
         notes.push_back({tr("FSR overrides MSAA and FXAA while active."), false});
     if (s.page == MODS_PAGE)
         notes.push_back({tr("Mods load from top to bottom: a later mod wins. Select a conflict to choose which mod is used. Press Save, then restart."), false});
     if (s.page == CHEATS_PAGE) {
         notes.push_back({tr("Online: only use cheats when everyone in the lobby agrees to it."), true});
         notes.push_back({tr("Cheats turn on and off when you press Save, no restart needed. Turning one off undoes its changes to the game's code; values it already changed (money, items) stay. New cheat files show up after a restart."), false});
-    }
-    if (s.page == ABOUT_PAGE) {  // (the thank-you, as it showed after the credits of the first start: draw_thanks)
-        notes.push_back({tr(THANKS_TEXT), false});
-        notes.push_back({thanks_signature(), false});
     }
     return notes;
 }
@@ -3450,8 +3542,8 @@ void touch_help(ImDrawList *dl, const ImRect &r, const std::vector<Row> &rows, b
     dl->PushClipRect(r.Min, ImVec2(r.Max.x, std::max(r.Min.y, bottom - pad * .3f)), true);
     float y = r.Min.y + pad * .7f;
     if (side) {
-        shadow_text(dl, f, ImVec2(x, y), k.glow, row->title.c_str(), wrap);
-        y += font->CalcTextSizeA(f, FLT_MAX, wrap, row->title.c_str()).y + pad * .5f;
+        shadow_text(dl, title_font(), f, ImVec2(x, y), k.glow, row->title.c_str(), wrap);
+        y += title_font()->CalcTextSizeA(f, FLT_MAX, wrap, row->title.c_str()).y + pad * .5f;
         dl->AddLine(ImVec2(x, y), ImVec2(x + wrap, y), fade(k.rule, .5f), std::max(1.f, line * .4f));
         y += pad * .6f;
     }
@@ -3469,7 +3561,7 @@ void touch_picker(std::vector<Row> &options, float scale) {
     float f = s.m.f, pad = s.m.pad, line = s.m.line, spacing = ImGui::GetStyle().ItemSpacing.y;
     float band = std::max(f * 2.4f, s.m.row * .95f), side = band * .74f, title = std::floor(f * 1.05f);
     float frame = std::max(2.f, f * .14f) * 1.7f;  // (draw_frame's rules at the bottom)
-    float longest = font->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
+    float longest = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
     for (const auto &o : options)
         longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f);
     float w = std::clamp(longest + pad * 2, vp->WorkSize.x * .32f, vp->WorkSize.x * .62f);
@@ -3497,9 +3589,9 @@ void touch_picker(std::vector<Row> &options, float scale) {
         close_dropdown();
     plate(dl, shut, line, held, true);
     cross(dl, shut.GetCenter(), side * .2f, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
-    ImVec2 ts = font->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
+    ImVec2 ts = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
     dl->PushClipRect(ImVec2(x0, y0), ImVec2(shut.Min.x - pad * .5f, y0 + band), true);
-    shadow_text(dl, title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
+    shadow_text(dl, title_font(), title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(x0 + pad, y0 + band + line * 2 + pad));
     ImGui::BeginChild("##choices",
@@ -3606,10 +3698,10 @@ void touch_panel(bool *open, const Config &before) {
     {  // (the title; the tab's name or the submenu's after it)
         const char *title = tr("SETTINGS");
         float size = std::floor(f * 1.1f), cy = by + side * .5f;
-        ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, title);
+        ImVec2 ts = title_font()->CalcTextSizeA(size, FLT_MAX, 0, title);
         std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        shadow_text(dl, size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
+        shadow_text(dl, title_font(), size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
         if (!sub.empty()) {
             float dx = title_x + ts.x + f * .7f;
             diamond(dl, ImVec2(dx, cy), f * .18f, k.rule);
@@ -3803,7 +3895,7 @@ void draw_credits() {
     // (sized to the screen's height, smaller when it doesn't fit its width)
     float f = std::floor(std::clamp(vp->Size.y * .034f, 12.f, 44.f)), w = 0;
     for (int pass = 0; pass < 2; pass++) {
-        w = font->CalcTextSizeA(std::floor(f * 1.5f), FLT_MAX, 0, title).x;
+        w = title_font()->CalcTextSizeA(std::floor(f * 1.5f), FLT_MAX, 0, title).x;
         for (const std::string &l : lines)
             w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, l.c_str()).x);
         for (const char *l : warns)
@@ -3830,8 +3922,8 @@ void draw_credits() {
     for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
         diamond(dl, p, line * 2.6f, fade(gold, a));
     float y = box.Min.y + pad;
-    ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
-    shadow_text(dl, tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    ImVec2 ts = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    shadow_text(dl, title_font(), tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
     y += tsz + gap * 1.5f;
     { // (a gold rule with a diamond in its middle)
         const float half = std::min(w * .5f, f * 9);
@@ -4058,7 +4150,7 @@ void draw_thanks(float a, bool live, bool armed) {
         }
         rows.clear();
         lines(wrap, true);
-        w = font->CalcTextSizeA(tsz, FLT_MAX, 0, title).x;
+        w = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title).x;
         for (const auto &r : rows)
             w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, r.first, r.second).x);
         bar = std::floor(f * .8f), space = font->CalcTextSizeA(f, FLT_MAX, 0, " ").x;
@@ -4096,8 +4188,8 @@ void draw_thanks(float a, bool live, bool armed) {
     for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
         diamond(dl, p, line * 2.6f, fade(gold, a));
     float y = box.Min.y + pad;
-    const ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
-    text_at(tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    const ImVec2 ts = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    shadow_text(dl, title_font(), tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
     y += tsz + gap * 1.5f;
     {  // (the credits' gold rule, a diamond in its middle)
         const float half = std::min(w * .5f, f * 9);
