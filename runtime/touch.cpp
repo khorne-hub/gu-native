@@ -975,6 +975,8 @@ struct State {
     bool assist_off;                     // a dodge, a reload or a sheathe pressed since the fire button: no aim until it is up
     bool still_wait;                     // the aim waited for is a shot's standing still: 0.1.8's (touch_lock_shot)
     uint64_t still_until;                // (a shot standing still: the hunter turned to the monster until then, hle/mousecam.c)
+    uint64_t help_r0;                    // (the help's R pressed since then: never let go as a tap, touch_lock_shot)
+    uint64_t menu_seen_ns;               // (a window taken for a menu in a hunt since then: MENU_SETTLE)
     uint64_t shot_others, others_ns;     // (B, X, Y at the last locked-shot update: their presses; the last one's time)
     int drawn_known, weapon_known;       // the last weapon_drawn that was known (0 / 1), the last weapon in hand...
     uint64_t hunter_ns;                  // ...and when the hunter was last found (SDL ticks)
@@ -2160,6 +2162,16 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
             if (f.kind == F_BUTTON && !in_mode(f.ctl, s.menu)) f.done = true;
         recompute_held(s);
     }
+    // (a window taken for a menu while a quest's hunter is played - an aim's or the scope's, a message - is no menu until
+    // it has lasted MENU_SETTLE: for a frame the layout went to the menu's and back, and the lock-on's shot let go of its
+    // R, the scope; the owner's Galaxy in the Arena, 2026-11-10)
+    const uint64_t MENU_SETTLE = 200 * MS;
+    if (game && !s.menu && hunter) {
+        if (!s.menu_seen_ns) s.menu_seen_ns = now;
+        if (now - s.menu_seen_ns < MENU_SETTLE) game = false;
+    } else if (!game) {
+        s.menu_seen_ns = 0;
+    }
     if (game != s.menu) {  // (a menu of the game's opened or closed: the menu pad comes or goes, nothing else changes;
         s.menu = game;     // fingers on its group let go, its presses and steps waiting are dropped)
         g_game_menu = game;
@@ -2612,6 +2624,7 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons, bool still) {
     std::lock_guard<std::mutex> l(g_lock);
     State &s = g_s;
     uint64_t now = SDL_GetTicksNS();
+    const uint64_t in = buttons;  // (the player's own, from every input)
     static int dbg = -1;
     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
     bool player_aims = false;
@@ -2739,6 +2752,16 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons, bool still) {
     } else {
         s.assist_wait = s.fired = s.assist_off = s.still_wait = false, s.assist_until = s.combo_t0 = s.keep_r = s.assist_fire = 0;
         s.keep_buttons = s.replay_until = s.still_until = 0;
+    }
+    // The help's R, however it ended - the lock-on off for a moment, the layout gone to a menu for a frame, the gun put
+    // away -, stays down until the game can't take it for a tap of R, which opens the scope (the owner's Galaxy in the
+    // Arena, 2026-11-10: "a veces cuando disparo se pone la mira grande sola")
+    bool help_r = (buttons & B(BTN_R)) && !(in & B(BTN_R));
+    if (help_r) {
+        if (!s.help_r0) s.help_r0 = now;
+    } else if (s.help_r0) {
+        if (!(in & B(BTN_R)) && now < s.help_r0 + aim_hold_ns()) buttons |= B(BTN_R);
+        else s.help_r0 = 0;
     }
     g_assist_until = s.assist_until;
     g_still_until = s.still_until;
