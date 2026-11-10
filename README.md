@@ -57,6 +57,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 #### Customization
 
 - Press and hold the gear to open the editor (or **Controls**, **Customize controls and HUD**): move and resize each button, and move, resize or hide each part of the game's HUD: the clock, health and stamina, the sharpness and gauges, the party, the map, the target camera, the item bar and the Hunter Arts. Outside a hunt, frames show where each part goes, each with its name. A part you put over a button turns red, and so does the button; the default layout shows no red. The item bar can't be hidden there: it is how you pick and use items with your fingers
+- The editor's panel moves out of the way of what you are placing: drag it by its title (the grips at its ends). Tap its title and - / + or a pinch make it smaller, down to 60 %. It stays where you leave it, and as big
 - A part you moved stays where you put it: a chat line, a bow's or a bowgun's aim and the Quest Complete stamp no longer send it back to the game's place, and it doesn't jump when a menu of the game's opens. A part that would sit over that menu's window hides until the menu closes
 - The game's HUD is rearranged to stay clear of your thumbs (**Move the HUD for touch**). Turned off, the HUD is the same as with a controller. The editor's **HUD: controller** button arranges the HUD you get with a controller, without connecting one, and a controller's B closes the editor without saving
 - Adjustable control opacity and camera speed

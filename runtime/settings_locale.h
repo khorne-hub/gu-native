@@ -234,6 +234,8 @@ static inline const char *settings_text(int language, const char *english) {
         {"Pause in the background", "Pausar en segundo plano"},
         {"Pause in this menu", "Pausar en este menú"},
         {"Drag to move  -  pinch or use - / + for its size", "Arrastra para moverlo  -  pellizca o usa - / + para su tamaño"},
+        {"The panel: drag its title to move it  -  pinch or use - / + for its size",
+         "El panel: arrastra su título para moverlo  -  pellizca o usa - / + para su tamaño"},
         {"Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size",
          "Aparece cuando hay un menú del juego abierto - arrástralo para moverlo, pellizca o usa - / + para el tamaño"},
         {"Defaults", "Por defecto"},
