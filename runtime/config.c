@@ -62,11 +62,12 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
 // thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
-// menus, the grass, the lock-on's buttons shown, the notice about playing online not shown yet, and the pause in the menu)
+// menus, the grass, the lock-on's buttons shown, the notice about playing online not shown yet, the pause in the menu, and
+// no hub server or matchmaking key remembered yet)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -502,11 +503,13 @@ static const char DEFAULT_INI[] =
     "; Search Hubs shows its hubs next to the LAN's. host or host:port (default port 39510).\n"
     "; Empty: the default, " LDN_DEFAULT_SERVER ", a server run by players, not by this project.\n"
     "; Off: no internet hubs, only your local network.\n"
+    "; The servers you type and save stay in the menu's list, the last one first (up to 24: RecentServer1 and on).\n"
     "; Default:\n"
     "Server =\n"
     "\n"
     "; Matchmaking key: hubs are only seen by players with the same key, so friends who all enter the same key\n"
     "; only see each other's hubs. Empty: public, your hubs are seen by (and you see) everyone without a key.\n"
+    "; The keys you type and save stay in the menu's list, the last one first (up to 24: RecentKey1 and on).\n"
     "; Default:\n"
     "Key =\n"
     "\n"
@@ -1216,6 +1219,19 @@ static void set_key(const char *key, char *val, int line) {
         if (i == h->quests) h->quests++;
         return;
     }
+    // [Multiplayer] RecentServer<n> / RecentKey<n> = a hub server or a matchmaking key typed and saved (1: the last one)
+    size_t at = !strncmp(k, "recentserver", 12) ? 12 : !strncmp(k, "recentkey", 9) ? 9 : 0;
+    if (at && isdigit((unsigned char)k[at])) {
+        char *end;
+        unsigned long n = strtoul(k + at, &end, 10);
+        if (*end || n < 1 || n > LDN_RECENT) {
+            LOG("[config] line %d: %s is not one of the %d remembered (ignored)\n", line, key, LDN_RECENT);
+            return;
+        }
+        if (at == 12) snprintf(g_config.ldn_recent_server[n - 1], sizeof g_config.ldn_recent_server[0], "%s", val);
+        else snprintf(g_config.ldn_recent_key[n - 1], sizeof g_config.ldn_recent_key[0], "%s", val);
+        return;
+    }
     const ConfigSetting *s = config_setting(key);
     if (!s) { LOG("[config] line %d: unknown setting \"%s\" (ignored)\n", line, key); return; }
     if (s->field == offsetof(Config, shadows)) g_shadows_set = true;
@@ -1223,6 +1239,38 @@ static void set_key(const char *key, char *val, int line) {
     if (s->field == offsetof(Config, lock_buttons)) g_lock_buttons_set = true;
     if (!config_parse(s, val, &g_config))
         LOG("[config] line %d: \"%s\" is not a value %s takes; using the default\n", line, val, key);
+}
+
+static int recent_same(const char *a, const char *b, bool nocase) { return nocase ? !strcasecmp(a, b) : !strcmp(a, b); }
+void config_recent_add(char *list, int n, size_t width, const char *value, bool nocase) {
+    if (!value || !*value || strlen(value) >= width || strpbrk(value, "\r\n;#")) return;  // (the file couldn't read it back)
+    char keep[256];
+    snprintf(keep, sizeof keep, "%s", value);  // (value may be one of the list's own)
+    config_recent_remove(list, n, width, keep, nocase);
+    memmove(list + width, list, width * (size_t)(n - 1));
+    snprintf(list, width, "%s", keep);
+}
+bool config_recent_remove(char *list, int n, size_t width, const char *value, bool nocase) {
+    for (int i = 0; i < n; i++) {
+        if (!list[width * i] || !recent_same(list + width * i, value, nocase)) continue;
+        memmove(list + width * i, list + width * (i + 1), width * (size_t)(n - 1 - i));
+        memset(list + width * (n - 1), 0, width);
+        return true;
+    }
+    return false;
+}
+// A remembered list as the file had it: its empty places, doubles and what the file can't hold left out, the rest in order
+static void recent_tidy(char *list, int n, size_t width, bool nocase) {
+    int kept = 0;
+    for (int i = 0; i < n; i++) {
+        const char *v = list + width * i;
+        bool twice = false;
+        for (int j = 0; j < kept && !twice; j++) twice = recent_same(list + width * j, v, nocase);
+        if (!*v || twice || strpbrk(v, "\r\n;#")) continue;
+        if (kept != i) memmove(list + width * kept, v, width);
+        kept++;
+    }
+    memset(list + width * kept, 0, width * (size_t)(n - kept));
 }
 
 static char *trim(char *s) {
@@ -1333,6 +1381,8 @@ void config_load(void) {
         fclose(f);
         append_missing_sections(path, seen);
     }
+    recent_tidy(g_config.ldn_recent_server[0], LDN_RECENT, sizeof g_config.ldn_recent_server[0], true);
+    recent_tidy(g_config.ldn_recent_key[0], LDN_RECENT, sizeof g_config.ldn_recent_key[0], false);
 
     // (a file of an older version, with LowEnd on and no Shadows: off, as the menu's Low-end mode now sets them; a
     // desktop's Low-end mode keeps the shadows, and only Toaster turns them off)

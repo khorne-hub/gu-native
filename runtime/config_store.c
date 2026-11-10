@@ -227,9 +227,16 @@ bool config_validate(const Config *c, char *error, size_t size) {
     return true;
 }
 
-// What config_save writes: a setting of the table (setting) or a Quest<number> entry (setting NULL)
+// What config_save writes: a setting of the table (setting) or a Quest<number>, RecentServer<n> or RecentKey<n> entry
+// (setting NULL)
 typedef struct { const ConfigSetting *setting; const char *section; char key[64], value[256]; bool seen; } Entry;
-#define ENTRY_MAX (HP_QUESTS_MAX + 192)  // (every setting of g_settings, 133 now, 134 on a desktop, and the quests set apart)
+// (every setting of g_settings, 133 now, 134 on a desktop, the quests set apart, the servers and keys remembered)
+#define ENTRY_MAX (HP_QUESTS_MAX + 192 + 2 * LDN_RECENT)
+// A RecentServer<n> / RecentKey<n> line's key, normalized: what config_save writes again or leaves out
+static bool recent_key(const char *normalized) {
+    size_t at = !strncmp(normalized, "recentserver", 12) ? 12 : !strncmp(normalized, "recentkey", 9) ? 9 : 0;
+    return at && isdigit((unsigned char)normalized[at]);
+}
 static void normalize(const char *s, char *out, size_t size) {
     size_t n = 0;
     for (; *s && n + 1 < size; s++)
@@ -270,7 +277,8 @@ bool config_save(const Config *c, char *error, size_t error_size) {
     if (!config_validate(c, error, error_size)) return false;
     static Entry entries[ENTRY_MAX];  // (big: off the stack)
     int n = 0;
-    if (g_nsettings + c->hp.quests > ENTRY_MAX) return fail(error, error_size, "Too many settings to save (ENTRY_MAX).");
+    if (g_nsettings + c->hp.quests + 2 * LDN_RECENT > ENTRY_MAX)
+        return fail(error, error_size, "Too many settings to save (ENTRY_MAX).");
     for (int i = 0; i < g_nsettings; i++) {
         Entry *e = &entries[n++];
         e->setting = &g_settings[i], e->section = g_settings[i].section, e->seen = false;
@@ -284,6 +292,15 @@ bool config_save(const Config *c, char *error, size_t error_size) {
         snprintf(e->key, sizeof e->key, "Quest%u", c->hp.quest[i].quest);
         snprintf(e->value, sizeof e->value, "%g, %g, %g, %g", (double)v[0], (double)v[1], (double)v[2], (double)v[3]);
     }
+    for (int list = 0; list < 2; list++)  // (the remembered ones, at the end of [Multiplayer]: only those there are)
+        for (int i = 0, kept = 0; i < LDN_RECENT; i++) {
+            const char *v = list ? c->ldn_recent_key[i] : c->ldn_recent_server[i];
+            if (!*v || strpbrk(v, "\r\n;#")) continue;
+            Entry *e = &entries[n++];
+            e->setting = NULL, e->section = "Multiplayer", e->seen = false;
+            snprintf(e->key, sizeof e->key, "%s%d", list ? "RecentKey" : "RecentServer", ++kept);
+            snprintf(e->value, sizeof e->value, "%s", v);
+        }
     char path[1100];
     config_path(path, sizeof path);
     char temp[1200];
@@ -324,6 +341,7 @@ bool config_save(const Config *c, char *error, size_t error_size) {
                 char normalized[128];
                 normalize(key, normalized, sizeof normalized);
                 if (!strncmp(normalized, "quest", 5) && isdigit((unsigned char)normalized[5])) handled = true;
+                if (recent_key(normalized)) handled = true;  // (one taken out of its list: its line goes too)
             }
         }
         if (!handled) { fputs(line, out); ended_line = len && line[len - 1] == '\n'; }

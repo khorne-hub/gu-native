@@ -46,7 +46,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 #### Menus and comfort
 
 - **Menus made for your thumb:** nothing of the layout changes when a menu of the game's opens: a small pad shows and moves the cursor, with the page buttons above it. The movement stick keeps walking (where the hunter can't walk, as at a town's item box or a shop, it moves the cursor; where the game shows a model, as at the smithy, the stick and dragging turn it, as on a controller), A and B stay where they are, and dragging on the screen moves the cursor too. The pad is moved and resized in the editor like the other buttons. To hide it: under the gear, **Controls**, **Buttons on the screen**, **Menu pad**
-- Your phone's keyboard works for typing your character's name
+- Your phone's keyboard works for typing your character's name, and in the settings menu's text with **Phone keyboard** (Enter accepts, Back cancels); the menu's own keys stay for a controller
 - The settings menu works by touch and matches the game's look
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
@@ -260,6 +260,8 @@ project). Everyone on the same server finds the others' hubs, with no ports to o
 3. **Hub server** picks another server: **Custom...** to type one (a name or IP, and `:port` if it isn't 39510; the small
    program in the `server` folder runs one, see `server/README.md`), or **Off** for your local network only. **Check hub
    server** says whether it answers and how many hubs it lists.
+4. The servers and keys you type and save stay in their lists, the last one first (up to 24), to pick them again; the **×**
+   beside one takes it out.
 
 The first time you play online a notice says which server the game connects to: like any server on the internet, it sees
 your IP address.

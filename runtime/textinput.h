@@ -3,6 +3,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 union SDL_Event;
 
 enum { TI_NONE, TI_CHANGED, TI_ENTER, TI_CANCEL };
@@ -13,6 +17,12 @@ void textinput_end(void);                                  // it is gone (decide
 int textinput_poll(char *out, size_t size, int *chars);    // TI_*: what happened since the last poll; the text now
 void textinput_peek(char *out, size_t size);               // the text now (to show it), leaving the events for the poll
 
+// the port's own menu (runtime/settings_panel.cpp, any thread): its keyboard view's Phone keyboard (Android; elsewhere
+// the menu doesn't offer it and these do nothing)
+void textinput_menu_keyboard(bool want);    // each frame: the phone's keyboard up while true
+void textinput_menu_keyboard_show(void);    // its key: up, and up again if the keyboard's own button had hidden it
+bool textinput_menu_keyboard_closed(void);  // true once after Back put it away (the menu leaves its typing, as Back does)
+
 // window side (the main thread)
 bool textinput_active(void);
 bool textinput_event(const union SDL_Event *e);  // true: the event was typing (not for the controller mapping)
@@ -20,3 +30,7 @@ void textinput_update(void);                     // each loop pass: the window's
 void textinput_tap(void);                        // (Android) a finger lifted: the screen keyboard back if it was hidden
 void textinput_type(const char *utf8);           // as typed (MHGU_CONTROL "type", paste)
 void textinput_key(int what);                    // TI_ENTER, TI_CANCEL, or TI_NONE for Backspace
+
+#ifdef __cplusplus
+}
+#endif

@@ -36,6 +36,9 @@ enum {
 #define HP_QUESTS_MAX 256
 #define HP_SCALE_MIN 0.05f
 #define HP_SCALE_MAX 20.0f
+// [Multiplayer] RecentServer<n> / RecentKey<n>: how many hub servers and matchmaking keys the menu remembers (the MH4U
+// port's lobbies too: RecentLobby<n>)
+#define LDN_RECENT 24
 // The game's buttons, for showing each on the screen or not ([Touch] Show*: runtime/touch.cpp); and two of the touch
 // controls' ways, kept with them: [Touch] StickRun (the stick pushed far out runs, locked; Off: a Run button instead) and
 // GuardSlide (a thumb from Guard keeps R as it slides onto the attacks)
@@ -146,7 +149,15 @@ typedef struct {
                               // (runtime/net/ldn.c, settings_panel.cpp's card)
     int pause_menu;           // [Application] PauseInMenu (Android): the game waits while the settings menu is open and the
                               // player plays alone (runtime/overlay.cpp; #94)
+    char ldn_recent_server[LDN_RECENT][256];  // [Multiplayer] RecentServer1..: the hub servers typed and saved, the last
+                                              // first, none of the short list's (the menu's list: settings_panel.cpp)
+    char ldn_recent_key[LDN_RECENT][64];      // [Multiplayer] RecentKey1..: the matchmaking keys typed and saved, the same
 } Config;
+// The remembered lists (Config's ldn_recent_*: n entries of `width` bytes, the last first, no empty one between): add puts
+// a value at the front once (nocase: compared as host names are; an empty one is nothing), the last one dropped when it
+// is full; remove takes it out, the rest moving up (false: it wasn't there)
+void config_recent_add(char *list, int n, size_t width, const char *value, bool nocase);
+bool config_recent_remove(char *list, int n, size_t width, const char *value, bool nocase);
 uint32_t config_combo_mask(const char *text);  // "A+X" -> the BTN_* bits, 0 if there is nothing or anything else in it
 void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
 // The hub server used when ini Server is empty (runtime/net/ldn.c, server/): a community server that speaks this port's

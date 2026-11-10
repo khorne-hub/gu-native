@@ -11,6 +11,7 @@
 #include "modorder.h"
 #include "net/net.h"
 #include "platform.h"
+#include "textinput.h"
 #include "touch.h"
 #include "imgui_internal.h"
 #ifndef MHGU_VERSION
@@ -53,6 +54,7 @@ struct Row {
     bool number = false;                   // a number: left / right step it (the phone: - and + buttons on the row)
     std::function<void(int)> adjust;
     std::function<void()> activate;
+    std::function<void()> remove;          // (a picker's remembered choice: the x at its right takes it out of the list)
 };
 struct Target {
     std::string id;
@@ -74,12 +76,15 @@ struct Dropdown {
     std::function<void(int)> set;
     ImRect anchor;  // that row on the screen, this frame (draw_rows)
     std::string title;  // (the phone's picker: its row's title over the choices)
+    std::vector<char> removable;      // the choices remembered (the servers and keys typed): an x at the right of each
+    std::function<void(int)> remove;  // takes one of them out of its list
 };
 struct Keyboard {
     std::string title, original, buffer;
     size_t cursor = 0, capacity = 255;
     bool upper = false, select_all = false;
     std::function<bool(const std::string &, std::string &)> commit;
+    bool phone = false;  // (Android) its Phone keyboard key asked for the phone's own keyboard: up while this view is
 };
 // The phone's sizes (touch_panel, each frame), from the screen's height in its pixels: a row, a tab and a button about
 // 0.09 of it, the text 0.034
@@ -135,6 +140,11 @@ struct State {
     ImGuiID list = 0;      // the list of rows (a child window) this frame; 0: the menu itself scrolls (keyboard / mouse)
     Metrics m;
     Drag drag;
+    // A remembered choice taken out of a picker (its x): the picker of that row opened again, fresh, at that place; and
+    // what was taken out while the menu is open (Save doesn't put it back as the value it replaces: remember_typed)
+    std::string reopen;
+    int reopen_at = 0;
+    std::vector<std::string> forgotten;
 } s;
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel;
 std::atomic<int> request_view;  // (SETTINGS_VIEW_*: a desktop's dialog answered, settings_panel_request_view)
@@ -524,6 +534,15 @@ bool dirty();
 // wheel for Navigation and its click for Confirm
 enum { GUIDE_NAV = 1, GUIDE_CONFIRM = 2, GUIDE_BACK = 4, GUIDE_SAVE = 8, GUIDE_ALL = 15 };
 const char *const guide_labels[4] = {"Navigation", "Confirm", "Back", "Save"};
+// (the Save guide says Remove while the dropdown's focused choice is a remembered one: the same button takes it out, or
+// Delete - picker_keys)
+bool guide_remove() {
+    if (!s.dropdown.open || s.focus.compare(0, 7, "choice."))
+        return false;
+    int i = atoi(s.focus.c_str() + 7);
+    return i >= 0 && i < (int)s.dropdown.removable.size() && s.dropdown.removable[i] && s.dropdown.remove;
+}
+const char *guide_label(int i) { return i == 3 && guide_remove() ? "Remove" : guide_labels[i]; }
 struct GuideLayout {
     ImVec2 offset[4];
     float height = 0;
@@ -543,7 +562,7 @@ float guide_glyph(ImDrawList *d, ImVec2 p, float f, int i) {
     }
     if (i < 2 && s.input == USED_MOUSE)
         return d ? SettingsIcons::mouse(d, p, f, i == 0) : f;
-    const char *key = i == 0 ? "" : i == 1 ? "Enter" : i == 2 ? "Esc" : "Ctrl+S";  // ("": the arrow keys)
+    const char *key = i == 0 ? "" : i == 1 ? "Enter" : i == 2 ? "Esc" : guide_remove() ? "Del" : "Ctrl+S";  // ("": the arrows)
     return d ? SettingsIcons::key(d, p, f, key) : SettingsIcons::key_width(f, key);
 }
 GuideLayout guide_layout(float width, int items = GUIDE_ALL) {
@@ -553,7 +572,7 @@ GuideLayout guide_layout(float width, int items = GUIDE_ALL) {
     for (int i = 0; i < 4; i++) {
         if (!(items >> i & 1))
             continue;
-        float item_width = guide_glyph(nullptr, ImVec2(0, 0), f, i) + f * .4f + ImGui::CalcTextSize(tr(guide_labels[i])).x;
+        float item_width = guide_glyph(nullptr, ImVec2(0, 0), f, i) + f * .4f + ImGui::CalcTextSize(tr(guide_label(i))).x;
         if (x && x + item_width > width) {
             x = 0;
             y += f + ImGui::GetStyle().ItemSpacing.y;
@@ -577,7 +596,8 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
         ImVec2 pos(start.x + layout.offset[i].x, start.y + layout.offset[i].y);
         float glyph = guide_glyph(draw, pos, f, i);
         draw->AddText(ImVec2(pos.x + glyph + f * .4f, pos.y),
-                      i == 3 && !dirty() ? theme().text_off : ImGui::GetColorU32(ImGuiCol_Text), tr(guide_labels[i]));
+                      i == 3 && !dirty() && !guide_remove() ? theme().text_off : ImGui::GetColorU32(ImGuiCol_Text),
+                      tr(guide_label(i)));
     }
 }
 bool confirmation() {
@@ -839,10 +859,13 @@ bool accept_keyboard() {
     pop();
     return true;
 }
-// The row's choices in a dropdown under it; selected: the one it has now (-1: none of them)
-void choices(const Row &row, std::vector<std::string> names, int selected, std::function<void(int)> set) {
+// The row's choices in a dropdown under it; selected: the one it has now (-1: none of them). removable: those remembered,
+// which remove takes out of their list (an x beside each)
+void choices(const Row &row, std::vector<std::string> names, int selected, std::function<void(int)> set,
+             std::vector<char> removable = {}, std::function<void(int)> remove = {}) {
     int first = std::clamp(selected, 0, (int)names.size() - 1);
-    s.dropdown = {true, false, false, row.id, std::move(names), selected, std::move(set), {}, row.title};
+    s.dropdown = {true, false, false, row.id, std::move(names), selected, std::move(set), {}, row.title, std::move(removable),
+                  std::move(remove)};
     s.dropdown_at = anim_now();
     focus("choice." + std::to_string(first));
 }
@@ -972,35 +995,124 @@ void text(std::vector<Row> &rows, const char *id, const char *name, char *field,
     };
     rows.push_back(std::move(r));
 }
-// The hub server row: the short list (config.h LDN_SERVERS, the default first), Custom... (typed on the keyboard; the
-// last one typed is offered again) and Off. Empty in the file is the default, so a later default reaches everyone who
-// kept it; a typed one is kept as it is
+// The hub server row: the short list (config.h LDN_SERVERS, the default first), the servers typed and saved (the last
+// first: [Multiplayer] RecentServer1..; an x takes one out), Custom... (typed on the keyboard; the last one typed is
+// offered again) and Off. Empty in the file is the default, so a later default reaches everyone who kept it; a typed one
+// is kept as it is
 std::string g_custom_server;  // (the last custom server this session: Custom... starts from it)
+std::string g_custom_key;     // (and the matchmaking key's)
 bool server_off(const char *server) {
     char name[sizeof s.draft.ldn_server];
     return !ldn_server_name(server, name, sizeof name);
 }
+bool server_preset(const char *server) {
+    static const char *const presets[] = LDN_SERVERS;
+    for (const char *p : presets)
+        if (!strcasecmp(server, p))
+            return true;
+    return false;
+}
+// A server the player typed: not the default (empty), not Off, none of the short list's
+bool typed_server(const char *server) { return *server && !server_off(server) && !server_preset(server); }
+// The remembered ones the rows list: the servers (without the short list's, should a later version add one of them to
+// it) or the keys, the last first
+std::vector<std::string> remembered(bool servers) {
+    std::vector<std::string> out;
+    for (int i = 0; i < LDN_RECENT; i++) {
+        const char *v = servers ? s.draft.ldn_recent_server[i] : s.draft.ldn_recent_key[i];
+        if (servers ? typed_server(v) : *v != 0)
+            out.push_back(v);
+    }
+    return out;
+}
+// Save applies a hub server or a key: one the player typed goes to the front of its list, and so does the typed one it
+// replaces (a server typed in an older version stays in the list once another one is chosen) - unless that one was
+// taken out of the list while the menu is open. Only when it changes: one taken out while in use stays out
+void remember_typed(Config &c, const Config &before) {
+    auto was_forgotten = [](const char *v) {
+        return std::find(s.forgotten.begin(), s.forgotten.end(), std::string(v)) != s.forgotten.end();
+    };
+    if (strcmp(c.ldn_server, before.ldn_server)) {
+        if (typed_server(before.ldn_server) && !was_forgotten(before.ldn_server))
+            config_recent_add(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], before.ldn_server, true);
+        if (typed_server(c.ldn_server))
+            config_recent_add(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], c.ldn_server, true);
+    }
+    if (strcmp(c.ldn_key, before.ldn_key)) {
+        if (*before.ldn_key && !was_forgotten(before.ldn_key))
+            config_recent_add(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], before.ldn_key, false);
+        if (*c.ldn_key)
+            config_recent_add(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], c.ldn_key, false);
+    }
+}
+// A remembered server or key out of its list (its x in the picker), at once and in the file too: it is no setting, so
+// Save and Discard have nothing to do with it. Then the row's picker again, as the list is now (reopen_picker)
+void forget(bool server, const std::string &value, const char *row, int at) {
+    auto out = [server, &value](Config &c) {
+        if (server)
+            config_recent_remove(c.ldn_recent_server[0], LDN_RECENT, sizeof c.ldn_recent_server[0], value.c_str(), true);
+        else
+            config_recent_remove(c.ldn_recent_key[0], LDN_RECENT, sizeof c.ldn_recent_key[0], value.c_str(), false);
+    };
+    Config c = s.saved;
+    out(c);
+    char error[512];
+    if (!config_save(&c, error, sizeof error)) {
+        s.error = settings_text(s.draft.language, error);
+        return;
+    }
+    out(s.saved);
+    out(s.draft);
+    s.forgotten.push_back(value);
+    s.reopen = row, s.reopen_at = at;
+}
+// A remembered choice was taken out: the row's picker opens again with the list as it is now, at the same place
+void reopen_picker(std::vector<Row> &rows) {
+    if (s.reopen.empty())
+        return;
+    const std::string id = s.reopen;
+    s.reopen.clear();
+    auto it = std::find_if(rows.begin(), rows.end(), [&](const Row &r) { return r.id == id; });
+    if (it == rows.end() || !it->activate) {
+        close_dropdown();
+        return;
+    }
+    double at = s.dropdown_at;
+    auto fn = it->activate;
+    fn();
+    s.dropdown_at = at;  // (the same picker: it doesn't come in again)
+    if (s.dropdown.open && !s.dropdown.names.empty())
+        focus("choice." + std::to_string(std::clamp(s.reopen_at, 0, (int)s.dropdown.names.size() - 1)));
+}
 void server_row(std::vector<Row> &rows) {
     static const char *const presets[] = LDN_SERVERS;
-    const int n = (int)std::size(presets), custom = n, off = n + 1;
+    const std::vector<std::string> used = remembered(true);
+    const int n = (int)std::size(presets), m = (int)used.size(), custom = n + m, off = custom + 1;
     const char *now = s.draft.ldn_server;
     int selected = !*now ? 0 : server_off(now) ? off : custom;
     for (int i = 0; i < n; i++)  // (one typed as it is in the list: that one)
         if (!strcasecmp(now, presets[i]))
             selected = i;
+    for (int i = 0; i < m && selected == custom; i++)  // (or as one remembered)
+        if (!strcasecmp(now, used[i].c_str()))
+            selected = n + i;
     if (selected == custom)
         g_custom_server = now;
     std::vector<std::string> names;
+    std::vector<char> removable(n, 0);
     for (int i = 0; i < n; i++)
         names.push_back(i ? std::string(presets[i]) : std::string(presets[i]) + "  (" + tr("Default") + ")");
+    for (const auto &v : used)
+        names.push_back(v), removable.push_back(1);
     names.push_back(selected == custom ? fmt("Custom: %s", now) : std::string(tr("Custom...")));
     names.push_back(tr("Off: only your local network"));
+    removable.resize(names.size(), 0);
     Row r;
     r.id = "server";
     r.title = tr("Hub server");
     r.value = selected < n ? std::string(presets[selected]) : selected == off ? std::string(tr("Only your local network")) : std::string(now);
     keyed(r, ini("Server"));
-    auto set = [custom, off](int i) {
+    auto set = [n, used, custom, off](int i) {
         if (i == custom) {
             const size_t size = sizeof s.draft.ldn_server;
             keyboard(tr("Hub server"), g_custom_server, size - 1, [size](const std::string &typed, std::string &error) {
@@ -1018,17 +1130,79 @@ void server_row(std::vector<Row> &rows) {
             });
             return;
         }
-        SDL_strlcpy(s.draft.ldn_server, i == off ? "Off" : i ? presets[i] : "", sizeof s.draft.ldn_server);
+        const char *v = i == off ? "Off" : i >= n ? used[i - n].c_str() : i ? presets[i] : "";
+        SDL_strlcpy(s.draft.ldn_server, v, sizeof s.draft.ldn_server);
     };
-    // (left / right go through the list and Off, not Custom..., which opens the keyboard)
-    r.adjust = [selected, n, off, set](int d) {
-        int at = selected >= n ? n : selected;  // (Off, or a custom one, is n here)
-        at = (at + d + n + 1) % (n + 1);
-        set(at == n ? off : at);
+    // (left / right go through the list, the remembered ones and Off, not Custom..., which opens the keyboard)
+    r.adjust = [selected, custom, off, set](int d) {
+        int at = selected >= custom ? custom : selected;  // (Off, or a custom one, is Custom...'s place here)
+        at = (at + d + custom + 1) % (custom + 1);
+        set(at == custom ? off : at);
     };
     r.menu = true;
     Row copy = r;
-    r.activate = [copy, names, selected, set]() { choices(copy, names, selected, set); };
+    auto remove = [n, used](int i) {
+        if (i >= n && i - n < (int)used.size())
+            forget(true, used[i - n], "server", i);
+    };
+    r.activate = [copy, names, selected, set, removable, remove]() { choices(copy, names, selected, set, removable, remove); };
+    rows.push_back(std::move(r));
+}
+// The matchmaking key's row, as the hub server's: Public (no key, the default), the keys typed and saved (the last first:
+// [Multiplayer] RecentKey1..; an x takes one out) and Custom... (typed on the keyboard)
+void key_row(std::vector<Row> &rows) {
+    const std::vector<std::string> used = remembered(false);
+    const int m = (int)used.size(), custom = 1 + m;
+    const char *now = s.draft.ldn_key;
+    int selected = !*now ? 0 : custom;
+    for (int i = 0; i < m && selected == custom; i++)
+        if (now == used[i])
+            selected = 1 + i;
+    if (selected == custom)
+        g_custom_key = now;
+    std::vector<std::string> names = {std::string(tr("Public")) + "  (" + tr("Default") + ")"};
+    std::vector<char> removable = {0};
+    for (const auto &v : used)
+        names.push_back(v), removable.push_back(1);
+    names.push_back(selected == custom ? fmt("Custom: %s", now) : std::string(tr("Custom...")));
+    removable.push_back(0);
+    Row r;
+    r.id = "key";
+    r.title = tr("Matchmaking key");
+    r.value = *now ? std::string(now) : std::string(tr("Public"));
+    keyed(r, ini("Key"));
+    auto set = [used, custom](int i) {
+        if (i == custom) {
+            const size_t size = sizeof s.draft.ldn_key;
+            keyboard(tr("Matchmaking key"), g_custom_key, size - 1, [size](const std::string &typed, std::string &error) {
+                Config temp = s.draft;
+                SDL_strlcpy(temp.ldn_key, typed.c_str(), size);
+                char why[512];
+                if (!config_validate(&temp, why, sizeof why)) {
+                    error = settings_text(s.draft.language, why);
+                    return false;
+                }
+                s.draft = temp;
+                if (*temp.ldn_key)
+                    g_custom_key = temp.ldn_key;
+                return true;
+            });
+            return;
+        }
+        SDL_strlcpy(s.draft.ldn_key, i ? used[i - 1].c_str() : "", sizeof s.draft.ldn_key);
+    };
+    // (left / right go through Public and the remembered ones, not Custom...: from a typed one, to either end)
+    r.adjust = [selected, custom, set](int d) {
+        int at = selected == custom ? (d > 0 ? custom - 1 : 0) : selected;
+        set((at + d + custom) % custom);
+    };
+    r.menu = true;
+    Row copy = r;
+    auto remove = [used](int i) {
+        if (i >= 1 && i - 1 < (int)used.size())
+            forget(false, used[i - 1], "key", i);
+    };
+    r.activate = [copy, names, selected, set, removable, remove]() { choices(copy, names, selected, set, removable, remove); };
     rows.push_back(std::move(r));
 }
 // The hub server and key being edited: checked as the page shows them (once the notice about playing online was
@@ -2116,7 +2290,7 @@ std::vector<Row> main_rows() {
     case NET_PAGE:  // Multiplayer: the internet first (a hub server, the default one already set), then the local network
         header(r, "online.header", tr("Over the internet"));
         server_row(r);
-        text(r, "key", "Matchmaking key", c.ldn_key, sizeof c.ldn_key, *c.ldn_key ? c.ldn_key : tr("Public"), ini("Key"));
+        key_row(r);
         hub_check(r);
         header(r, "lan.header", tr("Local network"));
         number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
@@ -2324,6 +2498,7 @@ bool save() {
         }
         s.keyboard.original = s.keyboard.buffer;
     }
+    remember_typed(s.draft, s.saved);
     char error[512];
     if (!config_save(&s.draft, error, sizeof error)) {
         s.error = settings_text(s.draft.language, error);
@@ -2523,6 +2698,12 @@ std::vector<Row> rows_for_view(bool *open) {
         });
         action(r, "key.space", tr("Space"), []() { insert(" "); });
         action(r, "key.case", tr("Case"), []() { s.keyboard.upper = !s.keyboard.upper; });
+#ifdef __ANDROID__  // (the phone's own keyboard, as the MH4U port's: Enter accepts, Back cancels; textinput.c)
+        action(r, "key.phone", tr("Phone keyboard"), []() {
+            s.keyboard.phone = true;
+            textinput_menu_keyboard_show();
+        });
+#endif
         action(r, "key.accept", tr("Accept"), []() { accept_keyboard(); });
         action(r, "key.cancel", tr("Cancel"), []() { pop(); });
     } else if (s.view == View::Conflicts) {
@@ -2623,8 +2804,25 @@ std::vector<Row> dropdown_rows() {
             set(i);
         });
         r.back().current = i == s.dropdown.selected;
+        if (i < (int)s.dropdown.removable.size() && s.dropdown.removable[i] && s.dropdown.remove)
+            r.back().remove = [i]() {
+                auto remove = s.dropdown.remove;
+                remove(i);
+            };
     }
     return r;
+}
+// The picker's remembered choice picked by a controller or the keys: the button that saves elsewhere (the top one) or
+// Delete takes it out, as its x does
+void picker_keys(const std::vector<Row> &options) {
+    if (!s.dropdown.open || !(pressed(ImGuiKey_GamepadFaceUp, false) || pressed(ImGuiKey_Delete, false)))
+        return;
+    for (const Row &o : options)
+        if (o.id == s.focus && o.remove) {
+            auto fn = o.remove;
+            fn();
+            return;
+        }
 }
 // A row's help: its own, or what the default ini says of its setting (each line looked up in settings_locale.h)
 #ifdef __ANDROID__
@@ -2656,10 +2854,10 @@ const PhoneHelp PHONE_HELP[] = {
     {"LockOn", "Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster, and bows and bowguns fire at it. Turning the camera yourself pauses it for a moment.",
      "Mantén apretado L o toca el candado junto a él (un mando: aprieta la palanca derecha; mantenla apretada con el Tipo de control 3, donde el clic cambia el objetivo) y la cámara sigue girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo hagas de nuevo. El botón de objetivo cambia el monstruo, y los arcos y ballestas disparan hacia él. Girar la cámara tú mismo la pausa un momento."},
     {"Join", "A host's IP address, to play over a VPN. Empty: searches your network.", "La dirección IP de un anfitrión, para jugar por VPN. Vacío: busca en tu red."},
-    {"Server", "The server that lists hubs over the internet: everyone who uses the same one finds the others' hubs when they search for hubs in the game, with no ports to open. The default, " LDN_DEFAULT_SERVER ", is run by players, not by this project. Custom: type another (a name or IP, and :port if it is not 39510). Off: only your local network.",
-     "El servidor que lista las salas por internet: todos los que usan el mismo encuentran las salas de los demás al buscar salas en el juego, sin abrir puertos. El predeterminado, " LDN_DEFAULT_SERVER ", lo mantienen jugadores, no este proyecto. Otro: escribe otro (un nombre o una IP, y :puerto si no es el 39510). Ninguno: solo tu red local."},
-    {"Key", "On the hub server, only players with the same key see each other's hubs: agree on one with your friends. Empty: public hubs.",
-     "En el servidor de hubs, solo los jugadores con la misma clave ven los hubs de los demás: acuerden una con tus amigos. Vacío: hubs públicos."},
+    {"Server", "The server that lists hubs over the internet: everyone who uses the same one finds the others' hubs when they search for hubs in the game, with no ports to open. The default, " LDN_DEFAULT_SERVER ", is run by players, not by this project. Custom: type another (a name or IP, and :port if it is not 39510). Off: only your local network. The servers you type and save stay in this list, the last one first (up to 24): the × beside one takes it out (with a controller, the button that saves).",
+     "El servidor que lista las salas por internet: todos los que usan el mismo encuentran las salas de los demás al buscar salas en el juego, sin abrir puertos. El predeterminado, " LDN_DEFAULT_SERVER ", lo mantienen jugadores, no este proyecto. Otro: escribe otro (un nombre o una IP, y :puerto si no es el 39510). Ninguno: solo tu red local. Los servidores que escribes y guardas quedan en esta lista, el último primero (hasta 24): la × a su lado lo quita (con un mando, el botón que guarda)."},
+    {"Key", "On the hub server, only players with the same key see each other's hubs: agree on one with your friends. Public: no key, the public hubs. The keys you type and save stay in this list, the last one first (up to 24): the × beside one takes it out (with a controller, the button that saves).",
+     "En el servidor de hubs, solo los jugadores con la misma clave ven los hubs de los demás: acuerden una con tus amigos. Pública: sin clave, los hubs públicos. Las claves que escribes y guardas quedan en esta lista, la última primero (hasta 24): la × a su lado la quita (con un mando, el botón que guarda)."},
     {"1Player", "The health of large monsters in Hub quests, by number of hunters. When you join a hub, the host's values are used.",
      "La vida de los monstruos grandes en las misiones del Hub, según la cantidad de cazadores. Al unirte a un Hub se usan los valores del anfitrión."},
     {"FOV", "How much of the scene you see: higher shows more.", "Cuánto se ve de la escena: un valor mayor muestra más."},
@@ -2871,6 +3069,8 @@ bool touch_button(const char *id, const ImRect &r, bool enabled, bool *held) {
     ImGui::PopItemFlag();
     return tapped && !s.swallow;
 }
+// The side of the x that takes a remembered choice out of a picker (the phone's)
+float forget_side() { return std::min(s.m.row * .72f, ImGui::GetFontSize() * 2.f); }
 // A row on the phone: lit gold when it is the one picked (a diamond at its left, as the game's cursor), lighter while a
 // finger holds it; its title at the left, at the right an On / Off switch, the value between - and + (stepper: those
 // are draw_rows' buttons, room their width), or the value, marked when a tap lists its choices. plated: a key or a
@@ -2899,7 +3099,7 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     ImU32 ink = !r.enabled ? t.text_off : lit ? IM_COL32(255, 248, 232, 255) : r.current ? k.glow : k.ink;
     float x = plated ? rect.GetCenter().x - label.x * .5f : rect.Min.x + font * 1.1f;
     shadow_text(dl, font, ImVec2(x, cy - label.y * .5f), ink, r.title.c_str(), wrap);
-    float right = rect.Max.x - font * .6f;
+    float right = rect.Max.x - font * .6f - (r.remove ? forget_side() + font * .4f : 0);  // (draw_rows' x at the right)
     if (r.current)  // (the picker: the choice the row has now)
         diamond(dl, ImVec2(right - font * .3f, cy), font * .24f, k.glow);
     // (a tap goes on - to a page, a screen of the app's, a question: a mark at the right, as in the MH4U port)
@@ -2927,9 +3127,10 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     }
     dl->PopClipRect();
 }
-// list: a dropdown's choices; else the view's rows (while a dropdown is open they keep its row marked, the focus being
-// in the dropdown). The phone (touch_ui): taller rows, drawn by touch_row, with - and + on a number's; the keyboard's
-// Delete ... Cancel six to a line, a dialog's choices as plates
+// list: a dropdown's choices, a remembered one with an x at its right that takes it out; else the view's rows (while a
+// dropdown is open they keep its row marked, the focus being in the dropdown). The phone (touch_ui): taller rows, drawn
+// by touch_row, with - and + on a number's; the keyboard's Delete ... Cancel six to a line (in two even lines when there
+// are more: the Phone keyboard key), a dialog's choices as plates
 void draw_rows(std::vector<Row> &rows, bool list = false) {
     auto *w = ImGui::GetCurrentWindow();
     bool touch = touch_ui();
@@ -2953,7 +3154,9 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
     }
     std::function<void()> activate;
     std::function<void(int)> adjust;  // (a - or + tapped: its row's, by step)
+    std::function<void()> remove;     // (a remembered choice's x tapped)
     int step = 0;
+    const float xs = touch ? forget_side() : font * 1.3f;  // (that x's side)
     for (int i = 0; i < (int)rows.size(); i++) {
         Row &r = rows[i];
         if (r.note) {  // (a line of text: a diamond, then the text in the dimmer colour, wrapped to the list)
@@ -2981,17 +3184,19 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         }
         bool key = keyboard_view && i < keys;
         bool grid = key || (touch && keyboard_view);
-        int per_line = key ? 10 : 6, column = key ? i : i - keys;
-        float rw = !grid ? width : !touch ? cell : (width - (per_line - 1) * gap) / per_line;
+        int extra = (int)rows.size() - keys;  // (the keyboard's other keys)
+        int per_line = key ? 10 : extra <= 6 ? 6 : (extra + 1) / 2, column = key ? i : i - keys;
+        int on_line = key ? 10 : std::min(per_line, extra - column / per_line * per_line);  // (a last line's fewer: wider)
+        float rw = !grid ? width : !touch ? cell : (width - (on_line - 1) * gap) / on_line;
         if (grid && column % per_line)
             ImGui::SameLine();
         ImVec2 p = ImGui::GetCursorScreenPos();
         bool stepper = touch && r.number && r.adjust && !grid;
         bool toggle = touch && r.toggle >= 0 && r.enabled;
         // (the phone: the title wraps before the value's room - a switch, - value +, or the value)
-        float room = toggle ? font * 3.6f : stepper ? bs * 2 + font * 5.8f : r.value.empty() ? 0 : rw * .42f;
+        float room = r.remove ? xs + font * .6f : toggle ? font * 3.6f : stepper ? bs * 2 + font * 5.8f : r.value.empty() ? 0 : rw * .42f;
         float wrap = touch ? std::max(font, rw - font * (grid || plated ? 1.2f : 1.9f) - room)
-                           : std::max(font, rw * (r.action ? 1.f : .58f) - font);
+                           : std::max(font, rw * (r.action ? 1.f : .58f) - font - (r.remove ? xs + font * .5f : 0));
         ImVec2 label = ImGui::CalcTextSize(r.title.c_str(), nullptr, false, wrap);
         float h = touch ? grid ? s.m.row : std::max(s.m.row, label.y + font * .9f)
                   : grid ? font * 2
@@ -3014,8 +3219,8 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         ImGui::PushStyleColor(ImGuiCol_NavCursor, ImVec4(0, 0, 0, 0));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, t.rounding);
         ImGui::BeginDisabled(!r.enabled);
-        if (stepper)
-            ImGui::SetNextItemAllowOverlap();  // (its - and + are over it)
+        if (stepper || r.remove)
+            ImGui::SetNextItemAllowOverlap();  // (its - and +, or its x, are over it)
         bool clicked = ImGui::Button("###row", ImVec2(rw, h));
         bool held = ImGui::IsItemActive();
         ImGui::EndDisabled();
@@ -3053,6 +3258,18 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
                     sign(w->DrawList, b.GetCenter(), bs * .24f, d > 0, down ? touch_look().glow : touch_look().ink,
                          std::max(2.f, s.m.line * 1.4f));
                 }
+                ImGui::SetCursorScreenPos(next);
+            }
+            if (r.remove) {  // (a remembered choice: its x, a plate of its own at the right, takes it out of the list)
+                ImVec2 next = ImGui::GetCursorScreenPos();
+                float right = rect.Max.x - font * .6f, cy = rect.GetCenter().y;
+                ImRect b(right - xs, cy - xs * .5f, right, cy + xs * .5f);
+                bool down = false;
+                if (touch_button("###forget", b, true, &down))
+                    remove = r.remove;
+                plate(w->DrawList, b, s.m.line * .8f, down, true);
+                cross(w->DrawList, b.GetCenter(), xs * .2f, down || selected ? touch_look().glow : touch_look().ink,
+                      std::max(2.f, s.m.line * 1.3f));
                 ImGui::SetCursorScreenPos(next);
             }
             s.targets.push_back({r.id, rect.GetCenter(), r.enabled});
@@ -3100,12 +3317,30 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
                                  value.c_str());
         }
         w->DrawList->PopClipRect();
+        if (r.remove) {  // (a remembered choice: an x at its right takes it out of the list)
+            ImVec2 next = ImGui::GetCursorScreenPos();
+            ImRect b(p.x + rw - font * .4f - xs, p.y + (h - xs) * .5f, p.x + rw - font * .4f, p.y + (h + xs) * .5f);
+            ImGui::SetCursorScreenPos(b.Min);
+            ImGui::PushItemFlag(ImGuiItemFlags_NoNav, true);
+            if (ImGui::InvisibleButton("###forget", b.GetSize()) && !s.swallow)
+                remove = r.remove;
+            bool lit = ImGui::IsItemHovered() || ImGui::IsItemActive();
+            ImGui::PopItemFlag();
+            if (lit)
+                w->DrawList->AddRectFilled(b.Min, b.Max, t.row_hover, t.rounding);
+            cross(w->DrawList, b.GetCenter(), xs * .24f, lit || selected ? t.accent_bright : t.text_dim, 2.f);
+            ImGui::SetCursorScreenPos(next);
+        }
         s.targets.push_back({r.id, rect.GetCenter(), r.enabled});
         ImGui::PopID();
         if (clicked && r.enabled && !s.swallow) {  // (not the click that closed the dropdown: back_keys)
             focus(r.id);
             activate = r.activate;
         }
+    }
+    if (remove) {  // (the list changes under it: the picker opens again, reopen_picker)
+        remove();
+        return;
     }
     if (adjust)
         adjust(step);
@@ -3180,8 +3415,8 @@ void draw_dropdown(std::vector<Row> &options, float scale, float base) {
     ImGuiViewport *vp = ImGui::GetMainViewport();
     const ImGuiStyle &style = ImGui::GetStyle();
     float font = base * scale, longest = 0;
-    for (const auto &o : options)
-        longest = std::max(longest, ImGui::CalcTextSize(o.title.c_str()).x * scale);
+    for (const auto &o : options)  // (a remembered one: and its x)
+        longest = std::max(longest, (ImGui::CalcTextSize(o.title.c_str()).x + (o.remove ? base * 2.2f : 0)) * scale);
     const ImRect &a = s.dropdown.anchor;
     float w = std::clamp(longest + font * 2 + style.WindowPadding.x * 2, a.GetWidth() * .4f, a.GetWidth());
     float h = options.size() * (font * 2.1f + style.ItemSpacing.y) - style.ItemSpacing.y + style.WindowPadding.y * 2;
@@ -3342,6 +3577,8 @@ void page_keys() {
 void keyboard_keys() {
     ImGuiIO &io = ImGui::GetIO();
     for (ImWchar ch : io.InputQueueCharacters) {
+        if (ch < 0x20 || ch == 0x7f)  // (a phone's keyboard can send its Enter as a line break too)
+            continue;
         char utf8[5];
         int n = ImTextCharToUtf8(utf8, ch);
         utf8[n] = 0;
@@ -3562,8 +3799,9 @@ void touch_picker(std::vector<Row> &options, float scale) {
     float band = std::max(f * 2.4f, s.m.row * .95f), side = band * .74f, title = std::floor(f * 1.05f);
     float frame = std::max(2.f, f * .14f) * 1.7f;  // (draw_frame's rules at the bottom)
     float longest = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
-    for (const auto &o : options)
-        longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f);
+    for (const auto &o : options)  // (a remembered one: and its x)
+        longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f +
+                                        (o.remove ? forget_side() + f * .6f : 0));
     float w = std::clamp(longest + pad * 2, vp->WorkSize.x * .32f, vp->WorkSize.x * .62f);
     float h = std::min(band + line * 2 + pad * 2 + options.size() * (s.m.row + spacing) + pad + frame,
                        vp->WorkSize.y * .86f);
@@ -3646,6 +3884,7 @@ void touch_panel(bool *open, const Config &before) {
     if (s.view == View::Keyboard)
         keyboard_keys();
     auto rows = rows_for_view(open);
+    reopen_picker(rows);
     std::vector<Row> options;  // (a dropdown open: the picker's, the controller moves in it)
     if (s.dropdown.open)
         options = dropdown_rows();
@@ -3653,6 +3892,7 @@ void touch_panel(bool *open, const Config &before) {
         focus("move.accept");
     else
         navigate(s.dropdown.open ? options : rows, s.dropdown.open);
+    picker_keys(options);
     bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::Move;
     bool picking = s.dropdown.open && !options.empty();  // (the picker over the menu this frame: the menu dimmed)
     // The header: Back at its left, Save and Close at its right, the title between
@@ -3854,6 +4094,7 @@ void report(bool *open) {
     // is no mouse button)
     capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing && !touch_ui();
     capture_wheel = is_capturing && s.capture_bind >= 0;  // (the capture view doesn't scroll)
+    textinput_menu_keyboard(*open && s.view == View::Keyboard && s.keyboard.phone);  // (its key asked for it: textinput.c)
     if (!*open)
         s.editing = false;
 }
@@ -4408,6 +4649,7 @@ void settings_panel_before_frame(bool open) {
 }
 void settings_panel_idle(void) {
     s.editing = false;
+    textinput_menu_keyboard(false);
     is_dirty = false;
     is_confirming = false;
     is_capturing = false;
@@ -4468,6 +4710,8 @@ void settings_panel(bool *open) {
 #endif
         quest_keys();
         g_hub_checked.clear();  // (the Multiplayer page checks its server again as it shows)
+        s.forgotten.clear();
+        s.reopen.clear();
         load_mods();
         load_cheats();
 #ifndef __ANDROID__
@@ -4479,6 +4723,11 @@ void settings_panel(bool *open) {
         s.exit_only = opening;  // (the menu was closed: the window's close button alone opened it)
         if (opening)
             s.view_at = -1;  // (it comes in with the menu)
+    }
+    // (the phone's keyboard put away with Back: the typing is cancelled, as Back does in this view)
+    if (textinput_menu_keyboard_closed() && s.view == View::Keyboard && s.keyboard.phone) {
+        s.keyboard.phone = false;
+        pop();
     }
     switch (request_view.exchange(0)) {  // (a desktop's file dialog answered: runtime/pc_actions.c)
     case SETTINGS_VIEW_IMPORT_SAVE: if (s.view != View::ImportSave) push(View::ImportSave, "dialog.cancel"); break;
@@ -4694,6 +4943,7 @@ void settings_panel(bool *open) {
         }
     }
     auto rows = rows_for_view(open);
+    reopen_picker(rows);
     std::vector<Row> options;  // (a dropdown open: the controller moves in it)
     if (s.dropdown.open)
         options = dropdown_rows();
@@ -4701,6 +4951,7 @@ void settings_panel(bool *open) {
         focus("move.accept");
     else
         navigate(s.dropdown.open ? options : rows, s.dropdown.open);
+    picker_keys(options);
     draw_rows(rows);
     if (s.view == View::Licenses)
         licenses_text(look, pinned_guides ? guides.height + spacing * 2 : 0);
