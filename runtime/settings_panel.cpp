@@ -47,6 +47,7 @@ struct Row {
     std::string key, help;  // its ini key (config.c g_settings; its help: config_help), or a help text of its own
     bool enabled = true, cold = false, action = false, warn = false;
     bool header = false, current = false;  // a section title (not a row to select); the choice a dropdown has now
+    bool note = false;                     // (a header) a line of text between the rows: the MH4U port's notes
     bool menu = false;                     // Confirm opens a dropdown of its choices
     int toggle = -1;                       // On / Off (1 / 0; -1: not a switch): the phone draws a switch
     bool number = false;                   // a number: left / right step it (the phone: - and + buttons on the row)
@@ -361,12 +362,22 @@ void diamond(ImDrawList *dl, ImVec2 c, float d, ImU32 col) {
     ImVec2 q[4] = {ImVec2(c.x, c.y - d), ImVec2(c.x + d, c.y), ImVec2(c.x, c.y + d), ImVec2(c.x - d, c.y)};
     dl->AddConvexPolyFilled(q, 4, col);
 }
-// Text with a dark shadow under it (readable on the gold of the picked row, as the game's)
-void shadow_text(ImDrawList *dl, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
+// Text with a dark shadow under it (readable on the gold of the picked row, as the game's), in a font of its own
+void shadow_text(ImDrawList *dl, ImFont *font, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
     float o = std::max(1.f, size * .06f);
-    dl->AddText(ImGui::GetFont(), size, ImVec2(p.x + o, p.y + o), fade(IM_COL32(0, 0, 0, 170), ((col >> 24) & 0xff) / 255.f),
-                text, nullptr, wrap);
-    dl->AddText(ImGui::GetFont(), size, p, col, text, nullptr, wrap);
+    dl->AddText(font, size, ImVec2(p.x + o, p.y + o), fade(IM_COL32(0, 0, 0, 170), ((col >> 24) & 0xff) / 255.f), text,
+                nullptr, wrap);
+    dl->AddText(font, size, p, col, text, nullptr, wrap);
+}
+void shadow_text(ImDrawList *dl, float size, ImVec2 p, ImU32 col, const char *text, float wrap = 0) {
+    shadow_text(dl, ImGui::GetFont(), size, p, col, text, wrap);
+}
+// The titles' font: a serif, as the game's own titles and the MH4U port's (overlay.cpp loads the phone's Noto Serif as
+// the second font), else the main one: the menu's title, its sections, the picked row's help, a list's title, the
+// credits' and the thank-you's
+ImFont *title_font() {
+    ImGuiIO &io = ImGui::GetIO();
+    return io.Fonts->Fonts.Size > 1 ? io.Fonts->Fonts[1] : ImGui::GetFont();
 }
 // A finger's button: a dark square plate with an edge and a rule inside (the touch controls' discs, made square), gold
 // studs on its corners (Hunter); lit while held, faded while it does nothing
@@ -908,6 +919,15 @@ void number(std::vector<Row> &r, const std::string &id, const std::string &name,
     add_number(
         r, id, name, [p]() { return (double)*p; }, [p](double v) { *p = (float)v; }, low, high, step, false,
         key);
+}
+// A line of text between the rows (not selectable), after a small diamond, wrapped: Credits & Licenses' (the MH4U port's)
+void note(std::vector<Row> &rows, const std::string &id, const std::string &text) {
+    Row r;
+    r.id = id;
+    r.title = text;
+    r.header = r.note = true;
+    r.enabled = false;
+    rows.push_back(std::move(r));
 }
 // A section's title between the rows (not selectable)
 void header(std::vector<Row> &rows, const std::string &id, const std::string &title) {
@@ -2258,10 +2278,21 @@ std::vector<Row> main_rows() {
         action(r, "back.game", tr("Back to the game"), []() { request_back.store(true); });
 #endif
         break;
-    case ABOUT_PAGE: // (who made it, where the official one is, the licences and the legal notice)
+    case ABOUT_PAGE:  // (who made it, where the official one is, the licences and the legal notice: shown, as in the
+                      // MH4U port, not in a help)
         header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);
+        note(r, "about.by", tr("Made by khorne-hub. Free, made by fans."));
+        note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
+        note(r, "about.base", tr("Based on MHGURecomp."));
+        note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
+#ifdef __ANDROID__
+        note(r, "about.legal", tr("This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
+#else
+        note(r, "about.legal", tr("This program includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
+#endif
+        note(r, "about.paid", tr("Only the links khorne-hub gives are official. If you got it anywhere else, paid for it, or it came with ads, it is not the official one."));
         action(r, "credits", tr("Show the credits"), []() { credits_show(); });
-        r.back().help = tr("Made by khorne-hub. Free. Only the links khorne-hub gives are official: if you got it anywhere else, paid for it, or it came with ads, it is not the official one. Official page: github.com/khorne-hub/gu-native. Based on MHGURecomp. Also by khorne-hub: MH4U for Android, github.com/khorne-hub/4u-native.");
+        r.back().help = tr("Shows again the credits that appear when the app opens.");
 #ifdef __ANDROID__
         action(r, "licenses", tr("Licenses"), []() { ui_request_licenses(); });
         r.back().help = tr("The licenses of the software this app is made with, and the legal notice: this app includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
@@ -2269,7 +2300,9 @@ std::vector<Row> main_rows() {
         action(r, "licenses", tr("Licenses"), []() { push(View::Licenses, "dialog.cancel"); });
         r.back().help = tr("The legal notice and the licenses of the software this program is made with: it includes no game code, files, ROMs or keys, you need your own copy of the game, and it is not affiliated with the Great C or the Great N.");
 #endif
-        header(r, "about.thanks", tr("Thank you"));  // (its text: page_notes)
+        header(r, "about.thanks", tr("Thank you"));
+        note(r, "thanks.body", tr(THANKS_TEXT));
+        note(r, "thanks.sign", thanks_signature());
         action(r, "thanks", tr("Show the thanks"), []() { thanks_show(); });
         r.back().help = tr("Shows the thank-you again, as it showed the first time the game opened.");
         break;
@@ -2919,13 +2952,24 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
     int step = 0;
     for (int i = 0; i < (int)rows.size(); i++) {
         Row &r = rows[i];
+        if (r.note) {  // (a line of text: a diamond, then the text in the dimmer colour, wrapped to the list)
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            float size = std::floor(font * .86f), indent = font * 1.15f, wrap = width - indent - font * .3f;
+            ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, wrap, r.title.c_str());
+            float top = font * .3f;
+            ImGui::Dummy(ImVec2(width, ts.y + top * 2));
+            diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + size * .55f), size * .18f, theme().accent);
+            w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top), theme().text_dim, r.title.c_str(),
+                                 nullptr, wrap);
+            continue;
+        }
         if (r.header) {  // (a section's title: accent-coloured, a little apart from the rows above it)
             ImVec2 p = ImGui::GetCursorScreenPos();
             float h = font * (i ? 2.2f : 1.6f);
             ImGui::Dummy(ImVec2(width, h));
-            w->DrawList->AddText(ImGui::GetFont(), font, ImVec2(p.x + font * .25f, p.y + h - font * 1.35f),
-                                 theme().accent, r.title.c_str());
-            float end = p.x + font * .75f + ImGui::CalcTextSize(r.title.c_str()).x, y = p.y + h - font * .85f;
+            ImFont *tf = title_font();
+            w->DrawList->AddText(tf, font, ImVec2(p.x + font * .25f, p.y + h - font * 1.35f), theme().accent, r.title.c_str());
+            float end = p.x + font * .75f + tf->CalcTextSizeA(font, FLT_MAX, 0, r.title.c_str()).x, y = p.y + h - font * .85f;
             if (touch && end < p.x + width)  // (the phone: a rule after it, as the game's section titles)
                 w->DrawList->AddLine(ImVec2(end, y), ImVec2(p.x + width, y), fade(theme().accent, .45f),
                                      std::max(1.f, s.m.line * .5f));
@@ -3367,10 +3411,6 @@ std::vector<std::pair<const char *, bool>> page_notes() {
         notes.push_back({tr("Online: only use cheats when everyone in the lobby agrees to it."), true});
         notes.push_back({tr("Cheats turn on and off when you press Save, no restart needed. Turning one off undoes its changes to the game's code; values it already changed (money, items) stay. New cheat files show up after a restart."), false});
     }
-    if (s.page == ABOUT_PAGE) {  // (the thank-you, as it showed after the credits of the first start: draw_thanks)
-        notes.push_back({tr(THANKS_TEXT), false});
-        notes.push_back({thanks_signature(), false});
-    }
     return notes;
 }
 const char *saved_text() {
@@ -3498,8 +3538,8 @@ void touch_help(ImDrawList *dl, const ImRect &r, const std::vector<Row> &rows, b
     dl->PushClipRect(r.Min, ImVec2(r.Max.x, std::max(r.Min.y, bottom - pad * .3f)), true);
     float y = r.Min.y + pad * .7f;
     if (side) {
-        shadow_text(dl, f, ImVec2(x, y), k.glow, row->title.c_str(), wrap);
-        y += font->CalcTextSizeA(f, FLT_MAX, wrap, row->title.c_str()).y + pad * .5f;
+        shadow_text(dl, title_font(), f, ImVec2(x, y), k.glow, row->title.c_str(), wrap);
+        y += title_font()->CalcTextSizeA(f, FLT_MAX, wrap, row->title.c_str()).y + pad * .5f;
         dl->AddLine(ImVec2(x, y), ImVec2(x + wrap, y), fade(k.rule, .5f), std::max(1.f, line * .4f));
         y += pad * .6f;
     }
@@ -3517,7 +3557,7 @@ void touch_picker(std::vector<Row> &options, float scale) {
     float f = s.m.f, pad = s.m.pad, line = s.m.line, spacing = ImGui::GetStyle().ItemSpacing.y;
     float band = std::max(f * 2.4f, s.m.row * .95f), side = band * .74f, title = std::floor(f * 1.05f);
     float frame = std::max(2.f, f * .14f) * 1.7f;  // (draw_frame's rules at the bottom)
-    float longest = font->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
+    float longest = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
     for (const auto &o : options)
         longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f);
     float w = std::clamp(longest + pad * 2, vp->WorkSize.x * .32f, vp->WorkSize.x * .62f);
@@ -3545,9 +3585,9 @@ void touch_picker(std::vector<Row> &options, float scale) {
         close_dropdown();
     plate(dl, shut, line, held, true);
     cross(dl, shut.GetCenter(), side * .2f, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
-    ImVec2 ts = font->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
+    ImVec2 ts = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
     dl->PushClipRect(ImVec2(x0, y0), ImVec2(shut.Min.x - pad * .5f, y0 + band), true);
-    shadow_text(dl, title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
+    shadow_text(dl, title_font(), title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(x0 + pad, y0 + band + line * 2 + pad));
     ImGui::BeginChild("##choices",
@@ -3654,10 +3694,10 @@ void touch_panel(bool *open, const Config &before) {
     {  // (the title; the tab's name or the submenu's after it)
         const char *title = tr("SETTINGS");
         float size = std::floor(f * 1.1f), cy = by + side * .5f;
-        ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, title);
+        ImVec2 ts = title_font()->CalcTextSizeA(size, FLT_MAX, 0, title);
         std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        shadow_text(dl, size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
+        shadow_text(dl, title_font(), size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
         if (!sub.empty()) {
             float dx = title_x + ts.x + f * .7f;
             diamond(dl, ImVec2(dx, cy), f * .18f, k.rule);
@@ -3851,7 +3891,7 @@ void draw_credits() {
     // (sized to the screen's height, smaller when it doesn't fit its width)
     float f = std::floor(std::clamp(vp->Size.y * .034f, 12.f, 44.f)), w = 0;
     for (int pass = 0; pass < 2; pass++) {
-        w = font->CalcTextSizeA(std::floor(f * 1.5f), FLT_MAX, 0, title).x;
+        w = title_font()->CalcTextSizeA(std::floor(f * 1.5f), FLT_MAX, 0, title).x;
         for (const std::string &l : lines)
             w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, l.c_str()).x);
         for (const char *l : warns)
@@ -3878,8 +3918,8 @@ void draw_credits() {
     for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
         diamond(dl, p, line * 2.6f, fade(gold, a));
     float y = box.Min.y + pad;
-    ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
-    shadow_text(dl, tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    ImVec2 ts = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    shadow_text(dl, title_font(), tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
     y += tsz + gap * 1.5f;
     { // (a gold rule with a diamond in its middle)
         const float half = std::min(w * .5f, f * 9);
@@ -4106,7 +4146,7 @@ void draw_thanks(float a, bool live, bool armed) {
         }
         rows.clear();
         lines(wrap, true);
-        w = font->CalcTextSizeA(tsz, FLT_MAX, 0, title).x;
+        w = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title).x;
         for (const auto &r : rows)
             w = std::max(w, font->CalcTextSizeA(f, FLT_MAX, 0, r.first, r.second).x);
         bar = std::floor(f * .8f), space = font->CalcTextSizeA(f, FLT_MAX, 0, " ").x;
@@ -4144,8 +4184,8 @@ void draw_thanks(float a, bool live, bool armed) {
     for (ImVec2 p : {box.Min, ImVec2(box.Max.x, box.Min.y), ImVec2(box.Min.x, box.Max.y), box.Max})
         diamond(dl, p, line * 2.6f, fade(gold, a));
     float y = box.Min.y + pad;
-    const ImVec2 ts = font->CalcTextSizeA(tsz, FLT_MAX, 0, title);
-    text_at(tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
+    const ImVec2 ts = title_font()->CalcTextSizeA(tsz, FLT_MAX, 0, title);
+    shadow_text(dl, title_font(), tsz, ImVec2(std::floor(c.x - ts.x * .5f), y), fade(IM_COL32(255, 232, 84, 255), a), title);
     y += tsz + gap * 1.5f;
     {  // (the credits' gold rule, a diamond in its middle)
         const float half = std::min(w * .5f, f * 9);

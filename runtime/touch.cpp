@@ -3481,7 +3481,8 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1;
     float line = .004f * h;
     plate(dl, panel, line, 1.0f, false);
-    text_center(dl, font, .034f * h, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * h), GLOW, T("Controls and HUD"));
+    ImFont *title = ImGui::GetIO().Fonts->Fonts.Size > 1 ? ImGui::GetIO().Fonts->Fonts[1] : font;  // (the serif: overlay.cpp)
+    text_center(dl, title, .034f * h, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * h), GLOW, T("Controls and HUD"));
     const char *say = T(s.sel == C_MPAD     ? "Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size"
                         : part >= 0 && hud[part].hidden ? "Hidden: Show brings it back"
                         : s.sel >= 0        ? "Drag to move  -  pinch or use - / + for its size"
