@@ -1979,9 +1979,14 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 f->swipe = across ? f->swipe - copysignf(step, f->swipe) : 0;
                 f->swipe_y = across ? 0 : f->swipe_y - copysignf(step, f->swipe_y);
             }
-        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && (f->ctl == C_RFIRE || f->ctl == C_RAIM) && f->moved && !f->done &&
-                                           !s.menu)) {
-            s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot or the aim aims while it is held)
+        } else if (f->kind == F_BUTTON && f->ctl == C_RAIM && f->moved && !f->done && !s.menu) {
+            // (a slide on the aim: across as a drag of the view; up and down the aim's own pitch, turned as the view's
+            // drag would turn it - the game's quick aim took the stick's up and down only now and then: the owner's
+            // Galaxy, "mantener R con distancia no apunta en vertical"; hle/mousecam.c touch_aim_pitch)
+            s.cam_dx += dx, s.cam_ns = now;
+            g_aim_pitch_deg = g_aim_pitch_deg.load() - dy / s.h * CAMERA_COUNTS * .08f * config_live_touch_camera();
+        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
+            s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot aims while it is held)
         } else if (f->kind == F_STICK) stick_to(s, x, y);
         else if (f->kind == F_ITEM) {  // a swipe turns the bar, an item every so far; up or down with a gun: the ammo
             f->swipe += dx, f->swipe_y += dy;
