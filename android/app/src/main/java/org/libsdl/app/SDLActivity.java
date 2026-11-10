@@ -341,7 +341,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         return new SDLSurface(context);
     }
 
-    /** MHGU: true when this start must go through another screen first (it has been started already): see onCreate. */
+    /** MHGU: true when this start goes to another screen first, which starts this activity again: see onCreate. */
     protected boolean startElsewhere() {
         return false;
     }
