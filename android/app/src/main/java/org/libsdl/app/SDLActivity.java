@@ -345,6 +345,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected boolean startElsewhere() {
         return false;
     }
+    // (MHGU: this instance went elsewhere and set nothing up. Its callbacks, onDestroy above all, come after the activity
+    // started in its place has set SDL's static state up and runs the game: they must not touch it - its onDestroy sent
+    // the game SDL's quit, and the game hung on a black screen)
+    private boolean mWentElsewhere;
 
     // Setup
     @Override
@@ -356,9 +360,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         super.onCreate(savedInstanceState);
 
         // (MHGU: this start goes to another screen first, which starts the game again: nothing of SDL's is set up, and
-        // every callback below returns at once, as with broken libraries; com.mhgu.recomp.GameActivity)
+        // every callback of this instance returns at once, mWentElsewhere; com.mhgu.recomp.GameActivity)
         if (startElsewhere()) {
-            mBrokenLibraries = true;
+            mWentElsewhere = true;
             finish();
             return;
         }
@@ -539,6 +543,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onPause() {
         Log.v(TAG, "onPause()");
         super.onPause();
+        if (mWentElsewhere) return;  // (MHGU)
 
         if (mHIDDeviceManager != null) {
             mHIDDeviceManager.setFrozen(true);
@@ -553,6 +558,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onResume() {
         Log.v(TAG, "onResume()");
         super.onResume();
+        if (mWentElsewhere) return;  // (MHGU)
 
         if (mHIDDeviceManager != null) {
             mHIDDeviceManager.setFrozen(false);
@@ -567,6 +573,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onStop() {
         Log.v(TAG, "onStop()");
         super.onStop();
+        if (mWentElsewhere) return;  // (MHGU)
         if (mHasMultiWindow) {
             pauseNativeThread();
         }
@@ -576,6 +583,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     protected void onStart() {
         Log.v(TAG, "onStart()");
         super.onStart();
+        if (mWentElsewhere) return;  // (MHGU)
         if (mHasMultiWindow) {
             resumeNativeThread();
         }
@@ -629,6 +637,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         Log.v(TAG, "onWindowFocusChanged(): " + hasFocus);
+        if (mWentElsewhere) return;  // (MHGU)
 
         // If we are gaining focus, we can always try to restore our USB devices. If we are losing focus,
         // only try to relinquish them if we don't have background events allowed (for multi-window Android setups).
@@ -663,6 +672,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     public void onTrimMemory(int level) {
         Log.v(TAG, "onTrimMemory()");
         super.onTrimMemory(level);
+        if (mWentElsewhere) return;  // (MHGU)
 
         if (SDLActivity.mBrokenLibraries) {
            return;
@@ -675,6 +685,7 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     public void onConfigurationChanged(Configuration newConfig) {
         Log.v(TAG, "onConfigurationChanged()");
         super.onConfigurationChanged(newConfig);
+        if (mWentElsewhere) return;  // (MHGU)
 
         if (SDLActivity.mBrokenLibraries) {
            return;
@@ -698,6 +709,10 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
     @Override
     protected void onDestroy() {
         Log.v(TAG, "onDestroy()");
+        if (mWentElsewhere) {  // (MHGU: nothing of SDL's is this instance's: the game's HID manager, audio and thread stay)
+            super.onDestroy();
+            return;
+        }
 
         if (mHIDDeviceManager != null) {
             HIDDeviceManager.release(mHIDDeviceManager);
