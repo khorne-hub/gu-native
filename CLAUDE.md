@@ -144,6 +144,10 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
   decoded on the CPU), `MHGU_VK_NO_DIVISOR=1`, `MHGU_VK_NO_BORDER=1` (no custom border colours), `MHGU_VK_D24=0` (D32S8 depth) and
   `MHGU_VK_ADRENO=1` (the Adreno-only workarounds on any GPU; `0` leaves them out on an Adreno). `MHGU_ASPECT=1612:720` gives a
   4:3 screen a wide picture (letterboxed) and `MHGU_CONFIG=<file>` another ini, so a phone's own settings stay untouched.
+  A GPU without custom border colours logs each border colour the game asks for and the standard one it gets instead.
+- `MHGU_FSR_LOG=1` (FSR, and Low-end mode's plain scaling too) names the draw where the HUD starts and the 3D effects kept with
+  the scene before it (vertices, depth test, the textures' sizes, `r` for a render target); `MHGU_FSR_SCENE_FX=0` lets those
+  effects start the HUD again, as before 0.1.9.
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
@@ -163,6 +167,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   A render target that is never drawn gets uploaded from guest memory when sampled: that garbage, added over the picture, is coloured noise.
   So skipped targets are marked with `renderer_mark_gpu_owned`. Below 100 % it also keeps the HUD at the screen's size through
   `fsr.c`'s plain scaling path, without FSR. `MHGU_VK11=1` was tested with it, only by forcing that path on a newer driver.
+- With FSR or Low-end mode's plain scaling, everything from the start of the HUD on is drawn on output-size stand-ins over a
+  depth target cleared to far (`fsr.c`). A 3D effect the game draws into the full-screen image after its post passes (Astalos'
+  charged wings) taken for that start was drawn over the hunter and the monster, and sampled render-size images at output-size
+  places: streaks where a sampler clamps, the picture repeated where it wraps. A draw there tested against the scene's depth, or
+  sampling a render target of the render size or half of it, stays with the scene (#60).
 - FXAA leaves a 2 px green line at the edges on Mali and costs about a fifth of the frame rate, so it is off by default on Android.
   The cause is unknown.
 - A Vulkan 1.1 driver (seen: Mali-G57 MC2, 1.1.177) has no timeline semaphores: each submission gets a fence and one thread waits for them
