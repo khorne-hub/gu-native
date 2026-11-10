@@ -47,7 +47,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 #### Menús y comodidad
 
 - **Menús pensados para el pulgar:** al abrirse un menú del juego el diseño no cambia: aparece un pad chico que mueve el cursor, con los botones de página encima. La palanca de movimiento sigue caminando (donde el cazador no puede caminar, como en la caja de objetos de un pueblo o en una tienda, mueve el cursor; donde el juego muestra un modelo, como en la herrería, la palanca y arrastrar lo giran, como con un mando), A y B quedan donde están, y arrastrar en la pantalla también mueve el cursor. El pad se mueve y se cambia de tamaño en el editor como los demás botones. Para ocultarlo: en el engranaje, **Controles**, **Botones en la pantalla**, **Pad de menú**
-- El teclado del teléfono sirve para escribir el nombre de tu personaje
+- El teclado del teléfono sirve para escribir el nombre de tu personaje, y los textos del menú de opciones con **Teclado del teléfono** (Enter acepta; Atrás oculta el teclado y deja lo escrito); las teclas del propio menú quedan para el mando
 - El menú de opciones se usa con el dedo y tiene el estilo visual del juego
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)
@@ -263,6 +263,8 @@ este proyecto). Todos los que usan el mismo servidor encuentran las salas de los
 3. **Servidor de salas** elige otro servidor: **Otro...** para escribirlo (un nombre o una IP, y `:puerto` si no es el 39510;
    el programa chico de la carpeta `server` aloja uno, ver `server/README.md`), o **Ninguno** para jugar solo en tu red local.
    **Comprobar servidor de salas** dice si responde y cuántas salas muestra.
+4. Los servidores y las claves que escribes y guardas quedan en sus listas, el último primero (hasta 24), para elegirlos de
+   nuevo; la **×** a su lado lo quita.
 
 La primera vez que juegas en línea, un cartel dice a qué servidor se conecta el juego: como cualquier servidor de internet,
 ve tu dirección IP.

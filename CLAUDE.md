@@ -410,6 +410,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   before the one-time notice about playing online was closed (`settings_panel_online_ok`, the thank-you's card;
   `[Multiplayer] OnlineNoticeShown`): the game's search waits under the card (up to 60 s: it runs on a thread of its own, and
   a search that finds nothing ends there) and a created hub waits to be listed. `MHGU_ONLINE_NOTICE=0|1` in a test run. MH4U for Android shows the same card and text.
+- The servers and keys typed and saved are remembered: `[Multiplayer] RecentServer1..` / `RecentKey1..` (`LDN_RECENT`, 24, the
+  last first, none of the short list's; Config's `ldn_recent_*`, at its end), written only when there are some. Save adds a
+  typed value when the row changes, never the one it replaces: one taken out with its × stays out, even while in use. A file
+  of an older version (no `LockOnButtons`) gets the custom server and key in use put in the lists once, at the first start
+  (`config_load`). They
+  are listed in the row's picker between the short list and Custom... (the key's row is a picker too: Public, the keys,
+  Custom...), each with an × that takes it out at once and in the file (`forget`: it is no setting, so Save and Discard don't
+  touch it; the picker opens again as it is now, `reopen_picker`); a controller's top button or Delete does the same. MH4U for
+  Android's Lobby row does the same with `[Network] RecentLobby1..`.
+- The menu's keyboard view has Phone keyboard on Android (as MH4U's): `textinput.c` state 3, SDL text input with the screen
+  keyboard (no capitals, no corrections); the IME's composing text arrives as typed text and Backspaces, and Enter accepts.
+  Back only hides the keyboard (SDL stops text input by itself: `textinput_menu_keyboard_closed`, back to state 2): the view
+  and its text stay, its key brings the keyboard back, and a second Back leaves the view, as in MH4U.
+  The menu's own keys stay for a controller; a physical keyboard types in both.
 - While a menu of the game's is open the touch layout doesn't change: the menu pad shows besides (`C_MPAD`, `[Touch] ShowMenuPad`,
   saved as `menu_pad` in touch_layout.txt) and presses the d-pad, its page tabs above it (`C_ML` / `C_MR`: the pair the game's option
   turns pages with, `menu_pages_zl`), the other pair above them with `ShowMenuZL` / `ShowMenuZR` (off by default) and a small Minus
