@@ -692,12 +692,20 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // Without a window, a while without the hunter played is a menu (the title, the main menu, a talk in a town), but never
 // with a hunter in a quest (weapon_hunter): a ballista's or a cannon's own aim runs no hunt camera, and four seconds on
 // one made a menu of it - the stick turned into the d-pad, a drag into a cursor's steps, and nothing aimed (#169). A
-// cutscene there reads no stick either way
+// cutscene there reads no stick either way.
+// A bow or a gun out in a quest: its aims and the scope draw on that layer, and what they draw outlasts them (the action
+// stays 0001:046 after an aim or the scope, with the hunt camera back, which weapon_aiming no longer counts since #177),
+// while the lock-on's target button (ZL) is pressed all the time. There only Plus or Minus (the pause menu, the map) make
+// a window a menu, and a cursor running one only after them: a heavy bowgun's hunt went to the menu layout, its shot
+// taken by the menu pad, no locked shot, no item bar arrows, no crouching fire
+std::atomic<uint64_t> g_menu_press_ns;  // (SDL_GetTicksNS) when Plus or Minus was last pressed
 bool game_menu(uint32_t hunter) {
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
-        if (!g_window_open) g_window_asked = !p || now - p > PLAY_NOW || ticks - g_press_ns.load() < WINDOW_PRESS;
-        if (!g_window_asked && menu_cursor_age() <= 1) {
+        bool gun = hunter && weapon_ranged(hunter) && weapon_drawn() == 1;
+        bool pressed = ticks - (gun ? g_menu_press_ns.load() : g_press_ns.load()) < WINDOW_PRESS;
+        if (!g_window_open) g_window_asked = !p || now - p > PLAY_NOW || pressed;
+        if (!g_window_asked && menu_cursor_age() <= 1 && (!gun || pressed)) {
             g_window_asked = true;
             static int dbg = -1;
             if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
@@ -2451,6 +2459,7 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
         // (with a gun out A fires, and the scope's window comes back after each shot)
         const uint64_t OPENS = (s.weapon && s.drawn == 1 ? 0 : B(BTN_A) | B(BTN_Y)) | B(BTN_PLUS) | B(BTN_MINUS) | B(BTN_ZL) | B(BTN_ZR);
         if (buttons & ~was & OPENS) g_press_ns = now;
+        if (buttons & ~was & (B(BTN_PLUS) | B(BTN_MINUS))) g_menu_press_ns = now;  // (a bow or a gun out: game_menu)
         was = buttons;
     }
     bool hunt = mousecam_active() || s.weapon;  // (a gun aimed has a camera of its own)
