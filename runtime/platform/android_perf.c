@@ -300,7 +300,7 @@ static void log_frame(uint64_t work, bool have_session) {
 #define EASY_FRAMES 60  // (frames looked at together)
 #define EASY_RUNS 5     // (of them in a row, all easy, before the efficient cores)
 #define EASY_RUNS_MAX 80
-#define LONE_QUIET 5    // (MHGU_PERF_EFFICIENT) windows in a row with no frame over the target before one is forgiven
+#define LONE_QUIET 30   // (MHGU_PERF_EFFICIENT) windows in a row with no frame over the target before one is forgiven
 // A phone whose frames are easy on the fast cores but not on the efficient ones went back and forth all the time
 // (a Unisoc T606: about 30 times in one session, each a few slow frames): each time they did not last a minute, the
 // next try waits twice as long.
@@ -308,7 +308,8 @@ static void log_frame(uint64_t work, bool have_session) {
 // before, the window's average under half) neither turns them off nor keeps them from coming, and an easy window may have
 // one frame over 80 %. Without it the Moto g06's quest departure turned them off, and at the camp (10-13 ms of 33.3) they
 // never came back in 9 minutes: every frame of 10 windows in a row had to stay under 80 %. Two frames over the target in
-// a window, or another within LONE_QUIET windows, still turn them off at once, as an average over 70 % does.
+// a window, or another within LONE_QUIET windows (a minute at 30 FPS), still turn them off at once, as an average over
+// 70 % does: one that comes back is not a one-off, and on the efficient cores it would be a dropped frame each time.
 static void efficiency_follow(APerformanceHintSession *s, int64_t work) {
     static int frames, easy_runs, off = -1, need = EASY_RUNS, over, quiet = LONE_QUIET;
     static int64_t sum, longest, second;

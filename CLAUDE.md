@@ -237,8 +237,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   old behaviour, until measured): `MHGU_PERF_ADPF70` the ADPF target 70 % of the frame period at FPS limits of 60 and below, as in MH4U
   (at all of it the system lowers the clocks until the busiest thread fills the period: the Moto at Toaster 30 worked 25.5 ms a frame on
   average, 33 at most, of 33.3), the efficient cores then judged against the period. `MHGU_PERF_EFFICIENT` a frame over the target on
-  its own neither turns the efficient cores off nor keeps them away (`efficiency_follow`; two in a window, or another within 5 windows,
-  still do); `MHGU_ADPF_EFFICIENT=force` holds them on, to measure what they can save. `MHGU_PERF_LIMITER` the engine's frame limiter
+  its own neither turns the efficient cores off nor keeps them away (`efficiency_follow`; two in a window, or another within 30
+  windows, still do); `MHGU_ADPF_EFFICIENT=force` holds them on, to measure what they can save. `MHGU_PERF_LIMITER` the engine's frame limiter
   (main 0xda5824) sleeps until its frame's time less a margin instead of turning 1-2 ms a frame on the clock (`runtime/hle/limiter.c`;
   `MHGU_LIMITER_LOG=1` its sleeps and turns, on or off). `MHGU_PERF_MEMTHREAD` the minute's `[mem]` line on a thread of its own, off the
   update thread (with `MHGU_ADPF_LOG=1` each line says what it cost). `MHGU_PERF_THREADNAMES` names the runtime's threads (`g44-10a` the
