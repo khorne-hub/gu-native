@@ -1244,6 +1244,15 @@ VkSampler vk_sampler(NvnSamplerDesc *d) {
             float l = (c[0] + c[1] + c[2]) / 3;
             si.borderColor = c[3] < 0.5f ? VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK
                            : l < 0.5f ? VK_BORDER_COLOR_FLOAT_OPAQUE_BLACK : VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+            static float told[8][4];  // (each colour once: what a GPU without the extension draws otherwise, #171)
+            static int ntold;
+            bool known = false;
+            for (int i = 0; i < ntold; i++) known |= !memcmp(told[i], c, 16);
+            if (!known && ntold < 8) {
+                memcpy(told[ntold++], c, 16);
+                LOG("[vk] border colour %g,%g,%g,%g: no custom border colours here, %s instead\n", c[0], c[1], c[2], c[3],
+                    c[3] < 0.5f ? "transparent black" : l < 0.5f ? "opaque black" : "opaque white");
+            }
         }
     }
     VkSampler s;
