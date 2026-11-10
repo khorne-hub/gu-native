@@ -36,8 +36,12 @@ final class FolderBrowser {
 
     private FolderBrowser() {}
 
-    /** The storage roots: the phone's own and each SD card's (from the app's folders on them). */
-    static List<File> roots(Context c) {
+    /**
+     * The storage roots: the phone's own and each SD card's (from the app's folders on them). `writable` (the save
+     * folder): an SD card only when the game can write in it (AppHome.probe). Android 9 and 10 never let an app write on
+     * a removable card outside its own folder there, so every folder of it would only be refused once chosen.
+     */
+    static List<File> roots(Context c, boolean writable) {
         List<File> out = new ArrayList<>();
         out.add(Environment.getExternalStorageDirectory());
         File[] mine = c.getExternalFilesDirs(null);
@@ -48,7 +52,7 @@ final class FolderBrowser {
                 int cut = p.indexOf("/Android/data/");
                 if (cut <= 0) continue;
                 File root = new File(p.substring(0, cut));
-                if (!root.equals(out.get(0)) && root.isDirectory()) out.add(root);
+                if (!root.equals(out.get(0)) && root.isDirectory() && (!writable || AppHome.probe(root) == 0)) out.add(root);
             }
         return out;
     }
@@ -73,11 +77,12 @@ final class FolderBrowser {
 
     /**
      * Opens the browser at `at` (null: the phone's storage). `use` gets the folder shown when "Use this folder" is
-     * pressed; `system` (may be null) opens Android's picker instead.
+     * pressed; `system` (may be null) opens Android's picker instead. `writable`: the game will write in the folder
+     * chosen (the save folder), so only the storage it can write on is offered (roots).
      */
-    static Dialog open(Activity a, File at, String title, Mark mark, Hint hint, Use use, Runnable system) {
+    static Dialog open(Activity a, File at, String title, Mark mark, Hint hint, Use use, Runnable system, boolean writable) {
         boolean es = Look.es();
-        List<File> roots = roots(a);
+        List<File> roots = roots(a, writable);
         int pad = Look.dp(a, 12);
         LinearLayout box = new LinearLayout(a);
         box.setOrientation(LinearLayout.VERTICAL);
@@ -93,11 +98,12 @@ final class FolderBrowser {
         File dir = at != null && at.isDirectory() ? at : roots.get(0);
         File root = roots.get(0);
         for (File r : roots) if (dir.getAbsolutePath().startsWith(r.getAbsolutePath())) root = r;
+        if (!dir.getAbsolutePath().startsWith(root.getAbsolutePath())) dir = root;  // (on a card not offered: the phone's)
         for (int i = 0; i < roots.size(); i++) {
             File r = roots.get(i);
             Button t = Look.button(a, i == 0 ? (es ? "Memoria interna" : "Phone storage")
                                              : (es ? "Tarjeta SD" : "SD card") + (roots.size() > 2 ? " " + i : ""), r.equals(root));
-            t.setOnClickListener(v -> { d.dismiss(); open(a, r, title, mark, hint, use, system); });
+            t.setOnClickListener(v -> { d.dismiss(); open(a, r, title, mark, hint, use, system, writable); });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, Look.dp(a, 40));
             lp.setMargins(Look.dp(a, 4), Look.dp(a, 6), Look.dp(a, 4), Look.dp(a, 4));
             tabs.addView(t, lp);
@@ -118,7 +124,7 @@ final class FolderBrowser {
         if (!dir.equals(root)) {
             Button up = Look.button(a, "⬑  " + (es ? "Subir" : "Up"), false);
             up.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-            up.setOnClickListener(v -> { d.dismiss(); open(a, here.getParentFile(), title, mark, hint, use, system); });
+            up.setOnClickListener(v -> { d.dismiss(); open(a, here.getParentFile(), title, mark, hint, use, system, writable); });
             list.addView(up, rowParams(a));
         }
         File[] kids = dir.listFiles(f -> f.isDirectory() && !f.getName().startsWith("."));
@@ -128,7 +134,7 @@ final class FolderBrowser {
                 boolean has = mark.holds(k);
                 Button b = Look.button(a, (has ? "✓  " : "▸  ") + k.getName(), has);
                 b.setGravity(Gravity.START | Gravity.CENTER_VERTICAL);
-                b.setOnClickListener(v -> { d.dismiss(); open(a, k, title, mark, hint, use, system); });
+                b.setOnClickListener(v -> { d.dismiss(); open(a, k, title, mark, hint, use, system, writable); });
                 list.addView(b, rowParams(a));
             }
         }

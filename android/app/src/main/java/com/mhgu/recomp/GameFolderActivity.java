@@ -358,7 +358,7 @@ public class GameFolderActivity extends Activity {
                 GameFolderActivity::holdsGame,
                 (dir, game) -> game ? (es ? "✓ Aquí está el juego: exefs y romfs." : "✓ The game is here: exefs and romfs.")
                                     : (es ? "Entra a la carpeta que tiene exefs y romfs." : "Go into the folder that holds exefs and romfs."),
-                this::verify, this::systemPicker);
+                this::verify, this::systemPicker, false);
     }
 
     /** Android's own folder picker: the browser's second way (some show nothing at the root, or refuse it). */
