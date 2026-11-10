@@ -216,6 +216,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Unsaved game progress will be lost.", "Se perderá el progreso sin guardar."},
         {"Settings will be saved.", "Se guardarán las opciones."},
         {"Restart failed. The game is still running.", "No se pudo reiniciar. El juego sigue abierto."},
+        {"No app here can open web pages.", "No hay una app que abra páginas web."},
         {"Saved - restart pending", "Guardado - reinicio pendiente"},
         {"Width", "Ancho"},
         {"Height", "Alto"},

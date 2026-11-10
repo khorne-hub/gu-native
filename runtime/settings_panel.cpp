@@ -436,13 +436,19 @@ void github_mark(ImDrawList *dl, ImVec2 c, float r, ImU32 col) {
     dl->PathFillConcave(col);
 }
 // The project's official page, the only link the project gives: in the phone's browser (SDL_OpenURL: an Android VIEW
-// intent; a desktop's own browser), from the header's GitHub button
+// intent; a desktop's own browser), from the header's GitHub button. With nothing to open it (a handheld or a TV box
+// with no browser) the menu says so, as in the MH4U port
 constexpr const char *OFFICIAL_PAGE = "https://github.com/khorne-hub/gu-native";
+constexpr const char *NO_BROWSER = "No app here can open web pages.";
 void open_official_page() {
-    if (SDL_OpenURL(OFFICIAL_PAGE))
+    if (SDL_OpenURL(OFFICIAL_PAGE)) {
         fprintf(stderr, "[settings] the official page went to the browser (%s)\n", OFFICIAL_PAGE);
-    else
+        if (s.error == tr(NO_BROWSER))
+            s.error.clear();
+    } else {
         fprintf(stderr, "[settings] the official page could not be opened (%s): %s\n", OFFICIAL_PAGE, SDL_GetError());
+        s.error = tr(NO_BROWSER);
+    }
 }
 // On / Off: a slot whose stud slides to the right and lights it green when on
 void switch_mark(ImDrawList *dl, const ImRect &r, bool on) {
@@ -2892,6 +2898,18 @@ void fit(std::string &value, float available) {
     } while (!value.empty() && ImGui::CalcTextSize((value + "...").c_str()).x > available);
     value += "...";
 }
+// A name cut to fit at a space, never inside a word (room: its width in font at size), "..." at its end; empty when not
+// even its first word fits
+std::string whole_words(ImFont *font, float size, const std::string &name, float room) {
+    if (font->CalcTextSizeA(size, FLT_MAX, 0, name.c_str()).x <= room)
+        return name;
+    for (size_t n = name.rfind(' '); n != std::string::npos && n; n = name.rfind(' ', n - 1)) {
+        std::string cut = name.substr(0, n) + "...";
+        if (font->CalcTextSizeA(size, FLT_MAX, 0, cut.c_str()).x <= room)
+            return cut;
+    }
+    return "";
+}
 // An invisible button over r for a finger (not one of the rows: the controller never lands on it); true when tapped
 bool touch_button(const char *id, const ImRect &r, bool enabled, bool *held) {
     ImGui::SetCursorScreenPos(r.Min);
@@ -3733,18 +3751,41 @@ void touch_panel(bool *open, const Config &before) {
         github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
         right = site.Min.x - pad;
     }
-    {  // (the title; the tab's name or the submenu's after it)
+    {  // (the title; the tab's name or the submenu's after it. Where the header's buttons leave less room (a large Menu
+       // size on a 4:3 screen), both smaller to fit, down to .6 of their size; narrower still, the name alone, its last
+       // words left out if need be: never a word cut in two. The same in the MH4U port)
         const char *title = tr("SETTINGS");
-        float size = std::floor(f * 1.1f), cy = by + side * .5f;
-        ImVec2 ts = title_font()->CalcTextSizeA(size, FLT_MAX, 0, title);
+        ImFont *tf = title_font();
+        float size = std::floor(f * 1.1f), cy = by + side * .5f, room = right - title_x;
         std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();
+        auto sized = [](float full, float q) { return q < 1 ? std::floor(full * q) : full; };
+        auto name_w = [&](float q) { return font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str()).x; };
+        auto both_w = [&](float q) {
+            return tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title).x + (sub.empty() ? 0 : f * q * 1.4f + name_w(q));
+        };
+        float q = std::clamp(room / both_w(1), .6f, 1.f);
+        while (q > .6f && both_w(q) > room)
+            q = std::max(.6f, q - .02f);
+        bool alone = !sub.empty() && both_w(q) > room;  // (the name without the title before it)
+        if (alone) {
+            q = std::clamp(room / name_w(1), .6f, 1.f);
+            while (q > .6f && name_w(q) > room)
+                q = std::max(.6f, q - .02f);
+            sub = whole_words(font, sized(f, q), sub, room);
+        }
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        shadow_text(dl, title_font(), size, ImVec2(title_x, cy - ts.y * .5f), k.glow, title);
+        float x = title_x;
+        if (!alone) {
+            ImVec2 ts = tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title);
+            shadow_text(dl, tf, sized(size, q), ImVec2(x, cy - ts.y * .5f), k.glow, title);
+            x += ts.x + f * q * .7f;
+            if (!sub.empty())
+                diamond(dl, ImVec2(x, cy), f * q * .18f, k.rule);
+            x += f * q * .7f;
+        }
         if (!sub.empty()) {
-            float dx = title_x + ts.x + f * .7f;
-            diamond(dl, ImVec2(dx, cy), f * .18f, k.rule);
-            ImVec2 ss = ImGui::CalcTextSize(sub.c_str());
-            shadow_text(dl, f, ImVec2(dx + f * .7f, cy - ss.y * .5f), k.ink, sub.c_str());
+            ImVec2 ss = font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str());
+            shadow_text(dl, sized(f, q), ImVec2(x, cy - ss.y * .5f), k.ink, sub.c_str());
         }
         dl->PopClipRect();
     }
