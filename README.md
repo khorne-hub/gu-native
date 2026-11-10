@@ -708,8 +708,8 @@ key can't be installed over the official app either. From 0.1.9 the app checks i
 so once when it starts.
 
 The app also tells you when a new version is out. At most once a day it asks GitHub for this repository's latest release
-(nothing else is sent), and at the next start it offers to open the release page. It never downloads or installs anything
-by itself. Gear, **Menu Options**, **Check for updates** turns it off.
+(nothing else is sent, not even the phone's model), and at the next start it offers to open the release page. It never
+downloads or installs anything by itself. Gear, **Menu Options**, **Check for updates** turns it off.
 
 The PC version has no such signature: each release lists the SHA-256 of its zip. To check yours on Windows, open a terminal
 in its folder and run `certutil -hashfile <file> SHA256`; the result must match the release's.

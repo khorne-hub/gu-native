@@ -724,8 +724,8 @@ con otra clave tampoco se puede instalar encima de la app oficial. Desde la 0.1.
 firmada con otra clave lo avisa una vez al arrancar.
 
 La app también te avisa cuando sale una versión nueva. Como mucho una vez al día le pregunta a GitHub cuál es la última
-versión de este repositorio (no se envía nada más), y al abrir el juego te ofrece abrir su página. Nunca descarga ni instala
-nada por su cuenta. Engranaje, **Opciones del menú**, **Buscar actualizaciones** lo apaga.
+versión de este repositorio (no se envía nada más, ni siquiera el modelo del teléfono), y al abrir el juego te ofrece abrir
+su página. Nunca descarga ni instala nada por su cuenta. Engranaje, **Opciones del menú**, **Buscar actualizaciones** lo apaga.
 
 La versión de PC no tiene esa firma: cada versión publica el SHA-256 de su zip. Para revisar el tuyo en Windows, abre una
 terminal en su carpeta y ejecuta `certutil -hashfile <archivo> SHA256`; el resultado tiene que coincidir con el de la versión.

@@ -139,6 +139,9 @@ final class Notices {
                 http.setConnectTimeout(8000);
                 http.setReadTimeout(8000);
                 http.setRequestProperty("Accept", "application/vnd.github+json");
+                // (GitHub's API wants a User-Agent: one that names the repository only. Android's own, http.agent, would
+                // send the phone's model and its Android build with every check)
+                http.setRequestProperty("User-Agent", REPO + "-update-check");
                 if (http.getResponseCode() != 200) return;
                 StringBuilder body = new StringBuilder();
                 try (InputStream in = http.getInputStream()) {
@@ -191,11 +194,18 @@ final class Notices {
         }
         p.edit().putLong("shown_at", now).apply();
         String v = latest.startsWith("v") || latest.startsWith("V") ? latest.substring(1) : latest;
+        // (a copy signed by someone else: Android won't install the official one over it, and uninstalling it deletes the
+        // save in Android/data, so the save is exported first)
+        boolean over = official(a);
         Look.notice(a, es ? "HAY UNA VERSIÓN NUEVA" : "A NEW VERSION IS OUT",
-                es ? "La versión " + v + " ya está disponible (tienes la " + mine + "). Se instala encima de esta: tu partida y "
-                     + "tus ajustes se quedan como están."
-                   : "Version " + v + " is out (you have " + mine + "). It installs over this one: your save and your settings "
-                     + "stay as they are.",
+                es ? "La versión " + v + " ya está disponible (tienes la " + mine + "). "
+                     + (over ? "Se instala encima de esta: tu partida y tus ajustes se quedan como están."
+                             : "Esta copia no es la oficial, así que la oficial no se instala encima. Primero exporta tu partida "
+                               + "(Ajustes, Exportar partida); después desinstala esta copia, instala la oficial e importa tu partida.")
+                   : "Version " + v + " is out (you have " + mine + "). "
+                     + (over ? "It installs over this one: your save and your settings stay as they are."
+                             : "This copy isn't the official one, so the official one won't install over it. First export your "
+                               + "save (Settings, Export save); then uninstall this copy, install the official one and import your save."),
                 new Look.Choice(es ? "Ver" : "View", true, () -> {
                     try {
                         a.startActivity(new Intent(Intent.ACTION_VIEW,
