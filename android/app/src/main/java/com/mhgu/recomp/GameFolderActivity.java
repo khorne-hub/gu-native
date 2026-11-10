@@ -123,7 +123,11 @@ public class GameFolderActivity extends Activity {
         }
     }
 
+    /** This process passed the entry screen's checks and started the game (GameActivity sends any other start here). */
+    static volatile boolean gameStarted;
+
     private void startGame() {
+        gameStarted = true;
         startActivity(new Intent(this, GameActivity.class));
         overridePendingTransition(0, 0);
         finish();

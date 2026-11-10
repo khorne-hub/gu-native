@@ -58,7 +58,11 @@ final class AppHome {
 
     /** At the start, before anything is written (GameFolderActivity, and GameActivity for a start without it). */
     static synchronized void ensure(Context c) {
-        if (chosen(c) != null) return;
+        File moved = chosen(c);
+        if (moved != null) {
+            keepGameFiles(c, moved);
+            return;
+        }
         File ext = c.getExternalFilesDir(null);
         if (ext == null) return;  // (no external storage at this moment: the private folder for this run, nothing decided)
         int err = probe(ext);
@@ -79,6 +83,21 @@ final class AppHome {
         writeText(new File(own, MOVED), ext.getAbsolutePath());
         writeText(new File(own, MARK), own.getAbsolutePath());
         Log.i(TAG, "home: " + count[0] + " file(s) copied from " + ext);
+        keepGameFiles(c, own);
+    }
+
+    /**
+     * Once the home is the private folder: game files put by hand in the external folder's data/ (where the game looks
+     * when no folder was chosen, and GameFolderActivity accepts them) are still read there, so game_folder.txt in the
+     * private folder points at them. Without it runtime/main.c would look in the private folder's data/, which nobody
+     * can fill, and say the game files were not found. A folder chosen before (its game_folder.txt was copied) stays.
+     */
+    private static void keepGameFiles(Context c, File home) {
+        File ext = c.getExternalFilesDir(null), saved = new File(home, "game_folder.txt");
+        if (ext == null || home.equals(ext) || !read(saved).isEmpty()) return;
+        File data = new File(ext, "data");
+        if (!new File(data, "exefs/main").canRead()) return;
+        if (writeText(saved, data.getAbsolutePath())) Log.i(TAG, "home: the game files stay in " + data + " (game_folder.txt)");
     }
 
     /** Once after a move: the old folder (shown to the player), else null. The note is gone afterwards. */
@@ -125,7 +144,13 @@ final class AppHome {
         String stamp = null;
         for (File k : kids) {
             if (++seen[0] > 4000) return;
-            if (k.getName().contains(".other-app-") || k.getName().endsWith(".tmp")) continue;
+            String name = k.getName();
+            if (name.endsWith(".other-app.tmp") || name.endsWith(".mine.tmp")) {  // (a replacement cut short: the file back)
+                File was = new File(dir, name.substring(0, name.lastIndexOf('.', name.length() - 5)));
+                if (!was.exists() && k.isFile() && k.renameTo(was)) Log.w(TAG, "home: " + was + " put back from " + name);
+                continue;
+            }
+            if (name.contains(".other-app-") || name.endsWith(".tmp")) continue;
             if (depth == 0 && k.isDirectory() && !owned(k.getName())) continue;
             if (k.isDirectory()) {
                 int err = probe(k);
@@ -143,13 +168,20 @@ final class AppHome {
                     repair(k, depth + 1, seen);
                 }
             } else if (!k.canWrite() && k.canRead()) {
-                File tmp = new File(dir, k.getName() + ".mine.tmp");
+                // (the copy made, the original moved aside, the copy put in its place, and only then the original deleted:
+                // whatever fails, a whole copy keeps the name or stays beside it. Such a file can be the save)
+                File tmp = new File(dir, k.getName() + ".mine.tmp"), aside = new File(dir, k.getName() + ".other-app.tmp");
                 try {
                     copy(k, tmp);
-                    if (!k.delete() || !tmp.renameTo(k)) throw new IOException("can't replace it");
+                    if (!k.renameTo(aside)) throw new IOException("can't move it aside");
+                    if (!tmp.renameTo(k)) {
+                        if (aside.renameTo(k)) throw new IOException("can't put the copy in its place");
+                        throw new IOException("can't put the copy in its place: the original is " + aside.getName() + ", the copy " + tmp.getName());
+                    }
+                    if (!aside.delete()) Log.w(TAG, "home: " + aside + " (the other app's original) couldn't be deleted");
                     Log.w(TAG, "home: " + k + " belonged to another app: replaced by the app's own copy");
                 } catch (IOException e) {
-                    tmp.delete();
+                    if (k.exists()) tmp.delete();  // (never the only copy left)
                     Log.w(TAG, "home: " + k + " belongs to another app: " + e.getMessage());
                 }
             }

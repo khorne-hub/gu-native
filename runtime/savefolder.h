@@ -20,6 +20,10 @@
 // Only save_0 (the game's save) moves; the SD card file system, bonus/ and save_backups/ stay in the game's own folder.
 // MHGU_SAVE_DIR (tests) still decides everything. On Windows a path the ANSI code page can't spell is used through its
 // short (8.3) form, as the game folder is.
+//
+// The platform's start gate settles what save_folder_missed.txt, save_folder_state.txt and the in-use mark ask before the
+// game runs (Android: SaveFolderActivity.gate, which every start goes through; a PC's start must do the same once its menu
+// offers the folder).
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>
@@ -34,7 +38,9 @@ extern "C" {
 void savefolder_init(void);
 // The host folder for the save mount `sub` (services/fs.c, at every mount: the game mounts at each save, and at the
 // start to read it). save_0 with a folder chosen: that folder when it can be reached (and written); else, and for anything
-// else, g_save_dir/sub. true: the chosen folder was missed (the mount is the game's own folder instead).
+// else, g_save_dir/sub. Missed once, the game's own folder until the game closes, and a notice says so: the save the game
+// holds may be the one it read there, never to be written over the folder's newer one. true: the chosen folder was missed
+// (the mount is the game's own folder instead).
 bool savefolder_root(const char *sub, char *out, size_t size);
 // A save was written to the game's own folder because the chosen one was missed (services/fs.c, after its commit):
 // written down (save_folder_missed.txt, the next start asks which one to keep) and told once over the game. Nothing is

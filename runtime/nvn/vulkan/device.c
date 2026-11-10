@@ -510,9 +510,10 @@ VkResult vk_create_buffer(const VkBufferCreateInfo *bi, VkBuffer *buf, VmaAlloca
 // while three workers built the saved pipelines (issues #73, #99). 0.1.8 then built every shader and pipeline on the render
 // thread, and the start built every saved program and pipeline there before its first picture: a black screen for minutes
 // on a Helio G35 (#157). The builds stay on the workers instead (one: exec.c compile_workers), and every call into the
-// driver's compiler takes compiler_lock, from any thread (the worker, the render thread's own pipelines, FSR's, the
-// overlay's): volk's pointers are replaced, which every caller goes through. Never two at once, and the render thread keeps
-// presenting while the saved ones build. MHGU_VK_POWERVR=1 treats another GPU as a PowerVR (this and the rest it gets).
+// driver's compiler takes compiler_lock, from any thread (the worker, the render thread's own pipelines, the overlay's):
+// volk's pointers are replaced, which those callers go through, and FSR's backend, which looks the functions up itself,
+// gets the same ones from vk_device_proc_addr. Never two at once, and the render thread keeps presenting while the saved
+// ones build. MHGU_VK_POWERVR=1 treats another GPU as a PowerVR (this and the rest it gets).
 bool vk_gpu_powervr(void) {
     static int v = -1;
     if (v < 0 && g_vk.props.deviceName[0])
@@ -563,7 +564,26 @@ static VKAPI_ATTR VkResult VKAPI_CALL one_cache_data(VkDevice d, VkPipelineCache
     pthread_mutex_unlock(&compiler_lock);
     return r;
 }
+// The upscalers' SDKs look the device's functions up themselves (FSR 3.1's backend asks getDeviceProcAddr for
+// vkCreateShaderModule and vkCreateComputePipelines, and builds its pipelines on the render thread when its context is
+// made), so they get the ones above too: never beside the worker's build
+static VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL one_device_proc(VkDevice d, const char *name) {
+    PFN_vkVoidFunction f = !strcmp(name, "vkCreateShaderModule") ? (PFN_vkVoidFunction)one_create_module
+                         : !strcmp(name, "vkCreateGraphicsPipelines") ? (PFN_vkVoidFunction)one_create_graphics
+                         : !strcmp(name, "vkCreateComputePipelines") ? (PFN_vkVoidFunction)one_create_compute
+                         : !strcmp(name, "vkGetPipelineCacheData") ? (PFN_vkVoidFunction)one_cache_data : NULL;
+    if (!f) return vkGetDeviceProcAddr(d, name);
+    LOG("[vk] PowerVR: %s handed to an upscaler takes the compiler's lock\n", name);
+    return f;
+}
 #endif
+
+PFN_vkGetDeviceProcAddr vk_device_proc_addr(void) {
+#ifdef VOLK_H_
+    if (drv_create_graphics) return one_device_proc;  // (PowerVR: one compile at a time)
+#endif
+    return vkGetDeviceProcAddr;
+}
 
 static void one_compiler_install(void) {
 #ifdef VOLK_H_

@@ -757,9 +757,11 @@ static void hub_report(int what, const char *srv, int state, int ms, int hubs) {
     uint64_t now = plat_now_ns();
     pthread_mutex_lock(&hub_mu);
     if (hub_now.state != HUB_CHECKING && what != NOTE_JOIN) hub_set_locked(srv, key, state, ms, hubs);
-    // (a search's failures with the default server, which the player didn't choose, are told once: playing on a LAN
-    // without the internet isn't told so at every search)
-    bool again = what != NOTE_SEARCH || strcmp(srv, LDN_DEFAULT_SERVER);
+    // (a hub's failures to be listed are told as the state changes, whatever the server: its first one, then only another
+    // kind, not at each retry every 30 s - a hub played over a hotspot with no internet showed one every 30 s for the whole
+    // hunt. A search's failures with the default server, which the player didn't choose, are told once too: playing on a
+    // LAN without the internet isn't told so at every search; with a server the player chose, again after 10 s)
+    bool again = what == NOTE_SEARCH && strcmp(srv, LDN_DEFAULT_SERVER);
     bool show = state == HUB_ONLINE ? what == NOTE_HOST && note_last[what] > HUB_ONLINE
                                     : what == NOTE_JOIN || note_last[what] != state || (again && now - note_at[what] > 10000000000ull);
     note_last[what] = state;
