@@ -196,6 +196,19 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `MHGU_VK_IMAGES=<n>` asks for that many.
 - Samsung ignores the manifest's game category. Only the one set by the installer counts: see `GameFolderActivity.declareGame`.
 - On Android, a `SUBOPTIMAL` result from present must not recreate the swapchain: doing so cost two thirds of the frame rate.
+- Frame pacing at an FPS limit that is a whole fraction of the refresh rate (30 on 60 Hz): presented as soon as drawn (MAILBOX),
+  the frames land on either side of a vsync and show for 16 and 50 ms in turn. Anbernic RG406V, Low-end 50 %, 30 FPS, standing
+  at the quest-101 camp, display side (MH4U's `scripts/pacing/probe.sh` and `report.py`): 7.7 % of the intervals a vsync short or
+  long, 1% low 20 fps, p99 50 ms, 62 intervals of 50 ms a minute. `MHGU_PERF_PRESENT_TIME=1` (`nvn/vulkan/present_pacing.c`, read
+  once; off by default until measured) presents FIFO at those limits, each frame timed on the display's vsync grid
+  (`VK_GOOGLE_display_timing`, MH4U for Android's rule; the margin is `GameActivity.presentationDeadlineNs` and 4 ms, raised 2 ms
+  for good at a second late frame within 30 s): 0.04 % of the intervals off, 1% low 27.9 to 29.3, p99 33.5 ms, game time 1.00x.
+  `vkGetRefreshCycleDurationGOOGLE` said 16.65 to 16.68 ms where the vsyncs come every 16.667: the period is measured from the
+  presents' own times, and every slot put on the newest vsync's grid (chained on the period given, the slots drifted half a
+  period in 15 s and a frame showed a vsync late each time). `MHGU_PRESENT_MARGIN=<us>` fixes the margin (tests). At the refresh
+  rate itself (60 on 60 Hz) nothing changes: MAILBOX drops 0.6-0.8 % of the frames drawn there (shown 59.5-59.6 of 59.96 a
+  second, 1% low 33-36), under the 1-2 % that would pay for FIFO's latency. The game never asks `nn::vi` for its vsync event
+  (`vi.c`'s thread doesn't start): its pace is the engine's limiter alone, on the host's clock.
 - The hunter has one class per weapon: never compare against one vtable. Virtual 94 tells a hunter of any weapon and whether the
   weapon is out (`runtime/hle/weapon.c`). The `sPlayer` slot can hold another object that points to the hunter.
 - Don't trust an offset measured in one session: check it in another one.

@@ -619,6 +619,9 @@ static void create_device(void) {
     if (g_vk.stencil_export) ext[n_ext++] = VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME;
     no_exclusive = surface_caps2 && has_ext(ep, ne, "VK_EXT_full_screen_exclusive") && !getenv("MHGU_VK_EXCLUSIVE");
     if (no_exclusive) ext[n_ext++] = "VK_EXT_full_screen_exclusive";
+#ifdef __ANDROID__
+    if (vk_pacing_device_ext(ep, ne)) ext[n_ext++] = VK_GOOGLE_DISPLAY_TIMING_EXTENSION_NAME;  // (MHGU_PERF_PRESENT_TIME)
+#endif
 #ifndef __ANDROID__
     mem_budget_ext = has_ext(ep, ne, VK_EXT_MEMORY_BUDGET_EXTENSION_NAME);  // (how much mem_reserve may set aside)
     if (mem_budget_ext) ext[n_ext++] = VK_EXT_MEMORY_BUDGET_EXTENSION_NAME;
@@ -731,6 +734,7 @@ static void create_device(void) {
     one_compiler_install();  // (PowerVR: before anything is compiled)
 #ifdef __ANDROID__
     gpu_driver_check();
+    vk_pacing_device();  // (MHGU_PERF_PRESENT_TIME: present_pacing.c)
     {   // (Vulkan 1.2's, and only by the device: the libvulkan of an older Android doesn't know them)
         PFN_vkWaitSemaphores wait = (PFN_vkWaitSemaphores)vkGetDeviceProcAddr(g_vk.dev, "vkWaitSemaphores");
         PFN_vkGetSemaphoreCounterValue value = (PFN_vkGetSemaphoreCounterValue)vkGetDeviceProcAddr(g_vk.dev, "vkGetSemaphoreCounterValue");
@@ -941,12 +945,27 @@ void vk_set_msaa(uint32_t n) {
 // ================================================================== swapchain
 static int swapchain_vsync = -1;
 static int configured_msaa = -1;
+static bool swapchain_paced;  // FIFO, its presents timed to the display's vsyncs (Android: present_pacing.c)
+#ifdef __ANDROID__
+// Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on, the FPS limit a whole fraction
+// of the display's rate; never with MHGU_VK_PRESENT or MHGU_VSYNC given)
+static bool paced_wanted(void) {
+    static int env = -1;
+    if (env < 0) env = getenv("MHGU_VK_PRESENT") || getenv("MHGU_VSYNC");
+    return !env && config_live_vsync() && vk_pacing_fifo();
+}
+#endif
 static VkPresentModeKHR present_mode(void) {
     swapchain_vsync = config_live_vsync();
     // MAILBOX by default: no tearing, and the game paces itself (its own 30 fps vsync waits); with FIFO the game's frames
     // also queued behind the display's, dropping to ~26 fps on the R9. FIFO where there is no mailbox.
     const char *e = getenv("MHGU_VK_PRESENT"), *v = getenv("MHGU_VSYNC");
     if (!e && v) e = atoi(v) ? "fifo" : "immediate";
+    swapchain_paced = false;
+#ifdef __ANDROID__
+    // (FIFO for presents timed to the display: MAILBOX would let a newer picture replace one waiting for its time)
+    if (!e && paced_wanted()) e = "fifo", swapchain_paced = true;
+#endif
     if (!e) e = swapchain_vsync ? "mailbox" : "immediate";  // (mhgurecomp.ini VSync)
     VkPresentModeKHR want = !strcmp(e, "fifo") ? VK_PRESENT_MODE_FIFO_KHR
                           : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_MAILBOX_KHR;
@@ -1080,8 +1099,11 @@ static void create_swapchain(void) {
                                       .pAttachments = &g_vk.sc_views[i], .width = ext.width, .height = ext.height, .layers = 1};
         VK_CHECK(vkCreateFramebuffer(g_vk.dev, &fi, NULL, &sc_fb[i]));
     }
-    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d\n", ext.width, ext.height, g_vk.sc_count, count,
-        caps.minImageCount, sf.format);
+    LOG("[vk] swapchain %ux%u, %u images (asked for %u, least %u), format %d%s\n", ext.width, ext.height, g_vk.sc_count, count,
+        caps.minImageCount, sf.format, swapchain_paced ? ", FIFO with presents timed to the display" : "");
+#ifdef __ANDROID__
+    vk_pacing_swapchain();  // (the display's period, the cadence anew)
+#endif
 }
 
 static void recreate_swapchain(void) {
@@ -1177,6 +1199,9 @@ static bool frame_begin(void) {
     if (msaa != configured_msaa) { vk_set_msaa((uint32_t)msaa); configured_msaa = msaa; }
     if (!g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
         config_live_vsync() != swapchain_vsync) recreate_swapchain();
+#ifdef __ANDROID__
+    else if (paced_wanted() != swapchain_paced) recreate_swapchain();  // (the FPS limit or the display's rate changed)
+#endif
     if (!g_vk.swapchain) return false;
     slot = (slot + 1) % FRAMES;
     if (!acquire_sem[slot]) acquire_sem[slot] = binary_semaphore();
@@ -1224,8 +1249,9 @@ static void *shot_thread(void *arg) {
     return NULL;
 }
 
-// End the window image's render pass and present it. shot_path: also save the window image as PNG.
-static void frame_end(const char *shot_path) {
+// End the window image's render pass and present it. shot_path: also save the window image as PNG. new_frame: a game
+// frame (false: the last picture again, the settings menu holding the game).
+static void frame_end(const char *shot_path, bool new_frame) {
     if (!cur_frame.ok) return;
     VkCommandBuffer cb = vk_cmd();
     vkCmdEndRenderPass(cb);
@@ -1254,6 +1280,11 @@ static void frame_end(const char *shot_path) {
     vk_submit_extra(cur_frame.acquired, done_sem[img]);
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
+#ifdef __ANDROID__
+    if (swapchain_paced) vk_pacing_present(&pi, new_frame);  // (its time on the display's vsync grid: present_pacing.c)
+#else
+    (void)new_frame;
+#endif
     uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
     VkResult r = vkQueuePresentKHR(g_vk.queue, &pi);
     if (HITCH_ON) hitch_add(HC_PRESENT, plat_now_ns() - t0, 0);
@@ -1354,7 +1385,7 @@ void backend_present(NvnTexture *t) {
             if (g_shot_request[0]) { snprintf(path, sizeof path, "%s", g_shot_request); g_shot_request[0] = 0; }
             else snprintf(path, sizeof path, "shots/frame_%05llu.png", (unsigned long long)(g_frames + 1));
         }
-        frame_end(shot ? path : NULL);
+        frame_end(shot ? path : NULL, true);
     } else {
         vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
@@ -1428,7 +1459,7 @@ bool vk_present_again(void) {
         OverlayTarget ot = {g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam, g_vk.queue, g_vk.pcache, sc_pass,
                             g_vk.sc_extent.width, g_vk.sc_extent.height};
         overlay_draw(vk_cmd(), &ot);
-        frame_end(NULL);
+        frame_end(NULL, false);
     } else {
         vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE);
     }
