@@ -15,6 +15,7 @@
 //   MHGU_VK_STATS=1       draw / pass / skip counts in the log every 2 s (and shader / pipeline build stats)
 //   MHGU_VK_STAGING=<n>   desktop: staging chunks made at start-up (default 4; see "transient memory ring")
 //   MHGU_VK_VC_SAFETY=<n> the vertex cache's safety net: 0 off (Windows' default), 1 on, 2 checked (see "vertex cache")
+//   MHGU_PERF_VCNET=1     that net's turn every 30 s, 512 KB a frame, instead of every 2 s, 2 MB (see "vertex cache")
 //   MHGU_SKIP_LOG=1       every draw skipped for a building program / pipeline: its shaders and colour target
 //   MHGU_NO_PREWARM=1     don't translate the game's programs ahead of their first use (see "prewarm"; the ini's
 //                         [Performance] ShaderPrewarm = Off does the same)
@@ -56,6 +57,9 @@ static uint64_t stat_a2c;  // (MHGU_VK_STATS) draws with alpha to coverage (none
                            // is the game's uGrass2, which [Performance] Grass leaves out in runtime/hle/grass.c)
 // (MHGU_VK_STATS) time spent: translating command lists, waiting for the GPU, guest memory copied per submission
 uint64_t stat_exec_ns, stat_wait_ns, stat_copy_bytes, stat_upload_ns;
+// (MHGU_VK_STATS) of those bytes: the vertex cache's whole ranges (new, or written all over), its written pages, its
+// safety net's slices, and the ranges copied for one submission (not cached: uniforms, small or untracked ranges)
+static uint64_t stat_vc_whole_bytes, stat_vc_pages_bytes, stat_vc_net_bytes, stat_gcopy_bytes;
 static _Atomic int stat_compiles;
 // (MHGU_VK_STATS) shader / pipeline builds: skips by cause, frames with skips, the waits, build times per job kind
 // (translate, GLSL -> SPIR-V + modules, pipeline), request -> ready latency, the slowest frame (exec thread's view)
@@ -712,7 +716,7 @@ static VkSpan guest_copy(uint64_t addr, uint64_t size) {
     uint32_t slot = (uint32_t)(h ^ (h >> 32)) & (GCOPY_TAB - 1);
     if (gcopy[slot].gen == gcopy_gen && gcopy[slot].addr == addr && gcopy[slot].size == size) return gcopy[slot].span;
     VkSpan s = vk_transient_copy(G2H((uint32_t)addr), size, 256);
-    stat_copy_bytes += size;
+    stat_copy_bytes += size, stat_gcopy_bytes += size;
     gcopy[slot].addr = addr; gcopy[slot].size = size; gcopy[slot].gen = gcopy_gen; gcopy[slot].span = s;
     return s;
 }
@@ -733,6 +737,9 @@ static bool guest_range_ok(uint64_t addr, uint64_t size) { return addr && addr <
 //   MHGU_VK_VC_SAFETY=0|1|2   off / on (any platform) / on and checked: a slice whose bytes changed since its last copy
 //                             with no write reported there is logged (a write the tracking missed), with counts (a
 //                             test: every copy is hashed too)
+//   MHGU_PERF_VCNET=1         the net's turn every VC_NET_NS (30-32 s) instead of 2-4 s, VC_NET_SLICE (512 KB) a slice
+//                             and a frame instead of VC_SLICE: what it copies again, about a fifteenth (it only covers
+//                             a write the tracking missed, which =2 has not seen)
 #define VC_TAB 4096
 // Its budget: 384 MB; on a phone with 4 GB or less 192, and 128 at 3 GB or less (a 2.8 GB phone was closed by Android:
 // #59, #156). Phones also drop entries no draw used for VC_IDLE_NS (vc_trim): the vertex data of areas left behind
@@ -760,6 +767,9 @@ static uint64_t vc_budget(void) {
 #else
 #define VC_SLICE (1ull << 20)
 #endif
+#define VC_NET_NS 30000000000ull
+#define VC_NET_SLICE (512ull << 10)
+static uint64_t vc_full_ns = VC_FULL_NS, vc_slice = VC_SLICE;  // (the net's period and slice: MHGU_PERF_VCNET, vc_safety)
 typedef struct {
     uint64_t addr, size, used_seq, checked_seq, full_t;  // (full_t: when its last full copy or safety pass ended)
     uint32_t gen, full_off;                              // (full_off: the safety pass's next slice)
@@ -773,6 +783,7 @@ static _Atomic uint64_t vc_bytes_seen;  // (vc_bytes for the [mem] line's thread
 static uint64_t vc_frame = ~0ull, vc_t, vc_full_left;  // (the frame's number, its time, the safety net's bytes left)
 uint64_t stat_vc_hits, stat_vc_refresh;
 
+// (read once, by vcache's first call: the net's period and slice too)
 static int vc_safety(void) {
     static int on = -1;
     if (on < 0) {
@@ -782,18 +793,24 @@ static int vc_safety(void) {
 #else
         on = e ? atoi(e) : 1;
 #endif
+        const char *p = getenv("MHGU_PERF_VCNET");
+        if (on && p && atoi(p) == 1) {
+            vc_full_ns = VC_NET_NS, vc_slice = VC_NET_SLICE;
+            LOG("[vk] vertex cache: the safety net every %llu s, %llu KB a frame (MHGU_PERF_VCNET)\n",
+                (unsigned long long)(vc_full_ns / 1000000000ull), (unsigned long long)(vc_slice >> 10));
+        }
     }
     return on;
 }
 
 static void vc_new_frame(void) {
     uint64_t f = vk_frame_counter();
-    if (f != vc_frame) vc_frame = f, vc_t = plat_now_ns(), vc_full_left = VC_SLICE;
+    if (f != vc_frame) vc_frame = f, vc_t = plat_now_ns(), vc_full_left = vc_slice;
 }
 
 static bool vc_full_due(VcEnt *e) {  // (the safety net: e's turn to be copied again)
     vc_new_frame();
-    return vc_t - e->full_t >= VC_FULL_NS + (uint64_t)((e - vc_tab) & 255) * 8000000ull;
+    return vc_t - e->full_t >= vc_full_ns + (uint64_t)((e - vc_tab) & 255) * 8000000ull;
 }
 
 // (MHGU_VK_VC_SAFETY=2) a slice's hash, never 0
@@ -810,7 +827,7 @@ static uint64_t vc_sum(const uint8_t *p, uint64_t n) {
 }
 
 static bool vc_sums_alloc(VcEnt *e) {
-    return e->sums || (e->sums = calloc((e->size + VC_SLICE - 1) / VC_SLICE, sizeof *e->sums));
+    return e->sums || (e->sums = calloc((e->size + vc_slice - 1) / vc_slice, sizeof *e->sums));
 }
 
 // (MHGU_VK_VC_SAFETY=2) bytes [lo, hi) of e were just copied from guest memory: the slices inside get their hash, one
@@ -818,8 +835,8 @@ static bool vc_sums_alloc(VcEnt *e) {
 static void vc_sums_copied(VcEnt *e, uint64_t lo, uint64_t hi) {
     if (!vc_sums_alloc(e)) return;
     const uint8_t *g = (const uint8_t *)G2H((uint32_t)e->addr);
-    for (uint64_t k = lo / VC_SLICE; k * VC_SLICE < hi; k++) {
-        uint64_t o = k * VC_SLICE, n = e->size - o < VC_SLICE ? e->size - o : VC_SLICE;
+    for (uint64_t k = lo / vc_slice; k * vc_slice < hi; k++) {
+        uint64_t o = k * vc_slice, n = e->size - o < vc_slice ? e->size - o : vc_slice;
         e->sums[k] = lo <= o && o + n <= hi ? vc_sum(g + o, n) : 0;
     }
 }
@@ -828,7 +845,7 @@ static void vc_sums_copied(VcEnt *e, uint64_t lo, uint64_t hi) {
 // with the tracking reporting no write there since e's check (asked once more now: a write may have come after it)
 static void vc_check(VcEnt *e, uint64_t off, uint64_t n, const uint8_t *g) {
     static uint64_t compared, changed, missed;
-    uint64_t k = off / VC_SLICE, h = vc_sum(g, n);
+    uint64_t k = off / vc_slice, h = vc_sum(g, n);
     if (!vc_sums_alloc(e)) return;
     if (e->sums[k]) {
         compared++;
@@ -839,16 +856,19 @@ static void vc_check(VcEnt *e, uint64_t off, uint64_t n, const uint8_t *g) {
                 LOG("[vk] vertex cache: %#llx+%llu KB changed with no write reported there (missed by the write tracking)\n",
                     (unsigned long long)(e->addr + off), (unsigned long long)(n >> 10));
         }
-        if (compared % 2000 == 0)
+        static uint64_t said_t;  // (the counts every 2000 slices, and a minute after the last time at most)
+        if (compared % 2000 == 0 || vc_t - said_t >= 60000000000ull) {
+            said_t = vc_t;
             LOG("[vk] vertex cache check: %llu slices compared, %llu changed, %llu of those missed by the write tracking\n",
                 (unsigned long long)compared, (unsigned long long)changed, (unsigned long long)missed);
+        }
     }
     e->sums[k] = h;
 }
 
 // The safety net's next slice of e (at e->full_off): its bytes, if the frame's budget has room for them, else 0
 static uint64_t vc_slice_next(VcEnt *e) {
-    uint64_t n = e->size - e->full_off < VC_SLICE ? e->size - e->full_off : VC_SLICE;
+    uint64_t n = e->size - e->full_off < vc_slice ? e->size - e->full_off : vc_slice;
     return n <= vc_full_left ? n : 0;
 }
 
@@ -862,7 +882,7 @@ static void vc_slice_copy(VcEnt *e, uint64_t n) {
     VkBufferCopy rg = {s.off, off, n};
     vkCmdCopyBuffer(vk_upload_cmd(), s.buf, e->buf, 1, &rg);
     if (HITCH_ON) hitch_add(HC_VC_SAFETY, plat_now_ns() - t0, n);
-    stat_copy_bytes += n;
+    stat_copy_bytes += n, stat_vc_net_bytes += n;
     e->full_off = off + n < e->size ? (uint32_t)(off + n) : 0;
     if (!e->full_off) e->full_t = vc_t;  // (the pass is over: the next in 2-4 s)
 }
@@ -913,7 +933,7 @@ static void vc_drop(VcEnt *e) {
 
 static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
     static int on = -1;
-    if (on < 0) { const char *e = getenv("MHGU_VK_VCACHE"); on = !e || atoi(e) != 0; }
+    if (on < 0) { const char *e = getenv("MHGU_VK_VCACHE"); on = !e || atoi(e) != 0; (void)vc_safety(); }
     if (!on || size < 4096 || size > (32u << 20)) return false;
     uint64_t pend = vk_pending_seq();
     uint64_t h = (addr * 0x9E3779B97F4A7C15ull) ^ (size * 0xC2B2AE3D27D4EB4Full);
@@ -972,7 +992,7 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
             if (vk_page_gen(p) <= since) continue;
             uint64_t lo = p < addr ? addr : p, hi = p + 4096 > addr + size ? addr + size : p + 4096;
             if (sn && lo - addr < so + sn && hi - addr > so) {
-                if (e->sums) e->sums[so / VC_SLICE] = 0;  // (written, as reported: nothing to check there)
+                if (e->sums) e->sums[so / vc_slice] = 0;  // (written, as reported: nothing to check there)
                 if (lo - addr < so) hi = addr + so;
                 else if (hi - addr > so + sn) lo = addr + so + sn;
                 else continue;
@@ -987,7 +1007,7 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
                 VkSpan s = vk_transient_copy((uint8_t *)G2H((uint32_t)addr) + rg[k].dstOffset, rg[k].size, 16);
                 rg[k].srcOffset = s.off;
                 vkCmdCopyBuffer(vk_upload_cmd(), s.buf, e->buf, 1, &rg[k]);
-                stat_copy_bytes += rg[k].size;
+                stat_copy_bytes += rg[k].size, stat_vc_pages_bytes += rg[k].size;
                 if (vc_safety() == 2) vc_sums_copied(e, rg[k].dstOffset, rg[k].dstOffset + rg[k].size);
             }
             stat_vc_refresh++;
@@ -999,7 +1019,7 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
         if (HITCH_ON) hitch_add(HC_VC_COPY, plat_now_ns() - t0, size);
         VkBufferCopy rg = {s.off, 0, size};
         vkCmdCopyBuffer(vk_upload_cmd(), s.buf, e->buf, 1, &rg);
-        stat_copy_bytes += size;
+        stat_copy_bytes += size, stat_vc_whole_bytes += size;
         stat_vc_refresh++;
         if (vc_safety() == 2) vc_sums_copied(e, 0, size);
         vc_new_frame();
@@ -5961,6 +5981,15 @@ void backend_execute(uint64_t handle) {
             (unsigned long long)(stat_set_new + stat_set_reused), (unsigned long long)stat_set_reused,
             (unsigned long long)stat_dispatches, (unsigned long long)stat_snapshots, atomic_exchange(&stat_compiles, 0),
             stat_exec_ns / 1e6, stat_upload_ns / 1e6, stat_wait_ns / 1e6, stat_copy_bytes / 1048576.0);
+        extern uint64_t stat_tex_hashed, stat_tex_net, stat_tex_untracked, stat_tex_changed, stat_tex_streamed, stat_tex_samples;
+        LOG("[vk] 2s copied: vertex cache %.1f MB whole, %.1f MB written pages, %.1f MB safety net | %.1f MB for one submission"
+            " | textures hashed whole %.1f MB (no write reported, the safety net: %.1f; untracked %.1f; changed %.1f),"
+            " copied at once %.1f MB, %llu samplings\n",
+            stat_vc_whole_bytes / 1048576.0, stat_vc_pages_bytes / 1048576.0, stat_vc_net_bytes / 1048576.0,
+            stat_gcopy_bytes / 1048576.0, stat_tex_hashed / 1048576.0, stat_tex_net / 1048576.0, stat_tex_untracked / 1048576.0,
+            stat_tex_changed / 1048576.0, stat_tex_streamed / 1048576.0, (unsigned long long)stat_tex_samples);
+        stat_vc_whole_bytes = stat_vc_pages_bytes = stat_vc_net_bytes = stat_gcopy_bytes = 0;
+        stat_tex_hashed = stat_tex_net = stat_tex_untracked = stat_tex_changed = stat_tex_streamed = stat_tex_samples = 0;
         {
             static const char *const site[W_SITES] = {"other", "ring", "finish", "syncwait", "flush", "present", "readback"};
             char line[600];
