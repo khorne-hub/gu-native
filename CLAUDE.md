@@ -201,8 +201,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   thumb pushes up past the rim; slid into it (within 0.55 radii of its middle) the run locks with a click and goes on forward
   (the stick held full up: the camera steers) while the thumb stays past the rim and after it lifts, until the stick is touched
   again, the thumb comes back inside the rim, the weapon comes out, a menu opens or the hunter isn't played (an area change
-  too: `run_end` logs why under MHGU_TOUCH_LOG). It only locks for a thumb that came from inside the rim while a lock could
-  start (`run_armed`). X holds the run's R back for 400 ms: a thumb at the rim through a sheathe started R in the same update
+  too: `run_end` logs why under MHGU_TOUCH_LOG). It locks for a thumb that landed anew (not in the circle) or came back
+  inside the rim since a lock ended (`run_armed`). X holds the run's R back for 400 ms: a thumb at the rim through a sheathe started R in the same update
   as an X + A, and the game read R + X + A (#151). Off: a Run button (`run_button` in touch_layout.txt: the old left-side
   `run` line every saved layout has is dropped), held only, dimmed with the weapon out, hidden in menus; slid onto an attack
   it is that attack; in a corner layout saved before it, it starts in the band's hollow.

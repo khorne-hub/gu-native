@@ -790,7 +790,7 @@ struct State {
     bool run;                // running: R held (the stick's locked run, or the Run button held)
     bool run_lock;           // the stick's run locked ([Touch] StickRun): it goes on after the thumb lifts...
     bool run_free;           // ...and the thumb has lifted: the stick stays pushed full forward
-    bool run_armed;          // the thumb was inside the stick's rim since it landed or the last lock ended (it may lock)
+    bool run_armed;          // the thumb landed, or came back inside the rim since the last lock ended (it may lock)
     bool run_can;            // a lock could start now (StickRun, sheathed, no menu, the hunter played: the circle shows)
     bool rim;                // the thumb past the rim runs (RUN_ON, down to RUN_OFF)
     uint64_t run_x_until;    // an attack that draws the weapon (X) was pressed: no run's R until then (#151)
@@ -935,7 +935,7 @@ void stick_to(State &s, float x, float y) {  // (the knob under the thumb, kept 
     s.kx = x, s.ky = y;
 }
 
-// The stick's locked run ends (why: for the log); the thumb must come back inside the zone before it can run again
+// The stick's locked run ends (why: for the log); it locks again only for a thumb come back inside the rim, or a new one
 void run_end(State &s, const char *why) {
     if (!s.run_lock) return;
     s.run_lock = s.run_free = s.run_armed = false;
@@ -1561,6 +1561,10 @@ extern "C" bool touch_event(const SDL_Event *e) {
             run_end(s, "the stick touched again");  // (a run going on by itself stops: this thumb drives now)
             s.stick_on = true, s.bx = g.c.x, s.by = g.c.y;
             stick_to(s, x, y);
+            // (a new thumb may lock from wherever it landed, slid up into the circle again - not one that landed in it,
+            // which a stick placed high has near)
+            ImVec2 spot = lock_spot(s.bx, s.by, g.r, s.h);
+            if (hypotf(x - spot.x, y - spot.y) >= LOCK_GRAB * g.r) s.run_armed = true;
         } else {
             f->kind = F_CAMERA;
         }
