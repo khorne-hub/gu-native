@@ -362,8 +362,80 @@ static bool very_low_memory_textures(void) {
     return on;
 }
 
+// ---- (MHGU_PERF_FMTLIST, a test until measured) Every colour image is made with VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT and no
+// list of the formats its views may have, which some drivers take as a reason not to compress it (a Mali's AFBC, an
+// Adreno's UBWC). Set at all (=0 too), the log says at start what the driver makes of it (fmt_probe: an image's memory
+// size with the flag, with a list, without the flag) and names each pair of image / view formats the game's views ask for
+// (vk_view). =1: an image no game view can read as another format - decoded on the CPU (BCn on a Mali, ASTC), widened or a
+// fallback format: vk_view keeps their own format - gets its own format and its sRGB / UNORM twin (raw_view) as its list,
+// or no flag where it has no twin.
+static int fmtlist_on(void) {
+    static int on = -2;
+    if (on == -2) {
+        const char *e = getenv("MHGU_PERF_FMTLIST");
+        on = e ? atoi(e) : -1;  // (-1: not set)
+        if (e) LOG("[perf] MHGU_PERF_FMTLIST=%d\n", on);
+    }
+    return on;
+}
+static VkFormat srgb_twin(VkFormat f) {
+    switch (f) {
+    case VK_FORMAT_R8G8B8A8_UNORM: return VK_FORMAT_R8G8B8A8_SRGB;
+    case VK_FORMAT_R8G8B8A8_SRGB: return VK_FORMAT_R8G8B8A8_UNORM;
+    case VK_FORMAT_B8G8R8A8_UNORM: return VK_FORMAT_B8G8R8A8_SRGB;
+    case VK_FORMAT_B8G8R8A8_SRGB: return VK_FORMAT_B8G8R8A8_UNORM;
+    default: return VK_FORMAT_UNDEFINED;
+    }
+}
+// What the driver does with the flag: the memory an RGBA8 render target and texture need (a compressed image needs more:
+// its headers), with the flag and no list, with a list of the format and its twin, of the format alone, and without it
+static void fmt_probe(void) {
+    static const struct { uint32_t w, h, levels; const char *what; } im[] = {
+        {1024, 1024, 1, "render target 1024x1024"}, {1640, 720, 1, "render target 1640x720"},
+        {1024, 1024, 11, "texture 1024x1024, 11 levels"}};
+    static const char *const kind[4] = {"mutable", "mutable + list (UNORM, SRGB)", "mutable + list (UNORM)", "not mutable"};
+    for (int i = 0; i < 3; i++) {
+        char line[400];
+        int n = snprintf(line, sizeof line, "[perf] formats: RGBA8 %s:", im[i].what);
+        for (int k = 0; k < 4; k++) {
+            VkFormat list[2] = {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB};
+            VkImageFormatListCreateInfo fl = {.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO,
+                                              .viewFormatCount = k == 1 ? 2 : 1, .pViewFormats = list};
+            VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .pNext = k == 1 || k == 2 ? &fl : NULL,
+                                    .flags = k < 3 ? VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT : 0, .imageType = VK_IMAGE_TYPE_2D,
+                                    .format = VK_FORMAT_R8G8B8A8_UNORM, .extent = {im[i].w, im[i].h, 1},
+                                    .mipLevels = im[i].levels, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT,
+                                    .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                    .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
+                                             VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                                    .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+            VkImage img;
+            VkMemoryRequirements r = {0};
+            if (vkCreateImage(g_vk.dev, &ci, NULL, &img) == VK_SUCCESS) {
+                vkGetImageMemoryRequirements(g_vk.dev, img, &r);
+                vkDestroyImage(g_vk.dev, img, NULL);
+            }
+            n += snprintf(line + n, sizeof line - (size_t)n, " %s %llu (align %llu)%s", kind[k], (unsigned long long)r.size,
+                          (unsigned long long)r.alignment, k < 3 ? "," : "");
+        }
+        LOG("%s\n", line);
+    }
+    uint32_t ne = 0;
+    vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, NULL);
+    VkExtensionProperties *ep = calloc(ne ? ne : 1, sizeof *ep);
+    vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, ep);
+    bool cc = false;
+    for (uint32_t i = 0; i < ne; i++) cc |= !strcmp(ep[i].extensionName, "VK_EXT_image_compression_control");
+    free(ep);
+    LOG("[perf] formats: VK_EXT_image_compression_control %s\n", cc ? "available" : "not available");
+}
+
 static void create_image(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
+    {
+        static bool probed;
+        if (!probed && fmtlist_on() >= 0) probed = true, fmt_probe();
+    }
     uint32_t tw = t->width ? t->width : 1, th = t->height ? t->height : 1;
     VkImageType type = VK_IMAGE_TYPE_2D;
     uint32_t layers = 1, depth = 1;
@@ -452,7 +524,14 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     VkImageCreateFlags flags = 0;
     if (!depthfmt) flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;  // format views (NVN texture views, raw sRGB views)
     if (type == VK_IMAGE_TYPE_2D && layers >= 6 && tw == th && samples == 1) flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .flags = flags, .imageType = type, .format = vf,
+    // (MHGU_PERF_FMTLIST=1, above) an image of a format the game's views never ask for: its own and its twin only
+    VkFormat vlist[2] = {vf, srgb_twin(vf)};
+    VkImageFormatListCreateInfo fl = {.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO, .viewFormatCount = 2,
+                                      .pViewFormats = vlist};
+    bool listed = !depthfmt && fmtlist_on() == 1 && vf != mf.vf;
+    if (listed && vlist[1] == VK_FORMAT_UNDEFINED) flags &= ~VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, listed = false;
+    VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .pNext = listed ? &fl : NULL, .flags = flags,
+                            .imageType = type, .format = vf,
                             .extent = {tw >> b->mip_skip, th >> b->mip_skip, depth}, .mipLevels = levels - b->mip_skip,
                             .arrayLayers = layers,
                             .samples = (VkSampleCountFlagBits)samples, .tiling = VK_IMAGE_TILING_OPTIMAL, .usage = usage,
@@ -464,6 +543,7 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        ci.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, ci.pNext = NULL;  // (as before: any view)
         VK_CHECK(vk_create_image(&ci, &b->image, &b->mem));
         depthfmt = false;
     }
@@ -1384,6 +1464,16 @@ VkImageView vk_view(NvnTexture *t, const NvnTextureView *v, bool has_view, bool 
     if (v && (v->setmask & 4) && !(b->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
         VkFormat vf = fmt_of(v->format).vf;
         if (vk_format(t->format) == b->format) fmt = vf;  // (fallback images keep their own format)
+        if (fmt != b->format && fmtlist_on() >= 0) {  // (MHGU_PERF_FMTLIST set: each pair once)
+            static uint32_t seen[64];
+            static int nseen;
+            uint32_t key = (uint32_t)b->format << 16 | (uint32_t)fmt;
+            int i = 0;
+            while (i < nseen && seen[i] != key) i++;
+            if (i == nseen && nseen < 64)
+                seen[nseen++] = key, LOG("[perf] formats: a %ux%u image of format %d read as format %d (nvn %#x as %#x)%s\n",
+                                         b->width, b->height, b->format, fmt, t->format, v->format, render ? ", rendered into" : "");
+        }
         else if (b->wide && vf != VK_FORMAT_R8G8B8A8_UNORM) {
             static int nlog;
             if (nlog++ < 10) LOG("[vk] wide render target %ux%u read as nvn fmt %#x: as RGBA16 instead\n", b->width, b->height, v->format);

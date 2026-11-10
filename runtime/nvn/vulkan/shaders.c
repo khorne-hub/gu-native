@@ -330,6 +330,30 @@ static const char *builtin_src(const char *name, int *stage) {
                  "void main() { o = %s; }\n", idx, ty, cv);
         return buf;
     }
+    // fill.frag.<index>: a picture scaled over colour target <index> as vkCmdBlitImage LINEAR does it, each pixel's centre
+    // sampled bilinearly (exec.c fill_draw; push constant: 1 / the target's size)
+    if (!strncmp(name, "fill.frag.", 10)) {
+        *stage = STAGE_FRAGMENT;
+        static __thread char buf[400];
+        snprintf(buf, sizeof buf,
+                 "#version 450\n"
+                 "layout(set = 0, binding = 0) uniform sampler2D t;\n"
+                 "layout(push_constant) uniform P { vec4 a; } pc;\n"
+                 "layout(location = %d) out vec4 o;\n"
+                 "void main() { o = texture(t, gl_FragCoord.xy * pc.a.xy); }\n", atoi(name + 10));
+        return buf;
+    }
+    // copy.frag.<index>: a picture of the target's size copied over colour target <index>, each texel fetched (exec.c fill_draw)
+    if (!strncmp(name, "copy.frag.", 10)) {
+        *stage = STAGE_FRAGMENT;
+        static __thread char buf[400];
+        snprintf(buf, sizeof buf,
+                 "#version 450\n"
+                 "layout(set = 0, binding = 0) uniform sampler2D t;\n"
+                 "layout(location = %d) out vec4 o;\n"
+                 "void main() { o = texelFetch(t, ivec2(gl_FragCoord.xy), 0); }\n", atoi(name + 10));
+        return buf;
+    }
     if (!strcmp(name, "clear.frag.none")) {
         *stage = STAGE_FRAGMENT;
         return "#version 450\nvoid main() {}\n";

@@ -1330,6 +1330,8 @@ void backend_present(NvnTexture *t) {
     extern void vi_frame_presented(void);
     vi_frame_presented();  // (the frame rate target back in place; MHGU_STEPLOG's count: runtime/hle/vi.c)
     vk_lock();
+    extern void vk_color_fill_flush(TexBackend *b);
+    vk_color_fill_flush(NULL);  // (MHGU_PERF_HUDSTART_FUSE, MHGU_PERF_FXAA_COPYDRAW: a picture still to be drawn, now)
     if (g_fsr_on) t = vk_fsr_present(t);  // FSR: its output-size picture with the HUD (fsr.c)
     g_last_picture = t;
     TexBackend *b = vk_tex(t, true);

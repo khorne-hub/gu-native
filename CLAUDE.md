@@ -368,6 +368,40 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   their attachments; one whose first commands clear an attachment whole begins with `LOAD_OP_CLEAR` and those values instead
   (`noload_clears`, `render_pass`), and the clears it already did are skipped (`pass_skip_clear`). Not `DONT_CARE` plus the clears: an
   Adreno 830 then drew the scene black but for some tiles. Anbernic (Mali-G57) GPU frame -6 %, Adreno 830 -0.7 %. `MHGU_VK_NOLOAD=0`: off.
+- Render pass power switches, tests until measured: each is off (the old way) unless `MHGU_PERF_<NAME>` is set in the environment
+  (`env.txt`), read once at start and named in the log (`[perf]`); with `MHGU_VK_STATS=1` a `[perf] 2s` line counts what they did.
+  - `MHGU_PERF_RODEPTH=1`: a draw that samples its pass's own depth target without writing depth or stencil (the two after the
+    scene's pass, every frame) reads it where it is, the pass begun again with that target `DEPTH_STENCIL_READ_ONLY_OPTIMAL`
+    (`RP_RO_DEPTH`), instead of a copy of it (`resolve_feedback`'s snapshot); a later depth or stencil write ends such a pass. Not
+    with MSAA or an FSR stand-in. RX 6800 XT: 240 snapshots in 2 s down to 120 (the other is a colour one).
+  - `MHGU_PERF_SHADOW_CLEAR=1|2` (Shadows On): the atlas's pass reads last frame's 12.6 MB back in, though each cascade begins with a
+    draw writing one depth over all of it. An atlas's first frame begins it filled with a marker depth and reads each such draw's
+    rectangle back (`at_check`): every texel the same value, never the marker, the rectangles the whole atlas. From then on its pass
+    begins cleared to that value, in frames whose commands, read ahead (`at_look`), have those draws again; each is compared as it
+    comes (`at_sig`: programs, vertices, constants, state), and one that differs turns it off for that atlas (logged). `=2` also leaves
+    such a draw out where nothing was drawn over its rectangle since (`at_mark`, 32x32 tiles). RX 6800 XT, quest 101: three draws
+    writing 1.0, all three left out every frame, the atlas's dump the same as without.
+  - `MHGU_PERF_HUDSTART_FUSE=1|2|3` (plain scaling, Low-end mode), bits: 1, the HUD's output-size depth stand-in is cleared as the
+    first pass that renders into it begins (`LOAD_OP_CLEAR`, far and 0 as before) instead of by a clear of its own that pass then
+    read back in (`fsr.c hud_start`, `vk_depth_clear_later`); 2, H is scaled into H' as that pass's first draw (`fill_draw`, a
+    full-screen triangle sampling H bilinearly at each pixel's centre) instead of by a blit before it, once the first frame's draw
+    and blit are read back and give the same bytes on that GPU (`fill_check`, logged; else the blit stays). Anything that reads
+    H' or that depth target first, or a pass that doesn't cover it whole, gets the old blit or clear first. RX 6800 XT, 50 %:
+    806x360 -> 1612x720, the same bytes.
+  - `MHGU_PERF_FXAA_COPYDRAW=1` (FXAA Off, not with FSR or plain scaling): `fxaa_skipped`'s copy of the FXAA pass's input into its
+    target is drawn as the first draw of the next pass when that pass draws into the target (with Bloom On the game adds the
+    bloom there next), its target begun cleared under it, instead of a copy that pass then read back in; checked once against
+    the copy as bit 2 above (`copy.frag`, each texel fetched). Any other pass, copy or dispatch first gets the copy. With Bloom
+    Off the next pass draws into the input instead, so nothing changes. RX 6800 XT, 100 %: 1612x720, the same bytes.
+  - `MHGU_PERF_FMTLIST`: set at all, the log says what the driver makes of `VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT` (`fmt_probe`: an RGBA8
+    image's memory with it, with a format list, without it; a compressed image needs more, its metadata) and names each image / view
+    format pair the game asks for. `=1`: images no view of the game reads as another format (decoded BCn and ASTC, widened, fallback
+    formats) get their own format and its sRGB / UNORM twin as their list, or no flag. RX 6800 XT: 4194304 bytes for a 1024x1024
+    target with the flag, 4211056 with a list or without it (AMD's colour compression: off with the bare flag).
+  Left out, with why: Shadows Off skipping the shadow mask's pass (its draws write the scene's depth, and what they write depends on
+  each frame's receivers, so no check proves a frame's draws change nothing); FXAA Off sampling its input in place of its target
+  (the target is drawn into right after, over a load, or its input is drawn into while the target is read: hence the copy drawn
+  in that next pass instead).
 - Descriptor sets: `stage_set` reuses one written earlier in the same submission when every write is the same (about a quarter of the
   sets), and draw skips binding the same two again (`SS_SETS`; any other graphics bind forgets them). Zeros, the identity rescale table,
   the alpha reference and each stage's driver constants are copied once per submission (`shared_*`, `zero_ubo`), or every set would be
