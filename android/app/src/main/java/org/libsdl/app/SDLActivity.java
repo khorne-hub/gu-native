@@ -341,6 +341,11 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         return new SDLSurface(context);
     }
 
+    /** MHGU: true when this start must go through another screen first (it has been started already): see onCreate. */
+    protected boolean startElsewhere() {
+        return false;
+    }
+
     // Setup
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -350,6 +355,13 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
         Log.v(TAG, "onCreate()");
         super.onCreate(savedInstanceState);
 
+        // (MHGU: this start goes to another screen first, which starts the game again: nothing of SDL's is set up, and
+        // every callback below returns at once, as with broken libraries; com.mhgu.recomp.GameActivity)
+        if (startElsewhere()) {
+            mBrokenLibraries = true;
+            finish();
+            return;
+        }
 
         /* Control activity re-creation */
         if (mSDLMainFinished || mActivityCreated) {

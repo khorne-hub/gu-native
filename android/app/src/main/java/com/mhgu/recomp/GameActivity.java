@@ -44,12 +44,31 @@ public class GameActivity extends SDLActivity {
         return new String[] { "c++_shared", "SDL3", "mhguffmpeg", "main" };
     }
 
+    private boolean viaEntry;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // A start that skipped the entry screen (GameFolderActivity: its file checks, the app's folder, the save folder's
+        // start gate, the notices) goes there first, and it starts the game again: brought back from Recents after the
+        // game ended or Android closed it (Recents restores this task with its old intent), a controller plugged in.
+        // Without the gate a save folder that couldn't be reached, or another device's game still open on it, went unasked.
+        if (!GameFolderActivity.gameStarted) {
+            viaEntry = true;
+            Log.i(TAG, "a start without the entry screen: it goes first");
+            startActivity(new Intent(this, GameFolderActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            super.onCreate(savedInstanceState);  // (finishes at once: startElsewhere)
+            overridePendingTransition(0, 0);
+            return;
+        }
         prepareFiles();
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         pickRefreshRate();
+    }
+
+    @Override
+    protected boolean startElsewhere() {
+        return viaEntry;
     }
 
     @Override
