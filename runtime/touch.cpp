@@ -137,9 +137,10 @@ const Def DEFS[C_COUNT] = {
     {"settings", "Settings", I_GEAR, "", 0, false, .065f, .67f, .040f},
     // sheathe: Y with the weapon out (sheathed, Y uses the item: the item bar's tap); left of the pill's upper half
     {"sheathe", "Sheathe  Y", I_SHEATHE, "Y", B(BTN_Y), true, .44f, .44f, .046f},
-    // run: R while held, with the weapon sheathed ([Touch] StickRun Off: the stick only walks then), above the attacks.
-    // Its key changed with its side (a left one, never shown, was in every layout saved before: those lines are dropped)
-    {"run_button", "Run  R", I_RUN, "R", 0, true, .24f, .56f, .05f},
+    // run: R while held, with the weapon sheathed ([Touch] StickRun Off: the stick only walks then), above the attacks at
+    // the edge (clear of the menu pad, which the editor shows with it; R3's place, off by default). Its key changed with
+    // its side (a left one, never shown, was in every layout saved before: those lines are dropped)
+    {"run_button", "Run  R", I_RUN, "R", 0, true, .075f, .56f, .05f},
     // the attack buttons as three of their own (STYLE_SEPARATE), and as one band round the screen's corner (STYLE_CORNER:
     // x, y the band's outer edge from the screen's edges, r the radius of its middle line at the bend)
     {"heavy", "Heavy attack  A", I_ATTACK, "A", B(BTN_A), true, .16f, .33f, .078f},
@@ -1983,10 +1984,12 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     if (*buttons & B(BTN_X)) s.run_x_until = now + RUN_X_WAIT;
     s.run = want && now >= s.run_x_until;
     if (s.run) *buttons |= B(BTN_R);
-    static bool said_x, said_run;  // (the log: once a change)
+    static bool said_x, said_run;  // (the log: once a change, what held R said as it lets go too)
+    static const char *said_why = "";
     if (dbg && want && !s.run && !said_x) rt_logf("[touch] run: no R while X draws the weapon\n");
     said_x = want && !s.run;
-    if (dbg && s.run != said_run) rt_logf("[touch] run: R %s (%s)\n", s.run ? "held" : "let go", s.run_lock ? "the lock" : s.rim ? "the stick's rim" : "the Run button");
+    if (s.run) said_why = s.run_lock ? "the lock" : s.rim ? "the stick's rim" : "the Run button";
+    if (dbg && s.run != said_run) rt_logf("[touch] run: R %s (%s)\n", s.run ? "held" : "let go", said_why);
     said_run = s.run;
 }
 
