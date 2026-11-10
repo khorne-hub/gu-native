@@ -139,9 +139,9 @@ final class Notices {
                 http.setConnectTimeout(8000);
                 http.setReadTimeout(8000);
                 http.setRequestProperty("Accept", "application/vnd.github+json");
-                // (GitHub's API wants a User-Agent: one that names the repository only. Android's own, http.agent, would
-                // send the phone's model and its Android build with every check)
-                http.setRequestProperty("User-Agent", REPO + "-update-check");
+                // (GitHub wants a User-Agent, and Android's own names the phone's model, Android version and build: the
+                // repository's name instead, the same for every phone, so the request says nothing about the device)
+                http.setRequestProperty("User-Agent", REPO);
                 if (http.getResponseCode() != 200) return;
                 StringBuilder body = new StringBuilder();
                 try (InputStream in = http.getInputStream()) {
