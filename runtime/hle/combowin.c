@@ -17,3 +17,12 @@ float combowin_tick(void) {
     float s = sys ? LDF(sys + 0x68) * 0.5f : 1.0f;
     return s > 0.0f && s < 1.0f ? s : 1.0f;
 }
+
+// How long the window lasts now, in ns (any thread: runtime/touch.cpp's locked shot holds a press of A back as long, so a
+// second button can still join it): the countdown's 2.0 over the tick, in updates of the frame step's length
+uint64_t combowin_ns(void) {
+    uint32_t sys = LD32(G_SYSTEM);
+    float step = sys ? LDF(sys + 0x68) : 1.0f;  // (60 fps frames an update)
+    if (!(step > 0.05f && step < 8.0f)) step = 1.0f;
+    return (uint64_t)(2.0f / combowin_tick() * step * (1e9f / 60.0f));
+}

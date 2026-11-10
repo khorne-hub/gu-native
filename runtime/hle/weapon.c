@@ -91,6 +91,14 @@ unsigned weapon_action(uint32_t h) { return h ? (unsigned)LD16(h + PL_ACT_ST) <<
 // the hunter is in a move of the weapon's own (a shot, a reload), not a roll or a stagger
 bool weapon_moving(uint32_t h) { return h && (LD16(h + PL_ACT_ST) & 0x7fff) == 0x10; }
 
+// A bow or a bowgun out in a normal stance, standing or walking: in no move of the weapon's own (a shot, a reload,
+// crouching fire, a style's move), not aiming, and the hunt camera's handler still running (a gun aimed, a bow drawn,
+// the scope have a camera of their own: an aim of a style's that weapon_aiming doesn't know stops it too). Only a press
+// from here is a locked shot's (runtime/touch.cpp touch_lock_shot, hle/mousecam.c mousecam_lock_shot)
+bool weapon_stance(uint32_t h) {
+    return weapon_ranged(h) && (LD8(h + PL_FLAGS) & 1) && !weapon_moving(h) && !weapon_aiming(h) && mousecam_hunt_camera();
+}
+
 // The local player's place in the world, x and z (its slot's object, as the control file's plpos: a town's walker too,
 // which is no hunter of weapon_hunter's), false if there is none
 bool player_place(float *x, float *z) {

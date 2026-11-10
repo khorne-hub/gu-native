@@ -255,6 +255,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - The aim's pitch: hunter +0x14b8 (a float, -100 down to 100 up) and +0x2714 (16-bit units, 45 degrees up, 30 down). A shot that isn't aimed ignores them, so a
   locked shot from a bowgun goes through quick aim (`touch.cpp`, `assist_*`). With a gun aimed or a bow drawn the hunt camera's handler does not run: per-update
   work goes in the item bar's hook (`hle/itembar.c`).
+- Locked shots come only from a normal stance (#177, #132): `weapon_stance`, the weapon out, no weapon move, no aim, and `mousecam_hunt_camera` (the hunt
+  camera's handler ran in one of the hunter's last two updates, counted: `mousecam_active` stays true 200 ms after it stops). A press of A there waits the
+  game's own two-button window (`combowin_ns`), so X, B or Y joining it pass with it as pressed, and only then holds R; the aim counts as up by
+  `weapon_aiming` or by the hunt camera stopping (any style's aim). The player's own R, crouching fire, reloads, dodges and the styles' moves pass untouched,
+  and `mousecam_lock_shot` writes a bowgun's heading and pitch only during the help's own aim; a bow's only for a draw from the stance (or one chained in
+  its shot), never in its aiming mode. `ranged_aim` keeps an aim weapon_aiming doesn't know (the camera stopped, A, R or X down just now) from being a menu.
 - A menu can't be told from a window over the hunt: no flag in the hunter or the game's globals changes, and the hunt camera runs under menus too. `game_menu`
   treats a window as a menu when the hunter isn't being played or a button that opens one was pressed just before. Without a window,
   four seconds without the hunter played is a menu only with no hunter of a quest (`weapon_hunter`): a ballista or a cannon aims
