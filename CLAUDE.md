@@ -179,6 +179,19 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
     reads: the game's motion sensors are always at rest) is not registered; the display's rotation reaches SDL from a
     `DisplayManager` listener instead (`GameActivity.GameSurface`), as `onNativeRotationChanged`. With the variable set,
     0 or 1, the log names each display orientation SDL reports.
+  - The others, each described with its part of the runtime below: the translator's `NMINMAX`, `IPA` and `VSTRIM`; its per-draw
+    work's `DRAWS` (`GETENV`, `DRVTAB`, `TEXSCAN`, `TEXTIME`, `PIPEMEMO`, `LAZYIDX`, `IDXCOPY`), `DYNUBO` and the check `CHECK`; the
+    safety nets' `VCNET`, `TEXNET`, `TEXSAMPLE` and `TEXSTREAM`; the render passes' `RODEPTH`, `SHADOW_CLEAR`, `HUDSTART_FUSE`,
+    `FXAA_COPYDRAW` and `FMTLIST`; pacing and threads' `ADPF70`, `EFFICIENT`, `LIMITER`, `MEMTHREAD`, `THREADNAMES` and `NODISCORD`;
+    the window image's `PRESENT_TIME` and `PREROTATE`; the audio's `AUDIO_SDEST` and `AUDIO_ADPCM` (the check `AUDIO_CHECK`), the
+    guest's `SLEEP_COARSE` and the dispatch's `DISPATCH`. Each works on its own and with all the others: the RG406V (Mali-G57, its
+    own settings: 75 %, 60 FPS, Shadows On, FXAA Off), quest 101's camp, standing, all of them on at once (`SHADOW_CLEAR=2`,
+    `HUDSTART_FUSE=3`): the game's and the settings menus as before, and of five shots of each run, the 143,715 pixels that stayed
+    the same within both runs (the near ground, the HUD) the same in both, 0 differing; the rest moves as much within a run as
+    between the two. With the checks on as well (`CHECK=1`, `OVERLAY_REUSE=2`, `AUDIO_CHECK=1`, `MHGU_TEX_NET_CHECK=1`,
+    `MHGU_VK_VC_SAFETY=2`) 8.5 million per-draw comparisons, the mixer's splitter volumes and ADPCM blocks, the vertex cache's
+    slices, every texture's whole hash and the reused overlay frames found no difference. That phone has no ADPF session (API 33):
+    `ADPF70` and `EFFICIENT` do nothing there.
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
