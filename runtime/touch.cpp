@@ -53,6 +53,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
 
 #include "imgui.h"
 
@@ -338,6 +339,10 @@ struct EditPanel {
     bool operator!=(const EditPanel &o) const { return x != o.x || y != o.y || k != o.k; }
 };
 const float EPANEL_MIN = .6f;
+// (its line in the file, save_layout's and save_panel's, under this note)
+const char *const EPANEL_NOTE = "# the layout editor's panel: its middle (the screen's width from the left, its height from "
+                                "the top; -1 -1 its usual place), size\n";
+void epanel_line(char out[80], const EditPanel &ep) { snprintf(out, 80, "editor_panel %.4f %.4f %.2f\n", ep.x, ep.y, ep.k); }
 const char *const HUD_NAME[HP_COUNT] = {"Item bar", "Hunter Arts", "Target camera", "Clock", "Health and stamina",
                                         "Sharpness and gauges", "Party", "Map"};
 HudVals hud_default(void) { return {0.0f, 0.0f, 1.0f, 1.0f, false}; }
@@ -411,10 +416,41 @@ void save_layout(const Layout &l, const EditPanel &ep) {
         const HudVals &v = l.hud[HUD_PLAIN][k];
         fprintf(f, "pc_hud_%s %.1f %.1f %.2f %.2f %d\n", HUD_KEY[k], v.dx, v.dy, v.k, v.alpha, (int)v.hidden);
     }
-    fprintf(f, "# the layout editor's panel: its middle (the screen's width from the left, its height from the top; -1 -1 its "
-               "usual place), size\neditor_panel %.4f %.4f %.2f\n", ep.x, ep.y, ep.k);
+    char line[80];
+    epanel_line(line, ep);
+    fprintf(f, "%s%s", EPANEL_NOTE, line);
     fclose(f);
     rt_logf("[touch] layout saved (%s)\n", LAYOUT_FILE);
+}
+// The panel's line alone into the file, the rest of it as it is: Cancel keeps where the panel was put but not the
+// controls' or the HUD's places, so that a player who never saved a layout still has none (a file with the panel only:
+// the loader takes the defaults for the rest, a later version's new ones too)
+void save_panel(const EditPanel &ep) {
+    std::string was, now;
+    if (FILE *f = fopen(LAYOUT_FILE, "r")) {
+        char buf[512];
+        for (size_t n; (n = fread(buf, 1, sizeof buf, f)) > 0;) was.append(buf, n);
+        fclose(f);
+    }
+    char line[80], key[32];
+    epanel_line(line, ep);
+    bool put = false;
+    for (size_t at = 0, end; at < was.size(); at = end) {
+        end = was.find('\n', at);
+        end = end == std::string::npos ? was.size() : end + 1;
+        std::string l = was.substr(at, end - at);
+        if (sscanf(l.c_str(), "%31s", key) != 1 || strcmp(key, "editor_panel")) now += l;
+        else if (!put) now += line, put = true;  // (in its place; a second one dropped)
+    }
+    if (!put) {  // (none yet: at the end, under its note)
+        if (!now.empty() && now.back() != '\n') now += '\n';
+        now += EPANEL_NOTE, now += line;
+    }
+    FILE *f = fopen(LAYOUT_FILE, "w");
+    if (!f) { rt_logf("[touch] could not save %s\n", LAYOUT_FILE); return; }
+    fputs(now.c_str(), f);
+    fclose(f);
+    rt_logf("[touch] layout editor: its panel saved alone (%s%s)\n", LAYOUT_FILE, was.empty() ? ", the rest the defaults" : "");
 }
 
 struct Geo {
@@ -1244,8 +1280,8 @@ void edit_begin(State &s) {
 void edit_end(State &s, bool keep) {
     if (keep) save_layout(s.layout, s.epanel), s.saved = s.layout;
     else s.layout = s.saved;
-    if (s.epanel != s.epanel_open) {  // (the panel stays where it was put, and as big, Save or Cancel)
-        if (!keep) save_layout(s.layout, s.epanel);
+    if (s.epanel != s.epanel_open) {  // (the panel stays where it was put, and as big, Save or Cancel: Cancel its line alone)
+        if (!keep) save_panel(s.epanel);
         rt_logf("[touch] layout editor: its panel at %.2f %.2f, %d%%\n", s.epanel.x, s.epanel.y, (int)lroundf(s.epanel.k * 100));
     }
     publish_hud(s.layout);
@@ -1429,21 +1465,23 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
             f->kind = F_EDIT;
             return;
         }
-        // the panel's title strip, a little past its edges (not into the buttons below it): the panel, picked and dragged,
-        // over what is under it
-        float m = .02f * s.h;
-        if (x >= grab.x0 - m && x <= grab.x1 + m && y >= grab.y0 - m && y <= grab.y1) {
+        // the panel's title strip: the panel, picked and dragged, over what is under it. A little past its edges (not into
+        // the buttons below it) it is the panel only where nothing else is: a control or a part there stays the one picked
+        auto strip = [&](float m) { return x >= grab.x0 - m && x <= grab.x1 + m && y >= grab.y0 - m && y <= grab.y1; };
+        if (strip(0.0f)) {
             f->kind = F_EDIT, f->ctl = SEL_PANEL;
             s.sel = SEL_PANEL;
             return;
         }
-        // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves)
+        // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves),
+        // else the panel by its title strip's edge
         int c = s.edit_prof == HUD_TOUCH ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
         if (c < 0) {
             int k = part_hit(s, x, y);
             if (k >= 0) c = ZONE_SEL + k;
         }
         if (c < 0 && panel.in(x, y)) { f->kind = F_MENU; return; }
+        if (c < 0 && strip(.02f * s.h)) c = SEL_PANEL;
         f->kind = F_EDIT, f->ctl = c;
         s.sel = c;
         if (c >= ZONE_SEL) part_pickup(s, c - ZONE_SEL);
