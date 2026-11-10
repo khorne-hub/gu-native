@@ -962,7 +962,7 @@ void server_row(std::vector<Row> &rows) {
     const int n = (int)std::size(presets), custom = n, off = n + 1;
     const char *now = s.draft.ldn_server;
     int selected = !*now ? 0 : server_off(now) ? off : custom;
-    for (int i = 1; i < n; i++)
+    for (int i = 0; i < n; i++)  // (one typed as it is in the list: that one)
         if (!strcasecmp(now, presets[i]))
             selected = i;
     if (selected == custom)
