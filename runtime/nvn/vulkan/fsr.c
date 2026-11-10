@@ -1721,7 +1721,9 @@ static void hud_start(const char *why) {
                 why_not ? why_not : "");
         last = frame_fsr;
     }
-    if (st_d.fake.backend) {  // the HUD's depth target starts empty (the game clears its own when it needs one)
+    if (st_d.fake.backend && (vk_format_features(((TexBackend *)st_d.fake.backend)->format) & VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) {
+        // the HUD's depth target starts empty (the game clears its own when it needs one; a depth format the GPU can't
+        // copy into can't be cleared this way: stand_image)
         TexBackend *b = st_d.fake.backend;
         VkClearDepthStencilValue far = {1.0f, 0};
         VkImageSubresourceRange rg = {b->aspect, 0, 1, 0, 1};

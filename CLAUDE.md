@@ -214,12 +214,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   opening movie, character creation (#22, #40, #61, #124). Every log of that crash has the line; the Adreno 618 on the same driver,
   which gets past it, hasn't. Not seen on a device here. `depth24_stencil8` now weighs what each format can do (its features are in
   the log line), `depth_format` never turns a depth format into a colour one, an image asks only for the usage its format has, and
-  `copy_texture` leaves out depth copies and blits the format can't do.
+  depth copies, blits and clears the format can't do are left out (`copy_texture`, the MSAA depth resolve, the snapshot of a depth target
+  read while drawn into, the HUD's depth clear: `depth_copy_ok`).
   `MHGU_VK_FMT_MASK=<VkFormat>:<hex features>` takes features away to test those paths on any GPU.
 - A lost device (`VK_ERROR_DEVICE_LOST` at a submit or a wait) logs every submission not known finished: its passes (size, first colour
   format, depth format, samples, draws), the programs drawn (vertex / fragment code address), drawn clears and copies, then the GPU
   driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted.
-  `devicelost` in the control file fakes one.
+  `devicelost` in the control file fakes one. Each kind of depth copy or blit is named once in the log where the game first does it
+  (`[vk] depth blit ...`, `depth_copy_note`): on the Adreno 618 of #160 (1.1.87, Verdant Hills area 5) they are a suspect, not a proven cause.
 - A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
   area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
   tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`).

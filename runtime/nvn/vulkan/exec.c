@@ -134,6 +134,25 @@ static void lost_prog(uint64_t vs, uint64_t fs) {
 static void lost_report(const char *where);
 volatile int g_fake_lost;  // (test) MHGU_CONTROL "devicelost": the next submission with a pass says the device was lost
 
+// Depth (and stencil) copies: whether the GPU can copy that format at all (textures.c depth_format: a driver may lack it,
+// and a copy it can't do is an invalid command that may lose the device), and each kind named once in the log where the
+// game first does it, counted for the device-lost report (#160: few drivers are tested with them)
+static bool depth_copy_ok(VkFormat f) {
+    const VkFormatFeatureFlags x = VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
+    return (vk_format_features(f) & x) == x;
+}
+static void depth_copy_note(const char *kind, int sw, int sh, int dw, int dh, VkFormat f) {
+    static struct { const char *kind; int sw, dw; VkFormat f; } seen[8];
+    static int nseen;
+    int i = 0;
+    while (i < nseen && !(seen[i].kind == kind && seen[i].sw == sw && seen[i].dw == dw && seen[i].f == f)) i++;
+    if (i == nseen && nseen < 8) {
+        seen[nseen].kind = kind, seen[nseen].sw = sw, seen[nseen].dw = dw, seen[nseen].f = f, nseen++;
+        LOG("[vk] depth %s %dx%d -> %dx%d (format %d)\n", kind, sw, sh, dw, dh, f);
+    }
+    lost_rec[cur_sub].depth_copies++;
+}
+
 // Without timeline semaphores (a Vulkan 1.1 driver) each submission signals a fence, one per slot of the ring: sub()
 // waits for a slot's old submission, so its fence is free again by then. A fence can't be reset while another thread
 // waits for it, and any thread may wait for a submission here: so this one thread waits for them all, in order, resets
@@ -2032,7 +2051,8 @@ void vk_ms_resolve(TexBackend *b) {
         VkImageResolve rv = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                              .extent = {b->width, b->height, 1}};
         vkCmdResolveImage(cb, m->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, b->image, VK_IMAGE_LAYOUT_GENERAL, 1, &rv);
-    } else if ((r = vk_tex_ms_readable(m))) {  // depth / stencil: copied where a shader can read it (below)
+    } else if (depth_copy_ok(m->format) && (r = vk_tex_ms_readable(m))) {  // depth / stencil: copied where a shader can read it (below)
+        depth_copy_note("resolve copy", (int)b->width, (int)b->height, (int)b->width, (int)b->height, m->format);
         VkImageCopy c = {.srcSubresource = {m->aspect, 0, 0, 1}, .dstSubresource = {m->aspect, 0, 0, 1},
                          .extent = {b->width, b->height, 1}};
         vkCmdCopyImage(cb, m->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, r->image, VK_IMAGE_LAYOUT_GENERAL, 1, &c);
@@ -3881,12 +3901,18 @@ static void resolve_feedback(Prog *pr) {
                 VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = src->format,
                                         .extent = {src->width, src->height, 1}, .mipLevels = 1, .arrayLayers = 1,
                                         .samples = (VkSampleCountFlagBits)src->samples, .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT};
+                                        .usage = vk_usage_supported(src->format, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT)};
                 VK_CHECK(vk_create_image(&ci, &d->image, &d->mem));
                 d->format = src->format; d->width = src->width; d->height = src->height; d->depth = 1; d->layers = 1; d->levels = 1;
                 d->samples = src->samples; d->aspect = src->aspect; d->base_type = VK_IMAGE_VIEW_TYPE_2D;
                 vk_end_pass();
                 vk_image_init_layout(vk_cmd(), d->image, d->aspect);
+            }
+            bool sdepth = src->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT);
+            if (!s->valid && sdepth && !depth_copy_ok(src->format)) {  // (a GPU that can't copy that depth format: left as it was)
+                static int nlog;
+                if (nlog++ < 4) LOG("[vk] depth copy %d (a texture drawn into while read) left out: the GPU can't do it\n", src->format);
+                s->valid = true;
             }
             if (!s->valid) {
                 vk_end_pass();
@@ -3896,6 +3922,7 @@ static void resolve_feedback(Prog *pr) {
                 VkImageCopy rg = {.srcSubresource = {src->aspect, 0, 0, 1}, .dstSubresource = {src->aspect, 0, 0, 1},
                                   .extent = {src->width, src->height, 1}};
                 vkCmdCopyImage(cb, src->image, VK_IMAGE_LAYOUT_GENERAL, d->image, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
+                if (sdepth) depth_copy_note("snapshot", (int)src->width, (int)src->height, (int)src->width, (int)src->height, src->format);
                 s->valid = true;
                 st.rt_dirty = true;
                 stat_snapshots++;
@@ -5462,18 +5489,7 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
                 LOG("[vk] depth %s %d -> %d left out: the GPU can't do it with that format\n", same ? "copy" : "blit", s->format, d->format);
             return;
         }
-        if (ds) {  // (each kind of depth copy once in the log, wherever the game first does it: few drivers are tested with them)
-            static uint32_t seen[8];
-            static int nseen;
-            uint32_t key = ((uint32_t)sw << 20) ^ ((uint32_t)dw << 8) ^ (uint32_t)s->format ^ (same ? 0x80000000u : 0);
-            int i = 0;
-            while (i < nseen && seen[i] != key) i++;
-            if (i == nseen && nseen < 8) {
-                seen[nseen++] = key;
-                LOG("[vk] depth %s %dx%d -> %dx%d (format %d)\n", same ? "copy" : "blit", sw, sh, dw, dh, s->format);
-            }
-            lost_rec[cur_sub].depth_copies++;
-        }
+        if (ds) depth_copy_note(same ? "copy" : "blit", sw, sh, dw, dh, s->format);
     }
     if (sw == dw && sh == dh && s->format == d->format) {
         VkImageCopy c = {.srcSubresource = {sa, slv, sly, 1}, .srcOffset = {sx0, sy0, 0}, .dstSubresource = {da, dlv, dly, 1},
