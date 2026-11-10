@@ -1730,6 +1730,48 @@ static void hud_start(const char *why) {
     if (logging) snprintf(why_last, sizeof why_last, "%s, %u post draws before it, depth draws %u", why, h_draws, dn);
 }
 
+// (MHGU_FSR_LOG) a draw that decides where the HUD starts: its vertices, depth test and write, depth target and the
+// textures it samples (size, r: a render target), each kind once (at most 80 lines)
+static void draw_note(const FsrDraw *d, const char *what) {
+    if (!logging) return;
+    static uint64_t seen[64];
+    static int nseen, nlog;
+    char tl[200];
+    int n = 0;
+    tl[0] = 0;
+    uint64_t h = 0xcbf29ce484222325ull ^ (uint64_t)(uintptr_t)what;
+    for (int i = 0; i < d->ntex && n < 170; i++) {
+        NvnTexture *t = d->tex[i];
+        if (!t) continue;
+        n += snprintf(tl + n, sizeof tl - n, " %ux%u%s", t->width, t->height, is_rt(t) ? "r" : "");
+        h = (h ^ ((uint64_t)t->width << 20 ^ t->height ^ (uint64_t)is_rt(t) << 40)) * 0x100000001b3ull;
+    }
+    h = (h ^ (d->count > 6) ^ (uint64_t)d->depth_test << 1 ^ (uint64_t)d->depth_write << 2) * 0x100000001b3ull;
+    for (int i = 0; i < nseen; i++)
+        if (seen[i] == h) return;
+    if (nseen < 64) seen[nseen++] = h;
+    if (nlog++ >= 80) return;
+    LOG("[fsr] frame %llu: %s: %u vertices, depth test %d write %d, depth %ux%u, textures%s\n",
+        (unsigned long long)g_present_count + 1, what, d->count, d->depth_test, d->depth_write, d->depth ? d->depth->width : 0,
+        d->depth ? d->depth->height : 0, n ? tl : " none");
+}
+
+// A render target of the render size or half of it: the picture, or a copy of it (vk_fsr_draw)
+static bool picture_sized(const NvnTexture *t) {
+    for (uint32_t k = 1; k <= 2; k++) {
+        int dw = (int)t->width - (int)(rw / k), dh = (int)t->height - (int)(rh / k);
+        if (dw >= -1 && dw <= 1 && dh >= -1 && dh <= 1) return true;
+    }
+    return false;
+}
+
+// (tests: MHGU_FSR_SCENE_FX=0, the 3D effects drawn after the post passes start the HUD again, as before 0.1.9)
+static bool scene_fx(void) {
+    static int on = -1;
+    if (on < 0) on = !getenv("MHGU_FSR_SCENE_FX") || atoi(getenv("MHGU_FSR_SCENE_FX")) != 0;
+    return on;
+}
+
 void vk_fsr_draw(const FsrDraw *d) {
     if (!frame_open) frame_begin();
     last_target = d->color0;
@@ -1751,15 +1793,45 @@ void vk_fsr_draw(const FsrDraw *d) {
         if (main_camera_draw(d)) menu_models++;  // (menus, see the top)
         else if (menu_camera_draw(d)) menu_cams++;
     }
+    if (redirect && logging && d->color0 == g_h) {  // (MHGU_FSR_LOG: a draw over the HUD that samples a picture of the render size)
+        for (int i = 0; i < d->ntex; i++)
+            if (d->tex[i] && (d->tex[i] == g_h || (is_rt(d->tex[i]) && picture_sized(d->tex[i])))) {
+                draw_note(d, "after the start of the HUD, sampling the picture");
+                break;
+            }
+    }
     if (redirect || !g_h || !d->color0) return;
     if (d->color0 == g_h) {
         bool post = d->count <= 6;
-        bool reads_rt = false;
-        for (int i = 0; i < d->ntex; i++) reads_rt |= d->tex[i] != g_h && is_rt(d->tex[i]);
+        bool reads_rt = false, reads_picture = false;
+        for (int i = 0; i < d->ntex; i++) {
+            NvnTexture *t = d->tex[i];
+            if (t == g_h) { reads_picture = true; continue; }  // (the picture being drawn into: never a HUD sprite)
+            if (!is_rt(t)) continue;
+            reads_rt = true;
+            reads_picture |= picture_sized(t);
+        }
         if (post && reads_rt) { h_draws++; return; }
+        // (a 3D effect drawn into H after the post passes is still the scene's: one tested against the scene's depth -
+        // Astalos' charged wings - or one that samples the picture: H itself, or a render target of the render size or half.
+        // Taken for the start of the HUD, it and what followed were drawn on the output-size stand-ins: over an empty
+        // depth target, so over the hunter and the monster, and sampling render-size images at output-size places, so
+        // smeared streaks, with Low-end mode's plain scaling or FSR only: #60)
+        bool depth_tested = d->depth_test && d->depth && d->depth->width == rw && d->depth->height == rh;
+        if (!menu_2d && (depth_tested || reads_picture) && scene_fx()) {
+            draw_note(d, depth_tested ? "with the scene (depth-tested)" : "with the scene (samples the picture)");
+            static int nlog;
+            if (nlog < 3 && (logging || nlog < 1))
+                nlog++, LOG("[fsr] frame %llu: a draw into the full-screen image %s (%u vertices) before the HUD: drawn with the "
+                            "scene\n", (unsigned long long)g_present_count + 1,
+                            depth_tested ? "tested against the scene's depth" : "that samples the picture", d->count);
+            h_draws++;
+            return;
+        }
         if (!menu_2d) menu_2d = true, scene_depth(&menu_2d_scene);
         bool late = menu_models_late || menu_cams_late;  // (menus: their models first)
         if (late && (menu_models < menu_models_late || menu_cams < menu_cams_late || d->depth_write)) return;
+        draw_note(d, late ? "the HUD starts after the menu's 3D models" : "the HUD starts");
         hud_start(late ? "after the menu's 3D models" : "first HUD draw");
         return;
     }
@@ -1911,6 +1983,7 @@ void vk_fsr_init(void) {
     if (!g_fsr_output[0]) return;
 #endif
     rw = g_render_size[0], rh = g_render_size[1], ow = g_fsr_output[0], oh = g_fsr_output[1];
+    logging = getenv("MHGU_FSR_LOG") != NULL;  // (plain scaling too: where the HUD starts)
     if (!g_config.fsr) {  // (RenderScale below 100: config.c)
         plain_only = true;
         g_fsr_on = true;
@@ -1918,7 +1991,6 @@ void vk_fsr_init(void) {
             ow, oh);
         return;
     }
-    logging = getenv("MHGU_FSR_LOG") != NULL;
     FfxVkPortableDeviceCapabilities caps = {.structSize = sizeof caps};
     if (ffxVkPortableQueryDeviceCapabilities(g_vk.phys, &caps) != FFX_VK_PORTABLE_OK || !caps.fsr3ComputePrerequisites ||
         !g_vk.fsr_storage_wo_format) {

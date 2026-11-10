@@ -2130,6 +2130,15 @@ static void begin_pass(void) {
     }
     if (minw == UINT32_MAX) minw = minh = 16;
     pass_w = minw; pass_h = minh;
+    if (g_hudtrace_active) {  // (debug, "hudtrace") each pass's targets, the stand-ins and the area rendered
+        char tg[400];
+        int n = 0;
+        for (int i = 0; i < st.rt.ncolor && n < 300; i++)
+            if (st.rt.color[i]) n += snprintf(tg + n, sizeof tg - n, " c%d %ux%u", i, st.rt.color[i]->width, st.rt.color[i]->height);
+        if (st.rt.depth) n += snprintf(tg + n, sizeof tg - n, " d %ux%u%s", st.rt.depth->width, st.rt.depth->height,
+                                       dt != st.rt.depth ? " (stand-in)" : "");
+        LOG("[hud] pass%s -> area %ux%u, sx %.3f sy %.3f\n", tg, minw, minh, pass_sx, pass_sy);
+    }
     ui_loading_pass = false;
     ui_title_pass = false;
     ui_frontend_pass = false;
@@ -2609,7 +2618,7 @@ volatile int g_clear_draw = -1;  // colour clears as draws (MHGU_CLEAR_DRAW, F9 
 static bool clears_drawn(void) {
     static int on = -1;
     if (on < 0) {
-        on = getenv("MHGU_CLEAR_FORCE") || (strstr(g_vk.props.deviceName, "Adreno") && g_vk.props.apiVersion < VK_MAKE_VERSION(1, 1, 128));
+        on = getenv("MHGU_CLEAR_FORCE") || (vk_gpu_adreno() && g_vk.props.apiVersion < VK_MAKE_VERSION(1, 1, 128));
         if (on) LOG("[vk] clears as draws: vkCmdClearAttachments is not used on this driver\n");
     }
     return on;
@@ -4343,6 +4352,7 @@ static CsProg *compute_program(NvnProgram *np) {
 }
 
 static void dispatch_compute(uint32_t gx, uint32_t gy, uint32_t gz) {
+    if (g_hudtrace_active) LOG("[hud] dispatch %u x %u x %u\n", gx, gy, gz);  // (debug, "hudtrace")
     snapshots_invalidate(NULL);
     if (!st.program || !gx || !gy || !gz) return;
     CsProg *cp = compute_program(st.program);
@@ -4711,7 +4721,13 @@ static PipeKey pipe_key(Prog *pr, uint32_t mode, bool native, VkPrimitiveTopolog
         if (!(k.used_streams & (1u << s))) continue;
         k.stride[s] = s < st.nstream ? st.stream[s][0] : 0;
         k.divisor[s] = s < st.nstream && k.stride[s] ? st.stream[s][1] : 0;
-        if (k.divisor[s] > 1 && !g_vk.divisor) k.divisor[s] = 1;
+        if (k.divisor[s] > 1) {  // (an element every N instances: VK_EXT_vertex_attribute_divisor, else every instance)
+            static uint32_t told;  // (each divisor up to 31 once: which the game uses, a driver's divisor or not, #171)
+            if (k.divisor[s] < 32 && !(told & (1u << k.divisor[s])))
+                told |= 1u << k.divisor[s], LOG("[vk] a stream read once every %u instances (%s)\n", k.divisor[s],
+                                                g_vk.divisor ? "the driver's divisor" : "no divisor here: read every instance");
+            if (!g_vk.divisor) k.divisor[s] = 1;
+        }
     }
     for (uint32_t i = 0; i < k.ncolor && i < 8; i++) {
         if (!st.rt.color[i] || pass_color[i] == VK_FORMAT_UNDEFINED) continue;
@@ -4811,7 +4827,8 @@ static void draw(CmdRec *r, bool indexed) {
     if (!native && mode != 6 && mode != 7 && mode != 9) { stat_skipped++; return; }
     if (g_fsr_on) {  // FSR: the frame's structure; at the start of the HUD FSR runs before this draw (fsr.c)
         FsrDraw fd = {.color0 = st.rt.ncolor ? st.rt.color[0] : NULL, .depth = st.rt.depth, .count = (uint32_t)r->x[2],
-                      .depth_write = st.ds[0] && st.ds[1], .vubuf = &st.ubuf[0][0].addr, .nvubuf = 18,
+                      .depth_write = st.ds[0] && st.ds[1], .depth_test = st.ds[0] && st.ds[2] != 8,  // (8: Always)
+                      .vubuf = &st.ubuf[0][0].addr, .nvubuf = 18,
                       .vp_w = st.viewport[0][2], .vp_h = st.viewport[0][3]};
         for (int i = 0; i < pr->fi->ntex && fd.ntex < 16; i++) fd.tex[fd.ntex++] = shader_texture_object(1, &pr->fi->tex[i]);
         vk_fsr_draw(&fd);
@@ -4910,6 +4927,22 @@ static void draw(CmdRec *r, bool indexed) {
     if (ui_relax_scissor || ui_scissor_v >= 0) {  // (set while the constants above were built: for this draw only; the
         apply_scissor(cb);                         // next draw and any clear before it get the game's scissor again)
         ui_relax_scissor = false, ui_scissor_v = -1;
+    }
+    // (debug, "hudtrace") each draw: its fragment program, viewport and scissor as set and as the game gave them, depth
+    // test and write, vertices, and the textures it samples (size / NVN format)
+    if (g_hudtrace_active) {
+        char tl[200];
+        int tn = 0;
+        tl[0] = 0;
+        for (int i = 0; i < pr->fi->ntex && tn < 160; i++) {
+            NvnTexture *tx = shader_texture_object(1, &pr->fi->tex[i]);
+            if (tx) tn += snprintf(tl + tn, sizeof tl - tn, " t%ux%u/%#x", tx->width, tx->height, tx->format);
+        }
+        LOG("[hud]   draw fs %016llx vp %.1f,%.1f %.1fx%.1f (game %.1f,%.1f %.1fx%.1f) sc %d,%d %ux%u (game %d,%d %dx%d) ds %d%d n %u "
+            "%s\n", (unsigned long long)prog_fs_hash(pr),
+            ss.vp.x, ss.vp.y, ss.vp.width, ss.vp.height, vp[0], vp[1], vp[2], vp[3], ss.sc.offset.x, ss.sc.offset.y,
+            ss.sc.extent.width, ss.sc.extent.height, st.scissor[0][0], st.scissor[0][1], st.scissor[0][2], st.scissor[0][3],
+            (int)st.ds[0], (int)st.ds[1], (uint32_t)r->x[2], tl);
     }
 
     // ---- indices (copied; the largest index bounds the vertex data copied below)
@@ -5178,6 +5211,10 @@ static void copy_texture_to_buffer(const TexRef *src, uint64_t dst) {
     int level;
     uint64_t row = 0, img = 0;
     copy_region_dims(t, src, &fi, rg, &level, &row, &img);
+    if (g_hudtrace_active)  // (debug, "hudtrace")
+        LOG("[hud] copy to buffer: tex fmt %#x %ux%u region %d,%d,%d %dx%dx%d lv %d row %llu img %llu -> %llx\n", t->format,
+            t->width, t->height, rg[0], rg[1], rg[2], rg[3], rg[4], rg[5], level, (unsigned long long)row,
+            (unsigned long long)img, (unsigned long long)dst);
     if (!fi || !fi->bpb || fi->bpb == 3 || row % fi->bpb) return;
     TexBackend *b = vk_tex(t, false);
     bool array = b->layers > 1 && b->depth == 1;
@@ -5208,6 +5245,10 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
     NvnTexture *st_ = (NvnTexture *)(uintptr_t)src->tex, *dt = (NvnTexture *)(uintptr_t)dst->tex;
     if (!st_ || !dt) return;
     if (g_dump_active) LOG("[dump] copy %p -> %p\n", (void *)st_, (void *)dt);
+    if (g_hudtrace_active)  // (debug, "hudtrace")
+        LOG("[hud] copy tex fmt %#x %ux%u (%d,%d %dx%d) -> fmt %#x %ux%u (%d,%d %dx%d) flags %llx\n", st_->format, st_->width,
+            st_->height, src->region[0], src->region[1], src->region[3], src->region[4], dt->format, dt->width, dt->height,
+            dst->region[0], dst->region[1], dst->region[3], dst->region[4], (unsigned long long)flags);
     vk_end_pass();
     st.rt_dirty = true;
     TexBackend *s = vk_tex(st_, false), *d = vk_tex(dt, true);
