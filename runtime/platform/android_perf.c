@@ -7,7 +7,7 @@
 //   MHGU_ADPF_LOG=1         every 2 s: the work reported per frame (average, max), each thread's CPU time per frame
 //                           (average / max), the target, the thermal headroom and status (also without a session)
 //   MHGU_ADPF_TARGET=<pct>  the target as a percentage of the frame period (default 100; lower: boosted sooner, warmer)
-//   MHGU_PERF_ADPF70=1      (off: watts not measured yet) without MHGU_ADPF_TARGET, the target is 70 % of the period at FPS limits of
+//   MHGU_PERF_ADPF70=0|1    (on: Moto g06 Toaster 30, 2.832 -> 2.789 W, CPU -4.8 %) without MHGU_ADPF_TARGET, the target is 70 % of the period at FPS limits of
 //                           60 and below, as in the MH4U port, and the efficient cores go by the period (below)
 //   MHGU_PERF_EFFICIENT=1   (off: no effect measured) efficiency_follow forgives a lone frame over the target (below)
 //   MHGU_ADPF_EFFICIENT=force  (a test) the efficient cores asked for once the session is made, and never let go: what
@@ -486,7 +486,7 @@ void perf_hint_frame(void) {
         e = getenv("MHGU_ADPF_TARGET");
         if (e && atoi(e) > 0) pct = atoi(e) < 25 ? 25 : atoi(e) > 400 ? 400 : atoi(e), pct_given = true;
         e = getenv("MHGU_PERF_ADPF70");
-        adpf70 = e && atoi(e) > 0;
+        adpf70 = !e || !*e || atoi(e) > 0;  // (on by default since the watts were measured: MHGU_PERF_ADPF70=0 turns it off)
         e = getenv("MHGU_PERF_EFFICIENT");
         efficient_relaxed = e && atoi(e) > 0;
         if (adpf70 || efficient_relaxed)

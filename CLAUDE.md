@@ -207,6 +207,8 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
     MDP rotator straight to the panel (`UI`, transform 0), nothing on the RG406V (its DPU turns it); `THREADNAMES` (names only).
     The PC build shares the runtime and has the same defaults (measured there: the safety nets only); `PREROTATE`,
     `PRESENT_TIME`, `INPUT_WAKE`, `NO_ACCEL`, `NODISCORD`, `MEMTHREAD` and `SLEEP_COARSE` are Android's alone.
+  - `ADPF70` is ON since 2026-11-10: unplugged Moto g06, Toaster 30 at the quest 101 camp, one ABBA pair of 9-minute windows: off 2.832 W,
+    on 2.789 W (-1.5 %), app CPU -4.8 %, the same 30 FPS and pacing (10-second samples agree within about 0.03 W). Before that it was:
   - Measured and left OFF: `ADPF70` (the Moto's CPU -3.8 %, but its watts unknown: the phones were charging; measure them
     unplugged before turning it on), `EFFICIENT` (nothing at the camp), `DISPATCH` (no change). Not measured, OFF: `FMTLIST`,
     `MENU_PRESENT`, and the checks `CHECK`, `AUDIO_CHECK` (and `OVERLAY_REUSE=2`).
@@ -318,7 +320,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   GPU drops a clock step instead of idling (Off, its other passes took about 10 % longer), so the 6 ms saved little power.
   A Galaxy denies those files: use `dumpsys battery` (Charge counter, in steps of 4.9 mAh); its `dumpsys thermalservice` repeats a stale value.
 - Pacing and threads, 0.1.9's performance pass (each read once at the start; `LIMITER`, `MEMTHREAD`, `THREADNAMES` and `NODISCORD` on
-  by default, `ADPF70` and `EFFICIENT` off; `=0` / `=1` override): `MHGU_PERF_ADPF70` the ADPF target 70 % of the frame period at FPS limits of 60 and below, as in MH4U
+  by default, `EFFICIENT` off; `=0` / `=1` override): `MHGU_PERF_ADPF70` the ADPF target 70 % of the frame period at FPS limits of 60 and below, as in MH4U
   (at all of it the system lowers the clocks until the busiest thread fills the period: the Moto at Toaster 30 worked 25.5 ms a frame on
   average, 33 at most, of 33.3), the efficient cores then judged against the period. `MHGU_PERF_EFFICIENT` a frame over the target on
   its own neither turns the efficient cores off nor keeps them away (`efficiency_follow`; two in a window, or another within 30
