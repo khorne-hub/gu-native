@@ -381,9 +381,13 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
     comes (`at_sig`: programs, vertices, constants, state), and one that differs turns it off for that atlas (logged). `=2` also leaves
     such a draw out where nothing was drawn over its rectangle since (`at_mark`, 32x32 tiles). RX 6800 XT, quest 101: three draws
     writing 1.0, all three left out every frame, the atlas's dump the same as without.
-  - `MHGU_PERF_HUDSTART_FUSE=1` (plain scaling, Low-end mode): the HUD's output-size depth stand-in is cleared as the first pass that
-    renders into it begins (`LOAD_OP_CLEAR`, far and 0 as before) instead of by a clear of its own that pass then read back in
-    (`fsr.c hud_start`, `vk_depth_clear_later`); a pass that doesn't cover it whole gets the old clear first.
+  - `MHGU_PERF_HUDSTART_FUSE=1|2|3` (plain scaling, Low-end mode), bits: 1, the HUD's output-size depth stand-in is cleared as the
+    first pass that renders into it begins (`LOAD_OP_CLEAR`, far and 0 as before) instead of by a clear of its own that pass then
+    read back in (`fsr.c hud_start`, `vk_depth_clear_later`); 2, H is scaled into H' as that pass's first draw (`fill_draw`, a
+    full-screen triangle sampling H bilinearly at each pixel's centre) instead of by a blit before it, once the first frame's draw
+    and blit are read back and give the same bytes on that GPU (`fill_check`, logged; else the blit stays). Anything that reads
+    H' or that depth target first, or a pass that doesn't cover it whole, gets the old blit or clear first. RX 6800 XT, 50 %:
+    806x360 -> 1612x720, the same bytes.
   - `MHGU_PERF_FMTLIST`: set at all, the log says what the driver makes of `VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT` (`fmt_probe`: an RGBA8
     image's memory with it, with a format list, without it; a compressed image needs more, its metadata) and names each image / view
     format pair the game asks for. `=1`: images no view of the game reads as another format (decoded BCn and ASTC, widened, fallback
