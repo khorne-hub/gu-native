@@ -51,7 +51,7 @@ The newest version is on [Releases](../../releases/latest): the APK for Android 
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
 - Import your save from an emulator, another device or the PC game, and export it to take it there: see [Saves](#saves)
-- The game pauses by itself when you leave the app
+- The game pauses by itself when you leave the app, and while the settings menu is open if you play alone
 - Vibration on button taps, and the game's rumble on your phone, with or without a controller
 
 #### Customization
@@ -211,6 +211,23 @@ The save is the same on both, so you can take it either way:
 
 Importing replaces all the characters on the device it goes to, and the save it replaces is kept in a copy, as above.
 
+#### Choose where your save is kept
+
+The save is in the app's own folder unless you choose another one, for example a folder that a sync app (Syncthing,
+FolderSync and the like) shares with your other devices. Go to the gear, **Menu Options**, **Save folder**, and choose the
+folder:
+
+- Your save goes in a folder named `MHGU save` inside the one you choose, so one shared folder can hold MHGU's and MH4U for
+  Android's (`MH4U save`). A folder that already holds a save, such as one **Export save** made, is used as it is.
+- Your save is copied there before anything changes. If the folder already has a save, you choose which one stays; the
+  other is kept in a copy, in `save_backups` in the app's own folder.
+- The game restarts to use the folder: save first. **Use the game's own folder**, on the same screen, goes back.
+- On two devices, hunt on one at a time, and let the sync app finish before you open the game on the other.
+
+When the game starts it checks the folder. If it can't reach it, if it is empty but had a save, if the sync app kept two
+versions of the save, or if another device has the game open, it says so and lets you choose what to do. If the folder
+can't be reached at a save, that save stays on the device, and the next start asks which one to keep.
+
 ### Cheats and mods
 
 - **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). Under the gear, **Cheats**, **Add cheats**, pick the file, and turn each one on in that same page. They start off.
@@ -263,7 +280,7 @@ one is based on. They haven't been fully tested on Android yet.
 | What | Where |
 |---|---|
 | Settings, the touch layout and the HUD's, controller mappings, the log | `Android/data/com.mhgu.recomp/files`: `mhgurecomp.ini`, `touch_layout.txt`, `gamepad_mappings.txt`, `log.txt` (the session before: `log_prev.txt`) |
-| Saves | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`. The save an import replaces goes to `save_backups`, beside it |
+| Saves | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`, or the folder you chose in **Save folder**. The save an import replaces goes to `save_backups`, in `MHGURecomp` |
 | Cheats and mods you add | Your game folder's `cheats` and `mods` |
 
 ### Update to a new version
@@ -301,11 +318,13 @@ dots, **Add games**.
 | Problem | What to do |
 |---|---|
 | `python` is not recognized | Install Python again, tick **Add python.exe to PATH**, and open a new terminal |
+| "Failed to build installable wheels" for lz4 | The tool from 0.1.9 on reads the game code without the lz4 package when your Python can't install it: download it again |
 | "there is no exefs/main" | The path must be the folder that holds `exefs` and `romfs` |
 | "This exefs is not version 1.4.0" | Use the `exefs` with the 1.4.0 update |
 | "romfs is incomplete" | Use the base game's `romfs` with the update applied. It has 35,531 files |
 | "libmhgugame.so is missing" | Do step 2, then copy the two new files to the folder on your device |
 | "This libmhgugame.so is from another version" | A new app version needs it again: repeat step 2 with the new download |
+| The game files screen says "EACCES" or "open failed" | Another app (a file manager, for example through Shizuku) made the app's folder in `Android/data`. From 0.1.9 the app takes it back, or keeps its files in its private folder and says so |
 | The game closes by itself | Close other apps and lower the 3D resolution. It's usually a lack of memory |
 | Black picture with only the touch controls, or it closes when you press A | The copy of `romfs` to your device didn't finish. Copy it again and check that it takes up 12.3 GB |
 | The game says **Game files incomplete** | Some files of `romfs` were cut short while copying, and the game can close or draw black where it reads them. Copy `romfs` again and check that it takes up 12.3 GB |
@@ -685,7 +704,12 @@ D7:2F:6F:F1:55:E0:31:2C:9C:74:86:C5:30:64:60:38:E4:24:94:C0:AD:7C:D6:5F:4B:19:FF
 ```
 
 To check an APK: `apksigner verify --print-certs MHGU-<version>.apk` (Android SDK build-tools). A copy signed with another
-key can't be installed over the official app either.
+key can't be installed over the official app either. From 0.1.9 the app checks it too: a copy signed with another key says
+so once when it starts.
+
+The app also tells you when a new version is out. At most once a day it asks GitHub for this repository's latest release
+(nothing else is sent), and at the next start it offers to open the release page. It never downloads or installs anything
+by itself. Gear, **Menu Options**, **Check for updates** turns it off.
 
 The PC version has no such signature: each release lists the SHA-256 of its zip. To check yours on Windows, open a terminal
 in its folder and run `certutil -hashfile <file> SHA256`; the result must match the release's.

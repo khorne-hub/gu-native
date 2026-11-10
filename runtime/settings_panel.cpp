@@ -637,6 +637,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(mouse_menus);
     SAME(show_stats);
     SAME(pause_background);
+    SAME(pause_menu);
     SAME(button_icons);
     SAME(menu_theme);
     SAME(discord);
@@ -1263,6 +1264,7 @@ void reset_section() {
         c.menu_scale = f.menu_scale;
         c.confirm_exit = f.confirm_exit;
         c.pause_background = f.pause_background;
+        c.pause_menu = f.pause_menu;
         c.updates = f.updates;
         c.bonus_content = f.bonus_content;
         break;
@@ -2156,20 +2158,24 @@ std::vector<Row> main_rows() {
 #endif
         number(r, "scale", "Interface scale (%)", &c.menu_scale, (int)lo("MenuScale"), (int)hi("MenuScale"), 10, ini("MenuScale"));
         add_bool(r, "pause.bg", "Pause in the background", &c.pause_background, ini("PauseInBackground"));
+#ifdef __ANDROID__  // (runtime/overlay.cpp)
+        add_bool(r, "pause.menu", "Pause in this menu", &c.pause_menu, ini("PauseInMenu"));
+#endif
 #ifndef __ANDROID__  // (a desktop's background: the window minimized, host_input.c)
         r.back().help = tr("The game stops while its window is minimized, and goes on where it was when you bring it back.");
 #endif
 #ifndef __ANDROID__  // (a phone: not worth a row)
         add_bool(r, "confirm.exit", "Confirm exit", &c.confirm_exit, ini("ConfirmExit"));
 #endif
-#ifdef MHGU_UPDATER  // (MHGURecomp's updater of its PC releases: not part of this project, so nothing would read it)
-        add_choice(r, "updates", "Updates", c.updates, {tr("Ask"), tr("Auto"), tr("Off")},
-                   [](int v) { c.updates = v; }, ini("Updates"));
+#ifdef __ANDROID__  // (the app's start asks GitHub, android/.../Notices.java; a PC has no such check yet)
+        add_bool(r, "updates", "Check for updates", &c.updates, ini("Updates"));
 #endif
         add_bool(r, "bonus", "Bonus content", &c.bonus_content, ini("BonusContent"));
 #ifdef __ANDROID__
         action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
         r.back().help = tr("Where the game's exefs and romfs are read from. A new folder is used the next time the game starts.");
+        action(r, "save.folder", tr("Save folder"), []() { ui_request_save_folder(); });
+        r.back().help = tr("Where your save is kept. Choose a folder that a sync app shares with your other devices (the PC version too) to carry your hunt between them. Your save is copied there first, and the game restarts to use it.");
         action(r, "save.import", tr("Import save"), []() { ui_request_save_import(); });
         r.back().help = tr("Brings your save from an emulator or another device. It replaces the characters on this device, and the current save is kept in a copy.");
         action(r, "save.export", tr("Export save"), []() { ui_request_save_export(); });
@@ -2624,8 +2630,12 @@ const PhoneHelp PHONE_HELP[] = {
     {"Language", "The language of this menu.", "El idioma de este menú."},
     {"MenuScale", "The size of this menu.", "El tamaño de este menú."},
     {"PauseInBackground", "The game stops while you are out of the app.", "El juego se detiene mientras estás fuera de la app."},
+    {"PauseInMenu", "The game waits while this menu is open, when you play alone. With others online or in Local Play it goes on.",
+     "El juego espera mientras este menú está abierto, cuando juegas solo. Con otros, en línea o en juego local, sigue."},
     {"BonusContent", "Copies the free downloadable content (event quests, item packs, Palicoes) to a save that has not received it yet.",
      "Copia el contenido descargable gratuito (misiones de evento, packs de objetos, Palicoes) a una partida que todavía no lo recibió."},
+    {"Updates", "At most once a day the app asks GitHub for the latest version (nothing else is sent) and tells you at the next start when there is a new one. It never downloads or installs anything by itself.",
+     "Como mucho una vez al día la app le pregunta a GitHub cuál es la última versión (no se envía nada más) y te avisa al abrir el juego cuando hay una nueva. Nunca descarga ni instala nada por su cuenta."},
 };
 #endif
 std::string help_text(const Row &r) {

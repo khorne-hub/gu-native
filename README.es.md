@@ -52,7 +52,7 @@ La versión más nueva está en [Releases](../../releases/latest): el APK para A
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)
 - Importa tu partida desde un emulador, desde otro dispositivo o desde el juego de PC, y expórtala para llevarla ahí: mira [Partidas](#partidas)
-- El juego se pausa solo cuando sales de la app
+- El juego se pausa solo cuando sales de la app, y mientras el menú de opciones está abierto si juegas solo
 - Vibración al tocar los botones y vibración del juego en el teléfono, con o sin mando
 
 #### Personalización
@@ -211,6 +211,26 @@ La partida es la misma en los dos, así que puedes llevarla en cualquier sentido
 
 Importar reemplaza todos los personajes del dispositivo al que llega, y la partida que reemplaza queda en una copia, como arriba.
 
+#### Elegir dónde se guarda tu partida
+
+La partida está en la carpeta propia de la app, salvo que elijas otra; por ejemplo, una carpeta que una app de
+sincronización (Syncthing, FolderSync y similares) comparta con tus otros dispositivos. Ve al engranaje, **Opciones del
+menú**, **Carpeta de partidas**, y elige la carpeta:
+
+- Tu partida va en una carpeta llamada `MHGU save` dentro de la que elijas, así una sola carpeta compartida sirve para la de
+  MHGU y la de MH4U para Android (`MH4U save`). Una carpeta que ya tiene una partida, como la que hace **Exportar partida**,
+  se usa tal cual.
+- Tu partida se copia ahí antes de cambiar nada. Si la carpeta ya tiene una partida, eliges cuál se queda; la otra queda
+  guardada en una copia, en `save_backups`, en la carpeta propia de la app.
+- El juego se reinicia para usar la carpeta: guarda antes. **Usar la carpeta propia del juego**, en la misma pantalla, vuelve
+  atrás.
+- En dos dispositivos, caza en uno a la vez y deja que la app de sincronización termine antes de abrir el juego en el otro.
+
+Al arrancar, el juego revisa la carpeta. Si no llega a ella, si está vacía pero tenía una partida, si la app de
+sincronización guardó dos versiones de la partida o si otro dispositivo tiene el juego abierto, te lo dice y te deja elegir
+qué hacer. Si al guardar no se puede llegar a la carpeta, esa partida queda en el dispositivo y el próximo arranque te
+pregunta cuál conservar.
+
 ### Trucos y mods
 
 - **Trucos:** archivos `.txt` en el formato de Atmosphere, para la versión 1.4.0 (su id de compilación es `FB08F1D20FD1204F`). En el engranaje, **Trucos**, **Agregar trucos**, elige el archivo y activa cada uno en esa misma página. Entran apagados.
@@ -263,7 +283,7 @@ MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo 
 | Qué | Dónde |
 |---|---|
 | Ajustes, la posición de los controles táctiles y del HUD, el mapeo de mandos, el registro | `Android/data/com.mhgu.recomp/files`: `mhgurecomp.ini`, `touch_layout.txt`, `gamepad_mappings.txt`, `log.txt` (el de la sesión anterior: `log_prev.txt`) |
-| Partidas | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`. La partida que reemplaza una importación queda en `save_backups`, al lado |
+| Partidas | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`, o la carpeta que elegiste en **Carpeta de partidas**. La partida que reemplaza una importación queda en `save_backups`, en `MHGURecomp` |
 | Trucos y mods que agregues | Las carpetas `cheats` y `mods` de tu carpeta del juego |
 
 ### Actualizar a una versión nueva
@@ -302,11 +322,13 @@ puntos, **Añadir juegos**.
 | Problema | Qué hacer |
 |---|---|
 | `python` no se reconoce | Instala Python de nuevo, marca **Add python.exe to PATH** y abre otra terminal |
+| "Failed to build installable wheels" para lz4 | La herramienta desde la 0.1.9 lee el código del juego sin el paquete lz4 cuando tu Python no puede instalarlo: descárgala de nuevo |
 | "there is no exefs/main" | La ruta debe ser la carpeta que contiene `exefs` y `romfs` |
 | "Este exefs no es de la versión 1.4.0" | Usa el `exefs` con la actualización 1.4.0 |
 | "romfs está incompleto" | Usa el `romfs` del juego base con la actualización aplicada. Tiene 35.531 archivos |
 | "Falta libmhgugame.so" | Haz el paso 2 y copia los dos archivos nuevos a la carpeta de tu dispositivo |
 | "Este libmhgugame.so es de otra versión" | Una versión nueva de la app lo necesita otra vez: repite el paso 2 con la nueva descarga |
+| La pantalla de archivos del juego dice "EACCES" u "open failed" | Otra app (un administrador de archivos, por ejemplo con Shizuku) creó la carpeta de la app en `Android/data`. Desde la 0.1.9 la app la recupera, o guarda sus archivos en su carpeta privada y lo avisa |
 | El juego se cierra solo | Cierra otras apps y baja la Resolución 3D. Suele ser falta de memoria |
 | Pantalla negra con solo los controles táctiles, o se cierra al presionar A | La copia de `romfs` a tu dispositivo no terminó. Cópiala de nuevo y revisa que ocupe 12,3 GB |
 | El juego dice **Archivos del juego incompletos** | Algunos archivos de `romfs` se cortaron al copiarlos, y el juego puede cerrarse o verse en negro donde los lee. Copia `romfs` de nuevo y revisa que ocupe 12,3 GB |
@@ -698,7 +720,12 @@ D7:2F:6F:F1:55:E0:31:2C:9C:74:86:C5:30:64:60:38:E4:24:94:C0:AD:7C:D6:5F:4B:19:FF
 ```
 
 Para revisar un APK: `apksigner verify --print-certs MHGU-<versión>.apk` (build-tools del SDK de Android). Una copia firmada
-con otra clave tampoco se puede instalar encima de la app oficial.
+con otra clave tampoco se puede instalar encima de la app oficial. Desde la 0.1.9 la app también lo revisa: una copia
+firmada con otra clave lo avisa una vez al arrancar.
+
+La app también te avisa cuando sale una versión nueva. Como mucho una vez al día le pregunta a GitHub cuál es la última
+versión de este repositorio (no se envía nada más), y al abrir el juego te ofrece abrir su página. Nunca descarga ni instala
+nada por su cuenta. Engranaje, **Opciones del menú**, **Buscar actualizaciones** lo apaga.
 
 La versión de PC no tiene esa firma: cada versión publica el SHA-256 de su zip. Para revisar el tuyo en Windows, abre una
 terminal en su carpeta y ejecuta `certutil -hashfile <archivo> SHA256`; el resultado tiene que coincidir con el de la versión.

@@ -175,7 +175,12 @@ public class GameActivity extends SDLActivity {
         if (activity != null) activity.startActivity(new Intent(activity, SaveImportActivity.class));
     }
 
-    /** Ajustes -> Exportar partida. */
+    /** Ajustes -> Carpeta de partidas. */
+    public static void showSaveFolder() {
+        SDLActivity activity = mSingleton;
+        if (activity != null) activity.startActivity(new Intent(activity, SaveFolderActivity.class));
+    }
+
     /** Ajustes -> Gráficos -> Driver de GPU. */
     public static void showDrivers() {
         SDLActivity activity = mSingleton;
@@ -281,9 +286,10 @@ public class GameActivity extends SDLActivity {
 
     /** Crea las carpetas del jugador y copia lo que el APK trae para ellas (la lista de pipelines). */
     private void prepareFiles() {
+        AppHome.ensure(this);  // (a start without GameFolderActivity: a controller plugged in)
+        SaveFolder.applyPending(this);  // (before the game: Ajustes -> Carpeta de partidas)
         SaveImportActivity.applyPending(this);  // (before the game: Ajustes -> Importar partida)
-        File home = getExternalFilesDir(null);
-        if (home == null) home = getFilesDir();
+        File home = AppHome.home(this);
         new File(home, "data").mkdirs();
         new File(home, "mods").mkdirs();
         new File(home, "cheats").mkdirs();

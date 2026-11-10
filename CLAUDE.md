@@ -21,7 +21,8 @@ This file has two uses: helping someone set the game up, and continuing the proj
 Follow `README.md`. In short:
 
 1. Check that a folder holds `exefs/main` and a `romfs` with 35,531 files, from version 1.4.0.
-2. Run `python tools/build_game.py <that folder>`. It needs Python 3 on Windows or Linux, installs `lz4`, and downloads NDK r27 to
+2. Run `python tools/build_game.py <that folder>`. It needs Python 3 on Windows or Linux, installs `lz4` (a Python with no lz4 for
+   it, 3.15 at first: the tool's own LZ4 reader, handed to `gen.py` through `PYTHONPATH`, so `nso.py` and `GAMELIB_ID` stay), and downloads NDK r27 to
    `~/.mhgu-tool` if there is none (`--ndk <path>` uses another). It leaves `libmhgugame.so` and `libmhgugame.id` in the folder.
 3. Copy the folder to the device, anywhere except `Android/data`. With adb: `adb push <folder> /sdcard/MHGU`.
 4. Install the APK from Releases. For Samsung's Game Booster: `adb install -r -i com.mhgu.recomp <apk>`.
@@ -37,7 +38,10 @@ what the GPU allows (vertex streams, a stage's buffers and textures...).
   `hle/` game hooks, `platform/android*.c` Android, `config.c` settings and first-run defaults.
 - `tools/`: `gen.py`, `lifter.py`, `neon.py`, `nso.py` translate the game; `build_game.py` is the person's tool.
 - `android/`: the app. `GameFolderActivity` is the entry screen, `GameActivity` runs the game, `SaveImportActivity` imports a save
-  (it is only applied at the next start, before the game runs, so the game can't save over it).
+  (it is only applied at the next start, before the game runs, so the game can't save over it). `AppHome` is the app's folder
+  (below), `SaveFolder` / `SaveFolderActivity` the save folder, `Notices` the unofficial-build and update notices, `FolderBrowser`
+  the game-styled folder browser every screen uses, `Look` the shared colours and the game-styled notice. MH4U for Android has
+  the same classes with the same texts: change both.
 - `native/`: CMake and `build_native.sh`. `deps/`: scripts for SDL3, shaderc and FFmpeg.
 
 ## Building
@@ -133,8 +137,8 @@ In Git Bash, with llvm-mingw 20241217 (UCRT) and the Android SDK's CMake 3.22.1 
 A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/files`; a public build reads neither:
 
 - `env.txt`: `NAME=value` lines. `MHGU_QUICKHUNT=101` goes straight into a quest, `MHGU_VK_STATS=1` logs statistics,
-  `MHGU_TOUCH_LOG=1` logs fingers. `MHGU_HOME=<folder>` moves the settings and the log, but not the saves: those are always
-  `Android/data/com.mhgu.recomp/files/MHGURecomp/save`, so copy them first. `MHGU_CAMLOG=1` logs the hunt camera and the monsters,
+  `MHGU_TOUCH_LOG=1` logs fingers. `MHGU_HOME=<folder>` moves the settings and the log, but not the saves: those are
+  `Android/data/com.mhgu.recomp/files/MHGURecomp/save` (or the Save folder chosen: `save_folder.txt`), so copy them first. `MHGU_CAMLOG=1` logs the hunt camera and the monsters,
   `MHGU_LOG_MOVES=1` the hunter's actions, `MHGU_LOG_NET=1` the network, `MHGU_PAD_DEBUG=1` what SDL reads from a controller,
   `MHGU_FORCE_NOLSE=1` the adapted game code on any CPU, `MHGU_BCN_LOG=1` the time big BC textures take.
 - `control.txt`: appended commands, read while the game runs. `A 8`, `DOWN 8`, `type <text>`, `textkey enter`,
@@ -417,4 +421,21 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   00 at 0x1949a88, the Great Sword's, seen on a Motorola g06), so `weapon_hunter` finds it. Its item bar holds Support Moves, chosen
   with L + Y / A as the game does (`support_step`), never through the hunter's pouch slot. Not yet seen on a device: a Prowler is
   chosen at the item box, and `MHGU_QUICKHUNT` with a Prowler quest (100201) departs the save's hunter as it is.
+- Android/data on Android 11+: a file or folder another app made there (a file manager through Shizuku, adb) keeps that app as its
+  owner, and the app can't write it (gu-native #176: game_folder.txt "open failed: EACCES"). `AppHome.ensure` runs at every start:
+  in the folders the app writes (`MHGURecomp`, `save_import`, `cheats`, `cache`, `shots`) and among the files at the top, a foreign
+  file is copied and put in its place and a foreign folder is renamed aside (`<name>.other-app-<date>`) and made again (any other
+  folder, an agent's backup made with adb, is never touched); if `files/` itself can't be written (EACCES/EPERM only), the app moves for good to
+  its private folder (`home.txt` in `getFilesDir()`, which `runtime/main.c` reads for `MHGU_HOME`) and says so once. Test with
+  `adb shell` (the shell uid, as Shizuku's): `echo x > .../files/game_folder.txt` after deleting the app's own.
+- The save folder (`runtime/savefolder.h` lists its files): only `save_0` moves (`services/fs.c` asks `savefolder_root` at each
+  mount; the game mounts at every save), `g_save_dir`, `bonus/` and `save_backups/` stay local. A folder that can't be reached at
+  a save mounts the local one instead and writes `save_folder_missed.txt`; the start gate (`SaveFolderActivity.gate`) asks.
+  A `.mhgu-commit` of `system` / `system_backup` is applied only at the save's full size (a sync app can bring one half-written).
+  The in-use mark `.mhgu-in-use` is renewed every 5 minutes (`savefolder_tick`) and counts for 15.
+- The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,
+  never with an LDN network up): the update thread stays in `overlay_frame`, drawing the menu (`frame_once`) and presenting the
+  last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the
+  presenting, vsync and audio threads waiting (`vi_menu_hold`, `vi_pause_wait`), as in the background. MH4U for Android does the
+  same with its clock (`android_main.cpp`, `[Interface] PauseInMenu`).
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.
