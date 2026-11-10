@@ -249,6 +249,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   no longer tell a foreground app memory runs low) both wait 2 s instead. `MHGU_LOWMEM_MB=<n>` sets that threshold;
   `MHGU_VK_STAGING_TRIM=0`, `MHGU_VK_VC_TRIM=0`, `MHGU_VK_VC_MB=<n>`: as before;
   `MHGU_RAM_MB=<n>` takes the device's memory as that much (the texture and cache choices of a smaller phone).
+  Measured on the Moto g06 (3.7 GB, Mali-G52), `MHGU_QUICKHUNT=101`, three minutes into the quest: VMA's memory 540 MB with 0.1.8's
+  behaviour (the three variables above; a 365 MB vertex cache), 380 MB now, 348 MB with `MHGU_RAM_MB=2800` and the memory short;
+  `dumpsys meminfo` GL mtrack 631, 500 and 453 MB, total PSS 1377, 1273 and 1241 MB; the same frame rate. A staging chunk is a VMA
+  allocation of its own and goes at once, but a vertex cache range shares VMA's 32 MB blocks with images: memory goes back only
+  when a whole block empties (56 MB of ranges dropped gave back one block). A pool of its own for the cache would give more back.
 - A player's driver is checked once the device is made (`gpu_driver_check`): no library from its folder loaded means the system's runs,
   and the choice moves to `failed`. `DriverActivity` renames a library named as the system's (`vulkan.adreno.so`) to `vulkan.player.so`.
 - The Khronos validation layer: put `libVkLayer_khronos_validation.so` (Android binaries of Vulkan-ValidationLayers) in `jniLibs` for a
