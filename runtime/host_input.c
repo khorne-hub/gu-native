@@ -120,7 +120,8 @@ static void wheel_turn(int n) {
     for (int i = 0; i < BINDS; i++)
         for (int k = 0; k < BIND_KEYS; k++) {
             if (config_live_bind(i, k) != code) continue;
-            if (i == BIND_ITEM_LEFT || i == BIND_ITEM_RIGHT) itembar_scroll((i == BIND_ITEM_LEFT ? -1 : 1) * abs(n));
+            if (i == BIND_ITEM_LEFT || i == BIND_ITEM_RIGHT)  // (a Prowler's: its Support Moves, runtime/touch.cpp)
+                for (int k2 = 0; k2 < abs(n) && k2 < 4; k2++) touch_item_step(i == BIND_ITEM_LEFT ? -1 : 1);
             else wheel_until[code - KEY_WHEEL_UP] = plat_now_ns() + WHEEL_PRESS_NS;
             break;
         }
@@ -227,6 +228,8 @@ static void script_parse(void) {
 //   finger <n> down|move|up|cancel <x> <y> [ms]: a finger on the screen (n: which one, 0..15; x, y: parts of the
 //                          window's width and height), now or that many ms from now (tests: the touch controls)
 //   touchedit              the touch layout editor opens, as Customize controls and HUD does (runtime/touch.cpp)
+//   fakewindow <ms>        the touch controls see a window of the game's menus drawn for that long (a chat bubble: a
+//                          window that comes by itself; runtime/touch.cpp)
 char g_shot_request[256];  // (runtime/nvn/vulkan/device.c saves it)
 // (tests) the fingers' events waiting for their time: pushed to SDL's queue then, as a touch screen's
 static struct {
@@ -592,6 +595,7 @@ static void control_poll(void) {
 #endif
             if (!strcmp(cmd, "finger")) { finger_command(line); continue; }
             if (!strcmp(cmd, "touchedit")) { touch_edit_begin(); continue; }  // (as from the settings menu: once it is closed)
+            if (!strcmp(cmd, "fakewindow")) { touch_test_window(atoi(arg)); continue; }  // fakewindow <ms> (runtime/touch.cpp)
             if (!strcmp(cmd, "mousemove")) {  // mousemove <x> <y> <ms>: mouse look at that speed (counts a second)
                 char arg3[16] = "";
                 sscanf(line, "%*s %*s %*s %15s", arg3);
@@ -1232,7 +1236,7 @@ void host_input_update(void) {
     static bool item_held[2];  // ItemLeft / ItemRight's keys and buttons: a press turns the item bar once
     for (int i = 0; i < 2; i++) {  // (their wheel notches turn it in wheel_turn)
         bool held = bind_held(BIND_ITEM_LEFT + i, false);
-        if (held && !item_held[i]) itembar_scroll(i ? 1 : -1);
+        if (held && !item_held[i]) touch_item_step(i ? 1 : -1);  // (a Prowler's: its Support Moves, runtime/touch.cpp)
         item_held[i] = held;
     }
     int kx = bind_held(BIND_MOVE_RIGHT, true) - bind_held(BIND_MOVE_LEFT, true);
@@ -1294,6 +1298,7 @@ void host_input_update(void) {
     rx += cx * ck, ry += cy * ck;
     float tdx = 0, tdy = 0;  // (the touch controls: buttons, the stick, and a drag that turns the camera as the mouse)
     touch_input(real_pad_connected(), typing, &b, &lx, &ly, &tdx, &tdy);  // (a real controller open hides them)
+    touch_right_stick(&rx, &ry);  // (a Hunter Art tapped that the game's controls put on the right stick)
     if (tdx != 0 || tdy != 0) mouse_dx += tdx, mouse_dy += tdy, touch_cam_ns = plat_now_ns();
     bool mouse_moved = mouse_dx != 0 || mouse_dy != 0;  // (the mouse or a finger turning the camera: the lock-on waits)
     mouse_update(&rx, &ry);

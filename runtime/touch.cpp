@@ -270,9 +270,6 @@ const float BAND_GUARD = .30f, BAND_SEAM0 = .63f, BAND_SEAM1 = .69f;
 const float KNOB = .45f;             // the stick's knob, in its base's radius
 const float CAMERA_COUNTS = 1150.0f; // mouse counts for a drag the screen's height (hle/mousecam.c: 0.08 degrees each)
 const uint64_t MS = 1000000ull;
-// a Hunter Art's row: its button
-// (the game's default controls: the d-pad - its icon beside each art is a d-pad with that arm marked: up, right, down)
-const uint64_t ART_FACE[3] = {B(BTN_UP), B(BTN_RIGHT), B(BTN_DOWN)};
 
 // What a control of the ranged layout presses. Out, a bowgun: A fires, X reloads, R aims (a tap the scope, held the quick
 // aim), X + A crouching fire; a bow: the game's Bow Controls say which of X and R draws (held, let go it shoots) and which
@@ -427,6 +424,34 @@ int dpad_part(Geo g, float x, float y, int held = 0, float on = .17f, float off 
 int mpad_part(Geo g, float x, float y, int held = 0) { return dpad_part(g, x, y, held, MPAD_ON, MPAD_OFF); }
 uint64_t dpad_buttons(int part) {
     return (part & 1 ? DPAD_RIGHT : 0) | (part & 2 ? DPAD_LEFT : 0) | (part & 4 ? DPAD_UP : 0) | (part & 8 ? DPAD_DOWN : 0);
+}
+
+// A Hunter Art's row (top to bottom: the game's art 1, 2, 3): what performs it, by the player's own controls in the
+// game's Options (hle/mousemenu.c game_control_type), as the game shows beside each art. Type 1 the d-pad up, right, down
+// (a d-pad with that arm marked); Type 2 R + A + B (all three at once: the game takes them in a short window), ZL, ZR;
+// Type 3 ZL with X, A, B ("at the same time"); Type 4 the right stick up, right, down. R Stick Controls swaps the right
+// stick and the d-pad, L/R Button Controls L / R and ZL / ZR. (A tap pressed Type 1's d-pad whatever the type: with Type
+// 3 it only turned the camera, #125)
+const int ART_DIR[3] = {4, 1, 8};  // (dpad_part's bits: up, right, down)
+struct ArtPress {
+    uint64_t buttons;  // pressed together
+    int stick;         // or the right stick tilted all the way that way (dpad_part's bits)
+};
+uint64_t lr_swapped(uint64_t b) {  // (L/R Button Controls Type 2: L <-> ZL, R <-> ZR)
+    const uint64_t SHOULDERS = B(BTN_L) | B(BTN_R) | B(BTN_ZL) | B(BTN_ZR);
+    return (b & ~SHOULDERS) | (b & B(BTN_L) ? B(BTN_ZL) : 0) | (b & B(BTN_ZL) ? B(BTN_L) : 0) |
+           (b & B(BTN_R) ? B(BTN_ZR) : 0) | (b & B(BTN_ZR) ? B(BTN_R) : 0);
+}
+ArtPress art_press(int row, int type, bool rstick_swap, bool lr_swap) {
+    if (row < 0 || row > 2) return {0, 0};
+    if (type == 0 || type == 3) {  // (Type 1 the d-pad, Type 4 the right stick: the option swaps them)
+        if ((type == 3) != rstick_swap) return {0, ART_DIR[row]};
+        return {dpad_buttons(ART_DIR[row]), 0};
+    }
+    static const uint64_t TYPE2[3] = {B(BTN_R) | B(BTN_A) | B(BTN_B), B(BTN_ZL), B(BTN_ZR)};
+    static const uint64_t TYPE3[3] = {B(BTN_ZL) | B(BTN_X), B(BTN_ZL) | B(BTN_A), B(BTN_ZL) | B(BTN_B)};
+    uint64_t b = (type == 1 ? TYPE2 : TYPE3)[row];
+    return {lr_swap ? lr_swapped(b) : b, 0};
 }
 
 // The band's middle line: the point s along it (0 its left end, BAND_LEN * r its top), off it by e (> 0 toward the outside)
@@ -586,16 +611,30 @@ bool g_window_open, g_window_asked;
 const uint64_t PLAY_HOLD = 4000 * 1000000ull, WINDOW_PRESS = 1500 * 1000000ull, PLAY_NOW = 400 * 1000000ull;
 std::atomic<int> g_frames_since_menu{1000};  // (touch_hud_frame: 0 when the frame presented had a menu window)
 std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second frame without one came (0: one since)
-bool game_menu(void) {
+// ...but a window whose cursor runs is a menu, however it came: the full pouch's after a gathering (it comes as the
+// gathering ends, longer than WINDOW_PRESS after the A on a mining spot), or the pause menu opened while a bubble was up.
+// Taken for a bubble, they had no menu pad and their cursor could not be moved (#74, #107). Only a menu runs one (a list,
+// a box, a quantity, a choice of two: hle/mousemenu.c)
+// Without a window, a while without the hunter played is a menu (the title, the main menu, a talk in a town), but never
+// with a hunter in a quest (weapon_hunter): a ballista's or a cannon's own aim runs no hunt camera, and four seconds on
+// one made a menu of it - the stick turned into the d-pad, a drag into a cursor's steps, and nothing aimed (#169). A
+// cutscene there reads no stick either way
+bool game_menu(uint32_t hunter) {
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
         if (!g_window_open) g_window_asked = !p || now - p > PLAY_NOW || ticks - g_press_ns.load() < WINDOW_PRESS;
+        if (!g_window_asked && menu_cursor_age() <= 1) {
+            g_window_asked = true;
+            static int dbg = -1;
+            if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+            if (dbg) rt_logf("[touch] a window that came by itself runs a menu's cursor: a menu\n");
+        }
         g_window_open = true;
         if (g_window_asked) return true;
     } else {
         g_window_open = false;
     }
-    return !p || now - p > PLAY_HOLD;
+    return (!p || now - p > PLAY_HOLD) && !hunter;
 }
 // (a bow drawn or a gun aimed has a camera of its own: the hunt camera's handler doesn't run then)
 void play_seen(uint32_t hunter) {  // (the SDL main thread, each input update)
@@ -627,6 +666,9 @@ const uint64_t MPAD_IN = 120 * 1000000ull, MPAD_HOLD = 90 * 1000000ull, MPAD_OUT
 // lists lie across the middle of the screen, under it, and nobody walks there - the stick moves their cursor (with the
 // stick hidden, ShowStick Off, the pad shows there too: nothing else on the screen would move it)
 std::atomic<int> g_frames_since_front{1000};  // (touch_hud_frame: 0 when the frame presented had the front end's backdrop)
+// A model shown in a window of the game's (the smithy's weapon, the item box's hunter: touch_hud_preview), which the game
+// turns with the sticks, as frames presented since the last one that drew it
+std::atomic<int> g_frames_since_preview{1000};
 float mpad_fade(uint64_t ticks) {  // (1 while a menu window shows, down to 0 after it is gone)
     if (!config_live_touch_show(TB_MENU_PAD)) return 0.0f;
     if (g_frames_since_front.load() <= 2 && config_live_touch_show(TB_STICK)) return 0.0f;
@@ -698,6 +740,16 @@ int arts_rows(const Zones &z, float w, float h, float rows[3][2]) {
         rows[i][0] = p.y0 + (rows[i][0] - HUD_PAD[k][1] * m - 4) * p.h / 720.0f, rows[i][1] = p.y0 + (rows[i][1] + HUD_PAD[k][3] * m + 4) * p.h / 720.0f;
     return nr;
 }
+int art_row_at(const Zones &z, float w, float h, float y) {  // (the row under a finger at y, or the nearest one; -1 none)
+    float rows[3][2];
+    int nr = arts_rows(z, w, h, rows), row = -1;
+    float best = 1e30f;
+    for (int i = 0; i < nr; i++) {
+        float d = y < rows[i][0] ? rows[i][0] - y : y > rows[i][1] ? y - rows[i][1] : 0;
+        if (d < best) best = d, row = i;
+    }
+    return row;
+}
 Zones zones(void) {
     std::lock_guard<std::mutex> l(g_zone_lock);
     return g_zones;
@@ -742,6 +794,7 @@ struct Finger {
     uint64_t t0;
     float swipe, swipe_y;  // the item bar, a menu's cursor: pixels swiped since the last step
     bool moved, done;
+    uint64_t repeat_ns;    // an ammo arrow held: its next step then
     uint64_t btn;          // a control of the ranged layout: what it pressed when it landed (the weapon may go out under it)
     int sent;              // the menu pad's: the direction it presses now (dpad_part's; a tab, Minus: 1 pressed), which
                            // follows part as press_ok lets a press start
@@ -789,6 +842,14 @@ struct State {
     uint64_t assist_until, assist_fire;  // a locked shot: R held so far (the aim), A until then
     uint64_t assist_t0;                  // (when it began to wait for the aim)
     bool assist_wait, fired;             // it waits for the aim; the fire button was down
+    bool assist_off;                     // a dodge, a reload or a sheathe pressed since the fire button: no aim until it is up
+    uint64_t shot_others;                // (B, X, Y at the last locked-shot update: their presses)
+    int drawn_known, weapon_known;       // the last weapon_drawn that was known (0 / 1), the last weapon in hand...
+    uint64_t hunter_ns;                  // ...and when the hunter was last found (SDL ticks)
+    bool prowler;                        // the player is a Prowler (its item bar: Support Moves), at the last touch_input
+    int rs_dir;                          // a Hunter Art on the right stick (Type 4): its direction (dpad_part's bits)...
+    uint64_t rs_until;                   // ...tilted until then (touch_right_stick)
+    bool preview;                        // a model in a menu of the game's turns with the sticks: they are the game's there
     float w, h;              // the screen, pixels
     Layout layout, saved;
     bool loaded, touched, auto_wait;
@@ -865,12 +926,39 @@ void pulse(State &s, uint64_t buttons, uint64_t ns, uint64_t after = 0, bool men
 // A step of the ammo or the coating: L held, X the next one, B the one before, and L let go confirms it (the game's own).
 // The game takes L only after a while: X 220 ms after it reloaded or did nothing, 310 ms after it changed the ammo (a
 // Motorola g06). More steps while L is held need no wait
-void ammo_step(State &s, int dir) {
+void l_step(State &s, uint64_t button) {
     uint64_t now = SDL_GetTicksNS();
     uint64_t at = now < s.ammo_hold ? std::max(now + 20 * MS, s.ammo_ready) : now + 380 * MS;
-    pulse(s, dir > 0 ? B(BTN_X) : B(BTN_B), 80 * MS, at - now);
+    pulse(s, button, 80 * MS, at - now);
     s.ammo_ready = at + 170 * MS;
     s.ammo_hold = at + 320 * MS;
+}
+void ammo_step(State &s, int dir) { l_step(s, dir > 0 ? B(BTN_X) : B(BTN_B)); }
+// A step of a Prowler's Support Moves, which its item bar shows: L held, Y the one to the left, A the one to the right (the
+// game's L + Y / A). The hunter's item bar is turned directly instead (hle/itembar.c), which a Prowler's is not (#126)
+void support_step(State &s, int dir) { l_step(s, dir > 0 ? B(BTN_A) : B(BTN_Y)); }
+// The item bar turned a step by the arrows or a swipe (dir < 0 left): the hunter's items, a Prowler's Support Moves
+void item_step(State &s, int dir, uint64_t now) {
+    if (s.prowler) support_step(s, dir);
+    else itembar_scroll(dir);
+    s.item_dir = dir, s.item_flash = now + 200 * MS;
+    tap_due();
+}
+// A tap on a Hunter Art's row: what the player's controls perform it with (art_press), pressed as a tap
+void art_tap(State &s, int row, uint64_t now) {
+    int type = game_control_type();
+    bool rswap = game_rstick_swapped(), lrswap = game_lr_swapped();
+    ArtPress p = art_press(row, type, rswap, lrswap);
+    if (p.stick) s.rs_dir = p.stick, s.rs_until = now + 120 * MS;
+    else if (p.buttons) pulse(s, p.buttons, 120 * MS);
+    s.art_row = row, s.art_flash = now + 250 * MS;
+    tap_due();
+    static int dbg = -1;
+    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+    if (dbg)
+        rt_logf("[touch] Hunter Art %d: Control Type %d%s%s, %s %llx\n", row + 1, type + 1, rswap ? ", R Stick swapped" : "",
+                lrswap ? ", L/R swapped" : "", p.stick ? "the right stick" : "buttons",
+                (unsigned long long)(p.stick ? (uint64_t)p.stick : p.buttons));
 }
 // The item bar's arrows ([Touch] ShowItemArrows): beside the bar, wherever it has been moved to
 Geo item_arrow(const Rect &item, int d, float h) {
@@ -1456,6 +1544,15 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 tap_due();
                 return true;
             }
+            // (a controller in the hands, a handheld's own: a tap on a Hunter Art's panel still performs it, without
+            // letting go of the stick to reach the d-pad, #48)
+            if (g_gear_only && !s.menu) {
+                Zones z = zones();
+                if (zone_rect(z, HP_ARTS, s.w, s.h).in(x, y)) {
+                    f->kind = F_ARTS, f->part = art_row_at(z, s.w, s.h, y);
+                    return true;
+                }
+            }
             f->kind = F_CAMERA;  // (hidden: a drag still turns the camera)
             return true;
         }
@@ -1475,26 +1572,21 @@ extern "C" bool touch_event(const SDL_Event *e) {
         if (c >= 0) {
             f->kind = F_BUTTON, f->ctl = c, f->part = part;
             f->btn = is_ranged(c) ? ranged_buttons(c, s.drawn, s.menu) : 0;
-            if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu) ammo_step(s, c == C_AMMO_UP ? 1 : -1);
+            if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
+                ammo_step(s, c == C_AMMO_UP ? 1 : -1), f->repeat_ns = now + 550 * MS;  // (held: more steps, touch_input)
             if (!of_mpad(c)) tap_due();  // (the menu pad's group: as it presses, touch_input)
         } else if (s.menu && item.in(x, y)) {
             f->kind = F_CAMERA;  // (the item bar in a menu: a drag on it moves the cursor, as anywhere else)
         } else if (arrow) {
             f->kind = F_MENU;  // (nothing more of it until it lifts)
-            itembar_scroll(arrow), s.item_dir = arrow, s.item_flash = now + 200 * MS, tap_due();
+            item_step(s, arrow, now);
         } else if (item.in(x, y)) {
             f->kind = F_ITEM;
         } else if (target.in(x, y)) {
             f->kind = F_TARGET;
         } else if (arts.in(x, y)) {
-            float rows[3][2];
-            int nr = arts_rows(z, s.w, s.h, rows), row = -1;
-            float best = 1e30f;  // (the row under the finger, or the nearest one)
-            for (int i = 0; i < nr; i++) {
-                float d = y < rows[i][0] ? rows[i][0] - y : y > rows[i][1] ? y - rows[i][1] : 0;
-                if (d < best) best = d, row = i;
-            }
-            f->kind = F_ARTS, f->part = row;  // (performed on the tap, when it lifts: a drag turns the camera)
+            // (the row under the finger, or the nearest one; performed on the tap, when it lifts: a drag turns the camera)
+            f->kind = F_ARTS, f->part = art_row_at(z, s.w, s.h, y);
         } else if (!s.stick_on && in_mode(C_STICK, s.menu) && in_stick_zone(s, x, y, item)) {
             f->kind = F_STICK;
             Geo g = place(s.layout, C_STICK, s.w, s.h);
@@ -1523,7 +1615,9 @@ extern "C" bool touch_event(const SDL_Event *e) {
         float dx = x - f->x, dy = y - f->y;
         if (hypotf(x - f->x0, y - f->y0) > .025f * s.h) f->moved = true;
         if (f->kind == F_ARTS && f->moved) f->kind = F_CAMERA, dx = x - f->x0, dy = y - f->y0;  // (a drag: the camera)
-        if (f->kind == F_CAMERA && s.menu) {  // a drag moves the cursor, following the finger, a step every so far
+        // a drag moves the cursor, following the finger, a step every so far (with a model shown, the smithy's or the item
+        // box's, it turns the camera as anywhere else: the right stick, which turns the model there)
+        if (f->kind == F_CAMERA && s.menu && !s.preview) {
             f->swipe += dx, f->swipe_y += dy;
             float ax = fabsf(f->swipe), ay = fabsf(f->swipe_y), step = .075f * s.h;
             if (now >= s.step_ns && std::max(ax, ay) >= step) {
@@ -1544,8 +1638,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 ammo_step(s, f->swipe_y < 0 ? 1 : -1), tap_due();
                 f->done = true;  // (one step a swipe: each takes a moment, and two would look like none)
             }
-            while (!f->done && f->swipe >= step) itembar_scroll(1), f->swipe -= step, s.item_dir = 1, s.item_flash = now + 200 * MS, tap_due();
-            while (!f->done && f->swipe <= -step) itembar_scroll(-1), f->swipe += step, s.item_dir = -1, s.item_flash = now + 200 * MS, tap_due();
+            while (!f->done && f->swipe >= step) item_step(s, 1, now), f->swipe -= step;
+            while (!f->done && f->swipe <= -step) item_step(s, -1, now), f->swipe += step;
         } else if (f->kind == F_BUTTON && is_dpad(f->ctl)) {  // the d-pad: the direction the thumb is in now
             int part = dpad_part(place(s.layout, f->ctl, s.w, s.h), x, y, f->part);
             if (part != f->part) f->part = part, recompute_held(s), tap_due();
@@ -1575,8 +1669,8 @@ extern "C" bool touch_event(const SDL_Event *e) {
             f->done = true;
         }
         // (the last bit of a swipe: an item more once it is most of a step, as the finger lifting ends it)
-        while (!f->done && f->swipe >= step * .6f) itembar_scroll(1), f->swipe -= step, s.item_dir = 1, s.item_flash = now + 200 * MS, tap_due();
-        while (!f->done && f->swipe <= -step * .6f) itembar_scroll(-1), f->swipe += step, s.item_dir = -1, s.item_flash = now + 200 * MS, tap_due();
+        while (!f->done && f->swipe >= step * .6f) item_step(s, 1, now), f->swipe -= step;
+        while (!f->done && f->swipe <= -step * .6f) item_step(s, -1, now), f->swipe += step;
     }
     bool tap = !f->moved && now - f->t0 < 300 * MS && e->type == SDL_EVENT_FINGER_UP;
     bool cancel = e->type == SDL_EVENT_FINGER_CANCELED;
@@ -1594,9 +1688,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (f->kind == F_EDIT) s.pinch = false;
     if (f->kind == F_ITEM && tap && !f->done && fabsf(f->swipe) < .02f * s.h && fabsf(f->swipe_y) < .02f * s.h)
         pulse(s, B(BTN_Y), 80 * MS), tap_due();  // a tap: the item (Y)
-    if (f->kind == F_ARTS && tap && f->part >= 0)  // a tap on a Hunter Art's panel: its d-pad direction
-        pulse(s, ART_FACE[f->part], 120 * MS),  // (its d-pad direction)
-            s.art_row = f->part, s.art_flash = now + 250 * MS, tap_due();
+    if (f->kind == F_ARTS && tap && f->part >= 0) art_tap(s, f->part, now);  // a tap on a Hunter Art's panel: that art
     if (f->kind == F_TARGET && tap) {
         tap_due();
         if (!config_live_lock_on()) {  // (the original game's: L turns the camera to the target, once)
@@ -1630,19 +1722,40 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     uint32_t hunter = weapon_hunter();
     play_seen(hunter);
     // (a bow or a gun being aimed draws on the layer of the game's menus, and it is the hunt's controls that it needs)
-    bool game = game_menu() && !weapon_aiming(hunter);
+    bool game = game_menu(hunter) && !weapon_aiming(hunter);
     static int dbg = -1;  // (MHGU_TOUCH_LOG: the menu, the hunter played or not, the menu pad's presses, as they change)
     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
-    bool play = playable(), ok = press_ok();
-    menu_set_free(!play);  // (the game's thread lets the menu pad's buttons through then too: hle/input.c)
+    // (a menu opened in a town, the item box, a shop, the smithy, its windows drawn: no Hunter Art comes of the d-pad
+    // there, so what the menu pad presses passes whether a cursor of the game's ran or not - the item box's sorting moves
+    // none of those, and the pad pressed nothing there, #174)
+    bool town_menu = s.menu && g_menu_town.load() && g_frames_since_menu.load() <= 2;
+    bool play = playable(), ok = press_ok() || town_menu;
+    menu_set_free(!play || town_menu);  // (the game's thread lets the menu pad's buttons through then too: hle/input.c)
     {
         static int was = -1;
-        if (dbg && (int)play != was) rt_logf("[touch] hunter %s (menu %d)\n", play ? "played" : "not played", (int)game);
+        if (dbg && (int)play != was) {
+            unsigned act = weapon_action(hunter);
+            rt_logf("[touch] hunter %s (menu %d; action %04x:%03u, hunt camera %d)\n", play ? "played" : "not played",
+                    (int)game, act >> 16, act & 0xffff, (int)mousecam_active());
+        }
         was = play;
+        static uint64_t said_ns;  // (a cursor of a menu's running in the field, no menu window: there should be none)
+        if (dbg && play && !game && menu_cursor_age() == 0 && now - said_ns > 2000 * MS)
+            rt_logf("[touch] a menu's cursor runs with no menu window open\n"), said_ns = now;
     }
-    s.weapon = weapon_ranged(hunter);
+    // The hunter: found now or a moment ago (the weapon in hand and whether it is out: the ranged layout and what its
+    // buttons press). A moment without one changed the layout under the fingers, and the fire button pressed X - with the
+    // gun out a reload (#89)
+    if (hunter) {
+        int d = weapon_drawn();
+        s.hunter_ns = now, s.weapon_known = weapon_ranged(hunter);
+        if (d >= 0) s.drawn_known = d;
+    }
+    bool hunter_lately = hunter || now - s.hunter_ns < 1500 * MS;
+    s.weapon = hunter_lately ? s.weapon_known : 0;
     int ranged = config_live_touch_show(TB_RANGED) ? s.weapon : 0;
-    s.drawn = weapon_drawn();
+    s.drawn = hunter_lately ? s.drawn_known : -1;
+    s.prowler = weapon_prowler(hunter);
     g_bow_type = weapon_bow_type();
     if (ranged != g_ranged.load()) {  // (a weapon in hand or gone: the other layout, under the same fingers)
         g_ranged = ranged;
@@ -1666,6 +1779,12 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         }
         recompute_held(s);
     }
+    {  // a model shown in a town's menu (the smithy's weapon, the item box's hunter): the game turns it with the sticks,
+       // so the stick and the drags are the game's there, as a controller's, and the menu pad moves the cursor (#172)
+        bool preview = s.menu && g_menu_town.load() && g_frames_since_preview.load() <= 3;
+        if (preview != s.preview && dbg) rt_logf("[touch] a model in the menu: %s\n", preview ? "the sticks turn it" : "gone");
+        s.preview = preview;
+    }
     // The menu pad's fingers: what each asks for is pressed once a press may start (press_ok), and what one presses
     // stays down while the menu takes input and the finger is on it (a long update neither lets it go nor presses it
     // again: no step too many, no repeat begun again); the game repeats a direction held. It lets go once no menu's
@@ -1673,7 +1792,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // in the field (a Hunter Art). A click of the vibrator as it presses something new, not as it is touched
     s.pad_held = 0;
     uint32_t age = menu_cursor_age();
-    bool gone = play && age >= MPAD_LET_GO;  // (the hunter not played: no Art can come of it)
+    bool gone = play && !town_menu && age >= MPAD_LET_GO;  // (the hunter not played, a town: no Art can come of it)
     static int said_want = -1, said_sent = -1, said_ctl = -1;  // (the log: once a change, not every update it waits)
     bool any = false;
     for (Finger &f : s.f) {
@@ -1717,6 +1836,11 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         }
         // (no long press on L any more: the lock-on is the target icon's alone)
     }
+    // an ammo arrow held: another step every so often (a gun with many kinds of ammo, #89)
+    for (Finger &f : s.f)
+        if (f.kind == F_BUTTON && !f.done && (f.ctl == C_AMMO_UP || f.ctl == C_AMMO_DOWN) && !s.menu && f.repeat_ns &&
+            now >= f.repeat_ns)
+            ammo_step(s, f.ctl == C_AMMO_UP ? 1 : -1), f.repeat_ns = now + 320 * MS, tap_due();
     int mode = config_live_touch_controls();
 #ifdef __ANDROID__
     bool screen = true;
@@ -1794,7 +1918,8 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // closes the stick moves its cursor there too. Never in a hunt: a d-pad there is a Hunter Art
     float sr = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
     int stick_dir = s.stick_on && s.h > 0 ? dpad_part({ImVec2(s.bx, s.by), sr * 1.7f}, s.kx, s.ky, s.stick_part) : 0;
-    if (s.menu && g_menu_town.load() && !s.stick_cursor) {
+    // (with a model shown there, never: the game turns it with the stick, s.preview)
+    if (s.menu && g_menu_town.load() && !s.stick_cursor && !s.preview) {
         const uint64_t STUCK_NS = 300 * MS;
         float px, pz;
         if (stick_dir && player_place(&px, &pz)) {
@@ -1809,7 +1934,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     if (!stick_dir) s.stick_menu_ok = true;
     else if (play && !s.stick_cursor) s.stick_menu_ok = false;
-    if (s.menu && (!play || s.stick_cursor) && s.stick_menu_ok) {
+    if (s.menu && (!play || s.stick_cursor) && s.stick_menu_ok && !s.preview) {
         if (stick_dir && stick_dir != s.stick_part) tap_due();
         s.stick_part = stick_dir;
         *buttons |= dpad_buttons(stick_dir);
@@ -2007,8 +2132,15 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
     if (s.weapon == WEAPON_BOWGUN && s.drawn == 1 && g_lock_shots.load()) {
         uint32_t hunter = weapon_hunter();
         bool fire = (buttons & B(BTN_A)) != 0, aiming = weapon_aiming(hunter);
-        if (fire && !s.fired && !aiming) s.assist_wait = true, s.assist_t0 = now;
-        if (fire && !aiming) s.assist_until = now + 1300 * MS;
+        // A dodge, a reload, a sheathe pressed ends the aim at once, and none begins again until the fire button is let
+        // go: R held with the fire button's A and then B is R + A + B, a Hunter Art with Control Type 2 (#89)
+        uint64_t others = buttons & (B(BTN_B) | B(BTN_X) | B(BTN_Y));
+        if (others & ~s.shot_others) s.assist_wait = false, s.assist_until = s.assist_fire = 0, s.assist_off = true;
+        s.shot_others = others;
+        if (!fire) s.assist_off = false;
+        // (the aim held for a moment after the press that fired, not for as long as the button is down: a press whose aim
+        // is never seen held R for as long as the thumb stayed)
+        if (fire && !s.fired && !aiming && !s.assist_off) s.assist_wait = true, s.assist_t0 = now, s.assist_until = now + 1300 * MS;
         s.fired = fire;
         if (now < s.assist_until) buttons |= B(BTN_R);
         if (s.assist_wait) {
@@ -2030,9 +2162,9 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons) {
                 s.assist_wait = false;
             }
         }
-        if (now < s.assist_fire) buttons |= B(BTN_A);
+        if (now < s.assist_fire && !(buttons & B(BTN_B))) buttons |= B(BTN_A);
     } else {
-        s.assist_wait = s.fired = false, s.assist_until = 0;
+        s.assist_wait = s.fired = s.assist_off = false, s.assist_until = 0;
     }
     g_assist_until = s.assist_until;
     return buttons;
@@ -2069,8 +2201,36 @@ extern "C" void touch_hud_piece(int part, float game_x, float game_y, float canv
 extern "C" void touch_hud_menu(void) { g_build_menu = true; }
 bool g_build_front;  // (render thread) the front end's backdrop in this frame
 extern "C" void touch_hud_front(void) { g_build_front = true; }
+bool g_build_preview;  // (render thread) a model in a window in this frame
+extern "C" void touch_hud_preview(void) { g_build_preview = true; }
+std::atomic<uint64_t> g_test_window_until;  // (tests: fakewindow) a menu's window seen in every frame until then
+extern "C" void touch_test_window(int ms) {
+    g_test_window_until = SDL_GetTicksNS() + (uint64_t)(ms > 0 ? ms : 0) * MS;
+    rt_logf("[touch] (test) a window of the game's menus for %d ms\n", ms);
+}
+
+extern "C" void touch_item_step(int dir) {
+    if (!dir) return;
+    TapAfterUnlock tap_after;
+    std::lock_guard<std::mutex> l(g_lock);
+    State &s = g_s;
+    uint64_t now = SDL_GetTicksNS();
+    item_step(s, dir > 0 ? 1 : -1, now);
+    g_tap_due = false;  // (a key or the wheel: no click of the phone's vibrator)
+}
+
+// A Hunter Art performed with the right stick (Control Type 4, or Type 1 with R Stick Controls swapped): the stick
+// tilted all the way that way for a moment, on the right stick's value (host_input.c, after touch_input)
+extern "C" void touch_right_stick(int *rx, int *ry) {
+    std::lock_guard<std::mutex> l(g_lock);
+    const State &s = g_s;
+    if (!s.rs_dir || SDL_GetTicksNS() >= s.rs_until) return;
+    *rx = s.rs_dir & 1 ? 32767 : s.rs_dir & 2 ? -32767 : 0;
+    *ry = s.rs_dir & 4 ? 32767 : s.rs_dir & 8 ? -32767 : 0;
+}
 
 extern "C" void touch_hud_frame(void) {
+    if (SDL_GetTicksNS() < g_test_window_until.load()) g_build_menu = true;
     {  // (MHGU_TOUCH_LOG: the frames without a menu window between two with one, the gaps inside a menu)
         static int dbg = -1, gap;
         static uint64_t last_with;
@@ -2087,6 +2247,9 @@ extern "C" void touch_hud_frame(void) {
     if (g_build_front) g_frames_since_front = 0;
     else if (g_frames_since_front.load() < 1000) g_frames_since_front = g_frames_since_front.load() + 1;
     g_build_front = false;
+    if (g_build_preview) g_frames_since_preview = 0;
+    else if (g_frames_since_preview.load() < 1000) g_frames_since_preview = g_frames_since_preview.load() + 1;
+    g_build_preview = false;
     // (the menu pad: frames presented since the last one with a menu window, and when the second without one came)
     if (g_build_menu) {
         g_menu_ns = SDL_GetTicksNS();
@@ -3107,7 +3270,7 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     int hidden_tap = touch && hud[HP_ARTS].hidden ? HP_ARTS : touch && hud[HP_TARGET].hidden ? HP_TARGET : -1;
     if (touch && part == HP_ITEMS) note = "The item bar picks and uses items with the touch controls: it can't be hidden here";
     else if (touch && (part == HP_ARTS || part == HP_TARGET) && hud[part].hidden) hidden_tap = part;
-    if (!note && hidden_tap == HP_ARTS) note = "Hidden: no tap performs the Hunter Arts - the D-pad button or a controller does";
+    if (!note && hidden_tap == HP_ARTS) note = "Hidden: no tap performs the Hunter Arts - the game's own buttons for them do";
     else if (!note && hidden_tap == HP_TARGET)
         note = "Hidden: no tap turns the lock-on on or off - the Right stick click button or a controller does";
     if (!note && !any_live && s.sel < 0) note = "Outside a hunt the frames show where each part goes";
@@ -3263,6 +3426,10 @@ extern "C" void touch_draw(float w, float h) {
                        // as the HUD it goes by)
         if (g_gear_only) control(dl, font, s.layout, C_SETTINGS, w, h, s, a * .75f);
         if (g_lock_mark && target.ok) lock_mark(dl, target, true, 1.0f, h, now);
+        Rect arts = zone_rect(z, HP_ARTS, w, h);  // (a Hunter Art tapped: its row lit a moment, as with them shown)
+        float rows[3][2];
+        if (g_gear_only && arts.ok && now < s.art_flash && s.art_row < arts_rows(z, w, h, rows))
+            dl->AddRect(ImVec2(arts.x0, rows[s.art_row][0]), ImVec2(arts.x1, rows[s.art_row][1]), fade(GLOW, a), .01f * h, 0, .005f * h);
         return;
     }
     // (the menu pad's group, over the rest: in as the menu opens, out as its windows go)

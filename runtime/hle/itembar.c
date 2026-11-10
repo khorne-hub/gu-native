@@ -66,6 +66,12 @@ static void item_bar(Cpu *c) {
     int dir = g_steps > 0 ? 1 : g_steps < 0 ? -1 : 0;
     pthread_mutex_unlock(&g_lock);
     if (!dir || !sane(pl) || call(c, FN_PL_IS_LOCAL, pl, 0, 0) != 1) return;  // (another player's: not ours)
+    if (weapon_prowler(pl)) {  // (a Prowler's bar holds Support Moves, chosen with L + Y / A: runtime/touch.cpp)
+        pthread_mutex_lock(&g_lock);
+        g_steps = 0;
+        pthread_mutex_unlock(&g_lock);
+        return;
+    }
     uint32_t vt = LD32(pl);
     uint32_t can_select = vt ? LD32(vt + VF_CAN_SELECT) : 0;  // (vtables are in main's image: not heap addresses)
     bool may = call(c, FN_PL_BUSY, pl, 0, 0) == 0 && can_select && call(c, can_select, pl, 1, 0) == 1;
