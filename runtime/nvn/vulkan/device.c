@@ -448,6 +448,11 @@ static void VKAPI_PTR dm_freed(VmaAllocator a, uint32_t type, VkDeviceMemory m, 
 }
 #endif
 
+// The bytes VMA gave images (textures and render targets), for the [mem] line: added here, taken off as each is destroyed
+// (textures.c vk_collect_dead)
+static _Atomic int64_t image_bytes;
+void vk_image_bytes_add(int64_t n) { atomic_fetch_add_explicit(&image_bytes, n, memory_order_relaxed); }
+
 VkResult vk_create_image(const VkImageCreateInfo *ci, VkImage *img, VmaAllocation *mem) {
 #ifndef __ANDROID__
     VkImage im;
@@ -461,6 +466,7 @@ VkResult vk_create_image(const VkImageCreateInfo *ci, VkImage *img, VmaAllocatio
         if (ai.pool && vmaAllocateMemoryForImage(g_vk.vma, im, &ai, &a, NULL) == VK_SUCCESS) {
             if (vmaBindImageMemory(g_vk.vma, a, im) == VK_SUCCESS) {
                 reserve_used(ai.pool);
+                vk_image_bytes_add((int64_t)r.memoryRequirements.size);
                 return *img = im, *mem = a, VK_SUCCESS;
             }
             vmaFreeMemory(g_vk.vma, a);
@@ -469,7 +475,10 @@ VkResult vk_create_image(const VkImageCreateInfo *ci, VkImage *img, VmaAllocatio
     }
 #endif
     VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
-    return vmaCreateImage(g_vk.vma, ci, &ai, img, mem, NULL);
+    VmaAllocationInfo info;
+    VkResult r = vmaCreateImage(g_vk.vma, ci, &ai, img, mem, &info);
+    if (r == VK_SUCCESS) vk_image_bytes_add((int64_t)info.size);
+    return r;
 }
 
 VkResult vk_create_buffer(const VkBufferCreateInfo *bi, VkBuffer *buf, VmaAllocation *mem) {
@@ -850,14 +859,24 @@ bool vk_gpu_adreno(void) {
 }
 bool vk_gpu_adreno_fix_applies(void) { return vk_gpu_adreno() && !g_vk.api12; }  // ([Performance] AdrenoFix: its menu row)
 
-// (platform/android_perf.c, the minute's [mem] line) VMA's VkDeviceMemory blocks, its allocations and their bytes
+// (platform/android_perf.c, the minute's [mem] line) VMA's VkDeviceMemory blocks, its allocations and their bytes, and
+// what uses them: images (textures, render targets), the vertex cache and the staging ring (exec.c)
 void vk_mem_summary(char *out, size_t size) {
     out[0] = 0;
     if (!g_vk.vma) return;
     VmaTotalStatistics t;
     vmaCalculateStatistics(g_vk.vma, &t);
-    int n = snprintf(out, size, ", GPU memory %u blocks, %u allocations, %llu MB", t.total.statistics.blockCount,
-                     t.total.statistics.allocationCount, (unsigned long long)(t.total.statistics.blockBytes >> 20));
+    uint64_t staging = 0, vc = 0;
+    int chunks = 0;
+    vk_exec_mem(&staging, &chunks, &vc);
+    int64_t img = atomic_load_explicit(&image_bytes, memory_order_relaxed), bcn = vk_bcn_bytes();
+    int n = snprintf(out, size,
+                     ", GPU memory %u blocks, %u allocations, %llu MB (used %llu: images %lld, of which decoded BC %lld, vertex cache %llu, "
+                     "staging %llu in %d)",
+                     t.total.statistics.blockCount, t.total.statistics.allocationCount,
+                     (unsigned long long)(t.total.statistics.blockBytes >> 20), (unsigned long long)(t.total.statistics.allocationBytes >> 20),
+                     (long long)(img > 0 ? img >> 20 : 0), (long long)(bcn > 0 ? bcn >> 20 : 0), (unsigned long long)(vc >> 20),
+                     (unsigned long long)(staging >> 20), chunks);
 #ifdef VOLK_H_
     if (drv_create_graphics && n > 0 && (size_t)n < size)  // (PowerVR: the driver's compiles so far, one at a time)
         snprintf(out + n, size - (size_t)n, ", %llu compiles one at a time (longest wait %.0f ms)",
@@ -1077,6 +1096,7 @@ static Frame cur_frame;
 // The activity's window comes and goes (runtime/ui.c: 1 in the background, 2 back with a new window): nothing is
 // drawn meanwhile, and on return the surface and swapchain are made again for the new window.
 volatile int g_android_window_state;
+volatile uint64_t g_android_bg_ns;
 static void android_window_check(void) {
     int st = __atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE);
     if (st != 2) return;
@@ -1087,14 +1107,15 @@ static void android_window_check(void) {
     if (g_vk.surface) vkDestroySurfaceKHR(g_vk.inst, g_vk.surface, NULL);
     g_vk.surface = VK_NULL_HANDLE;
     if (!make_surface()) {
-        LOG("[vk] SDL_Vulkan_CreateSurface after resume: %s\n", SDL_GetError());
+        static int nlog;
+        if (nlog++ < 5) LOG("[vk] SDL_Vulkan_CreateSurface after resume: %s\n", SDL_GetError());
         return;  // (tried again next frame)
     }
     create_swapchain();
     if (g_vk.swapchain) {
         int was = 2;  // (unless it went to the background again meanwhile: that stays for frame_begin)
         __atomic_compare_exchange_n(&g_android_window_state, &was, 0, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
-        LOG("[vk] window back: surface and swapchain made again\n");
+        LOG("[vk] window back after %.0f s: surface and swapchain made again\n", g_android_bg_ns ? (plat_now_ns() - g_android_bg_ns) / 1e9 : 0.0);
     }
 }
 

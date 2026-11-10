@@ -153,6 +153,12 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 
 What the app writes to `cache/` under `Android/data` can't be deleted over adb, so a test folder under `MHGU_HOME` stays until the app removes it.
 
+The app's own files there (`mhgurecomp.ini`, `touch_layout.txt`, the saves) belong to its user: the shell can't read the saves, so
+they can't be copied over adb (a test that may write them needs another way back). A file the shell makes anew (`sed -i`, `adb push`, `rm`
+and `cp`) belongs to the shell, and the app can't read it: an `mhgurecomp.ini` made so runs the game on the defaults and saves nothing.
+Change one with `cp` onto the existing file (it keeps its owner); if one was made anew, delete it, start the app once (it writes the
+defaults) and `cp` the copy over that.
+
 Empty `control.txt` before starting: old commands replay. `3D resolution` needs a restart: until then the menu says so and the old
 one is still running.
 
@@ -225,7 +231,23 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Adreno 630 on Android 10 (driver 1.1.87): SIGSEGV in `vulkan.sdm845.so+1dd318`, from `vkCmdClearAttachments`. Drivers under 1.1.128 clear with draws
   (`clears_drawn`, `MHGU_CLEAR_FORCE=1` tests it anywhere). Adreno with Vulkan 1.1: below 720 lines and without MSAA the 3D picture repeats in a grid, so
   `msaa_floor` keeps 2x unless `[Performance] AdrenoFix = Off` (an Adreno 610 on 1.1.128 looked dark and flickered with it). Its cause is unknown.
-- A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`. The log warns.
+- On the Adreno 616 and 630 drivers of Android 10 (1.1.87) D32_SFLOAT_S8_UINT can't be sampled or copied into (one of the two), and D24S8
+  lacked something asked of it (blits, most likely). Up to 0.1.8 DEPTH24_STENCIL8 became D32S8 there and `create_image` then made the
+  game's depth buffer RGBA8 ("format 130 (nvn 0x35) not supported: RGBA8 instead"): the device was lost at the first 3D scene after the
+  opening movie, character creation (#22, #40, #61, #124). Every log of that crash has the line; the Adreno 618 on the same driver,
+  which gets past it, hasn't. Not seen on a device here. `depth24_stencil8` now weighs what each format can do (its features are in
+  the log line), `depth_format` never turns a depth format into a colour one, an image asks only for the usage its format has, and
+  depth copies, blits and clears the format can't do are left out (`copy_texture`, the MSAA depth resolve, the snapshot of a depth target
+  read while drawn into, the HUD's depth clear: `depth_copy_ok`).
+  `MHGU_VK_FMT_MASK=<VkFormat>:<hex features>` takes features away to test those paths on any GPU.
+- A lost device (`VK_ERROR_DEVICE_LOST` at a submit or a wait) logs every submission not known finished: its passes (size, first colour
+  format, depth format, samples, draws), the programs drawn (vertex / fragment code address), drawn clears and copies, then the GPU
+  driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted.
+  `devicelost` in the control file fakes one. Each kind of depth copy or blit is named once in the log where the game first does it
+  (`[vk] depth blit ...`, `depth_copy_note`): on the Adreno 618 of #160 (1.1.87, Verdant Hills area 5) they are a suspect, not a proven cause.
+- A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
+  area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
+  tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy).
 - `Config` gets its defaults by position: `CONFIG_DEFAULT_VALUES` in `config.c`. A new field in `config.h` needs its value there, in its
   place, or every later field moves (two added once turned most touch buttons off).
 - The shadow maps are one 1024x3072 depth atlas (three cascades), the first pass of a hunt's frame: 47 draws, 2.8 ms of a Moto g06's 18.6.
@@ -241,14 +263,28 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   even with `MHGU_FAKE_NET=1`. `services/dlc.c`, the RomFS images and the importer are in place; the menu row shows with `MHGU_DLC=1`.
 - Cheats, mods and DLC are read from the game folder's `cheats/`, `mods/` and `dlc/` too (a file manager reaches it, not `Android/data`).
   `ImportActivity` copies there; imported cheats start off (`cheats/_off.txt` in the app's folder).
-- Every minute the log has a `[mem]` line: memory map entries, resident memory and VMA's blocks. Games on PowerVR closed after 5 to 15
-  minutes out of map entries; there VMA is told Vulkan 1.0 so images share its blocks (`MHGU_VMA_DEDICATED=1`: the old way).
+- Every minute the log has a `[mem]` line: memory map entries, resident memory (own, the files mapped, shared) and VMA's blocks, what
+  is allocated in them and by what (images, of those the BC textures decoded on the CPU, the vertex cache, the staging ring).
+  `MHGU_MEM_LOG=<seconds>` writes it more often. Games on PowerVR closed after 5 to 15 minutes out of map entries; there VMA is told
+  Vulkan 1.0 so images share its blocks (`MHGU_VMA_DEDICATED=1`: the old way).
 - PowerVR's shader compiler crashed building several pipelines at once (#73, #99): there the builds run on one worker and every call
   into the driver's compiler takes one lock, from any thread (`one_compiler_install`, `device.c`: volk's `vkCreateShaderModule`,
   `vkCreateGraphicsPipelines`, `vkCreateComputePipelines` and `vkGetPipelineCacheData` replaced; the `[mem]` line counts them). Not on the
   render thread: 0.1.8 did that, and the start built every saved program and pipeline before its first picture, a black screen on a
   Helio G35 (#157). `MHGU_VK_POWERVR=1` gives any GPU what a PowerVR gets (this, no prewarm, VMA as Vulkan 1.0). The log's `[shader]
   the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s).
+- Phones give memory back (`staging_trim`, `vc_trim`, `exec.c`): a staging chunk the ring hasn't taken for 8 s, and vertex cache ranges no
+  draw used for 20 s. Before, both only grew: the chunks a burst of uploads made (an area's textures, decoded on a Mali) and the
+  vertex data of every area visited, up to the cache's 384 MB, which a 2.8 GB phone couldn't hold (#59, #156). The vertex cache is
+  192 MB at 4 GB of memory or less, 128 at 3 GB. Under 350 MB of the system's memory available (`memory_short`: Android 14 and newer
+  no longer tell a foreground app memory runs low) both wait 2 s instead. `MHGU_LOWMEM_MB=<n>` sets that threshold;
+  `MHGU_VK_STAGING_TRIM=0`, `MHGU_VK_VC_TRIM=0`, `MHGU_VK_VC_MB=<n>`: as before;
+  `MHGU_RAM_MB=<n>` takes the device's memory as that much (the texture and cache choices of a smaller phone).
+  Measured on the Moto g06 (3.7 GB, Mali-G52), `MHGU_QUICKHUNT=101`, three minutes into the quest: VMA's memory 540 MB with 0.1.8's
+  behaviour (the three variables above; a 365 MB vertex cache), 380 MB now, 348 MB with `MHGU_RAM_MB=2800` and the memory short;
+  `dumpsys meminfo` GL mtrack 631, 500 and 453 MB, total PSS 1377, 1273 and 1241 MB; the same frame rate. A staging chunk is a VMA
+  allocation of its own and goes at once, but a vertex cache range shares VMA's 32 MB blocks with images: memory goes back only
+  when a whole block empties (56 MB of ranges dropped gave back one block). A pool of its own for the cache would give more back.
 - A player's driver is checked once the device is made (`gpu_driver_check`): no library from its folder loaded means the system's runs,
   and the choice moves to `failed`. `DriverActivity` renames a library named as the system's (`vulkan.adreno.so`) to `vulkan.player.so`.
 - The Khronos validation layer: put `libVkLayer_khronos_validation.so` (Android binaries of Vulkan-ValidationLayers) in `jniLibs` for a

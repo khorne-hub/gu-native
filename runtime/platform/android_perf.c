@@ -350,9 +350,14 @@ void perf_mem_report(void) {
 static void mem_watch(void) {
     static uint64_t next;
     static long max_maps = -1, first_maps = -1, first_rss = -1;
+    static uint64_t every;  // (MHGU_MEM_LOG=<seconds>, test runs: more often than every minute)
+    if (!every) {
+        const char *e = getenv("MHGU_MEM_LOG");
+        every = (e && atoi(e) > 0 ? (uint64_t)atoi(e) : 60) * 1000000000ull;
+    }
     uint64_t now = plat_now_ns();
     if (now < next) return;
-    next = now + 60000000000ull;
+    next = now + every;
     if (max_maps < 0) {
         FILE *f = fopen("/proc/sys/vm/max_map_count", "re");
         if (f) { if (fscanf(f, "%ld", &max_maps) != 1) max_maps = 0; fclose(f); }
@@ -361,13 +366,18 @@ static void mem_watch(void) {
     long maps = count_lines("/proc/self/maps", NULL);
     long rss = kb_field("/proc/self/status", "VmRSS:"), avail = kb_field("/proc/meminfo", "MemAvailable:");
     if (first_maps < 0) first_maps = maps, first_rss = rss;
+    // (resident: the process's own memory, the files it maps (the game's code: pages the system can drop and read again)
+    // and shared memory)
+    long anon = kb_field("/proc/self/status", "RssAnon:"), file = kb_field("/proc/self/status", "RssFile:"),
+         shmem = kb_field("/proc/self/status", "RssShmem:");
     void vk_mem_summary(char *out, size_t size);  // (nvn/vulkan/device.c)
-    char gpu[96];
+    char gpu[192];
     vk_mem_summary(gpu, sizeof gpu);
     char of[32] = "";  // (apps may not read vm.max_map_count: 65530 is the kernel's default)
     if (max_maps > 0) snprintf(of, sizeof of, " of %ld", max_maps);
-    LOG("[mem] %ld map entries%s (%+ld since the start), resident %ld MB (%+ld), the system's available %ld MB%s\n",
-        maps, of, maps - first_maps, rss / 1024, (rss - first_rss) / 1024, avail / 1024, gpu);
+    LOG("[mem] %ld map entries%s (%+ld since the start), resident %ld MB (%+ld; own %ld, files %ld, shared %ld), the system's "
+        "available %ld MB%s\n",
+        maps, of, maps - first_maps, rss / 1024, (rss - first_rss) / 1024, anon / 1024, file / 1024, shmem / 1024, avail / 1024, gpu);
 }
 
 void perf_hint_frame(void) {

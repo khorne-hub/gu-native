@@ -75,7 +75,7 @@ static TexBackend *stand_image(NvnTexture *of, uint32_t w, uint32_t h, bool stor
     VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .flags = depth ? 0 : VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
                             .imageType = VK_IMAGE_TYPE_2D, .format = src->format, .extent = {w, h, 1}, .mipLevels = 1,
                             .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
-                            .usage = usage, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+                            .usage = vk_usage_supported(src->format, usage), .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
     TexBackend *b = calloc(1, sizeof *b);
     if (vk_create_image(&ci, &b->image, &b->mem) != VK_SUCCESS) {
         LOG("[fsr] could not create a %ux%u image (format %d)\n", w, h, src->format);
@@ -92,7 +92,8 @@ static TexBackend *stand_image(NvnTexture *of, uint32_t w, uint32_t h, bool stor
     VkImageSubresourceRange rg = {b->aspect, 0, 1, 0, 1};
     if (depth) {
         VkClearDepthStencilValue far = {1.0f, 0};
-        vkCmdClearDepthStencilImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &far, 1, &rg);
+        if (ci.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)  // (textures.c depth_format: a GPU may not copy into it)
+            vkCmdClearDepthStencilImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &far, 1, &rg);
     } else {
         VkClearColorValue zero = {{0, 0, 0, 0}};
         vkCmdClearColorImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &rg);
@@ -1720,7 +1721,9 @@ static void hud_start(const char *why) {
                 why_not ? why_not : "");
         last = frame_fsr;
     }
-    if (st_d.fake.backend) {  // the HUD's depth target starts empty (the game clears its own when it needs one)
+    if (st_d.fake.backend && (vk_format_features(((TexBackend *)st_d.fake.backend)->format) & VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) {
+        // the HUD's depth target starts empty (the game clears its own when it needs one; a depth format the GPU can't
+        // copy into can't be cleared this way: stand_image)
         TexBackend *b = st_d.fake.backend;
         VkClearDepthStencilValue far = {1.0f, 0};
         VkImageSubresourceRange rg = {b->aspect, 0, 1, 0, 1};

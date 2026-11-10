@@ -301,6 +301,7 @@ dots, **Add games**.
 | "This libmhgugame.so is from another version" | A new app version needs it again: repeat step 2 with the new download |
 | The game closes by itself | Close other apps and lower the 3D resolution. It's usually a lack of memory |
 | Black picture with only the touch controls, or it closes when you press A | The copy of `romfs` to your device didn't finish. Copy it again and check that it takes up 12.3 GB |
+| The game says **Game files incomplete** | Some files of `romfs` were cut short while copying, and the game can close or draw black where it reads them. Copy `romfs` again and check that it takes up 12.3 GB |
 | It closes after a few minutes of play | Update to 0.1.6 or newer: it uses video memory differently on PowerVR GPUs. If it still happens, share the log: it notes the memory every minute |
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 

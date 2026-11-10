@@ -4,6 +4,7 @@
 #include <float.h>
 #include <math.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,20 +19,55 @@
 // ================================================================== formats
 typedef struct { VkFormat vf; uint8_t expand_rgb, alpha_one; } VkFmt;
 
-// DEPTH24_STENCIL8 as itself where the GPU has it for everything the game does with depth (NVIDIA, Intel); AMD has
-// no D24S8 attachments: D32_SFLOAT_S8_UINT there. MHGU_VK_D24=0: always D32S8.
+// A format's optimal-tiling features. (test) MHGU_VK_FMT_MASK=<VkFormat>:<hex features>[,...] takes those features away,
+// as a driver without them would (e.g. 130:0x8001, D32_SFLOAT_S8_UINT without sampling and transfers in)
+static VkFormatFeatureFlags fmt_features(VkFormat f) {
+    static int nmask = -1;
+    static struct { VkFormat f; VkFormatFeatureFlags off; } mask[8];
+    if (nmask < 0) {
+        nmask = 0;
+        const char *e = getenv("MHGU_VK_FMT_MASK");
+        while (e && *e && nmask < 8) {
+            char *end;
+            long v = strtol(e, &end, 10);
+            if (*end != ':') break;
+            mask[nmask].f = (VkFormat)v, mask[nmask].off = (VkFormatFeatureFlags)strtoul(end + 1, &end, 16);
+            LOG("[vk] (test) format %ld without features %#x\n", v, mask[nmask].off);
+            nmask++;
+            e = *end == ',' ? end + 1 : NULL;
+        }
+    }
+    VkFormatProperties p;
+    vkGetPhysicalDeviceFormatProperties(g_vk.phys, f, &p);
+    for (int i = 0; i < nmask; i++)
+        if (mask[i].f == f) p.optimalTilingFeatures &= ~mask[i].off;
+    return p.optimalTilingFeatures;
+}
+
+// DEPTH24_STENCIL8 as itself where the GPU has it for everything the game does with depth (NVIDIA, Intel): an
+// attachment, sampled (shadows, soft particles), copied and cleared, blits (scaled copies). Otherwise
+// D32_SFLOAT_S8_UINT (AMD has no D24S8 attachments) where that one is an attachment that is sampled, copied and
+// cleared. Neither: the one with more of those. The Adreno 630's driver of Android 10 (1.1.87) has no blits of D24S8
+// and was given D32S8, which it can't sample or copy into: create_image then made the game's depth buffer RGBA8, and
+// the driver lost the device at the first 3D scene, character creation (#22, #40, #61). MHGU_VK_D24=0: D32S8 if it can.
 static VkFormat depth24_stencil8(void) {
     static VkFormat f;
     if (!f) {
+        const VkFormatFeatureFlags att = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, smp = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT,
+                                   xfer = VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT,
+                                   blit = VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
         const char *e = getenv("MHGU_VK_D24");
-        VkFormatProperties p;
-        vkGetPhysicalDeviceFormatProperties(g_vk.phys, VK_FORMAT_D24_UNORM_S8_UINT, &p);
-        VkFormatFeatureFlags want = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
-                                    VK_FORMAT_FEATURE_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT |
-                                    VK_FORMAT_FEATURE_BLIT_SRC_BIT | VK_FORMAT_FEATURE_BLIT_DST_BIT;
-        bool ok = (p.optimalTilingFeatures & want) == want && !(e && !atoi(e));
-        f = ok ? VK_FORMAT_D24_UNORM_S8_UINT : VK_FORMAT_D32_SFLOAT_S8_UINT;
-        LOG("[vk] depth24 stencil8: %s\n", ok ? "D24_UNORM_S8_UINT" : "D32_SFLOAT_S8_UINT");
+        VkFormatFeatureFlags d24 = fmt_features(VK_FORMAT_D24_UNORM_S8_UINT), d32 = fmt_features(VK_FORMAT_D32_SFLOAT_S8_UINT);
+        const VkFormatFeatureFlags core = att | smp | xfer;
+        // (neither has everything: an attachment first, then sampled, then copies, then blits; equal: D32S8, as before)
+#define DS_SCORE(h) (!((h) & att) ? 0 : 1 + (((h) & smp) ? 8 : 0) + (((h) & xfer) == xfer ? 4 : 0) + (((h) & blit) == blit ? 2 : 0))
+        bool use24 = (d24 & (core | blit)) == (core | blit) && !(e && !atoi(e) && (d32 & core) == core) ? true
+                   : (d32 & core) == core                                                                   ? false
+                                                                                                            : DS_SCORE(d24) > DS_SCORE(d32);
+#undef DS_SCORE
+        f = use24 ? VK_FORMAT_D24_UNORM_S8_UINT : VK_FORMAT_D32_SFLOAT_S8_UINT;
+        LOG("[vk] depth24 stencil8: %s (features: D24S8 %#x, D32S8 %#x)\n", use24 ? "D24_UNORM_S8_UINT" : "D32_SFLOAT_S8_UINT",
+            d24, d32);
     }
     return f;
 }
@@ -162,9 +198,49 @@ static bool format_supports(VkFormat f, VkFormatFeatureFlags want) {
     static int no_bc = -1;  // (tests: MHGU_VK_NO_BC=1, BC textures decoded on the CPU as on a GPU without them: #171)
     if (no_bc < 0) no_bc = getenv("MHGU_VK_NO_BC") != NULL;
     if (no_bc && f >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && f <= VK_FORMAT_BC7_SRGB_BLOCK) return false;
-    VkFormatProperties p;
-    vkGetPhysicalDeviceFormatProperties(g_vk.phys, f, &p);
-    return (p.optimalTilingFeatures & want) == want;
+    return (fmt_features(f) & want) == want;
+}
+VkFormatFeatureFlags vk_format_features(VkFormat f) { return fmt_features(f); }
+
+// usage without what the format can't do with optimal tiling (an image asking for more is invalid: a driver may make it
+// anyway and fault when it is used)
+VkImageUsageFlags vk_usage_supported(VkFormat f, VkImageUsageFlags usage) {
+    static const struct { VkImageUsageFlags u; VkFormatFeatureFlags f; } need[] = {
+        {VK_IMAGE_USAGE_SAMPLED_BIT, VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT},
+        {VK_IMAGE_USAGE_STORAGE_BIT, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT},
+        {VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_FORMAT_FEATURE_TRANSFER_SRC_BIT},
+        {VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_FORMAT_FEATURE_TRANSFER_DST_BIT},
+        {VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT},
+        {VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT}};
+    VkFormatFeatureFlags have = fmt_features(f);
+    for (size_t i = 0; i < sizeof need / sizeof need[0]; i++)
+        if ((usage & need[i].u) && !(have & need[i].f)) usage &= ~need[i].u;
+    return usage;
+}
+
+// A depth (or stencil) format for NVN format nf, mapped to vf: vf when the GPU has it as an attachment that is sampled,
+// else another of the same kind that is (one with stencil for one with stencil), else one that is an attachment at all.
+// Never a colour format: a colour image as a depth attachment is invalid, and an Adreno lost the device on it (#40)
+static VkFormat depth_format(uint32_t nf, VkFormat vf) {
+    const VkFormatFeatureFlags att = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT, smp = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+    if ((fmt_features(vf) & (att | smp)) == (att | smp)) return vf;
+    bool stencil = renderer_format_has_stencil(nf);
+    VkFormat cand[6];
+    int n = 0;
+    cand[n++] = vf;
+    if (stencil) cand[n++] = depth24_stencil8(), cand[n++] = VK_FORMAT_D32_SFLOAT_S8_UINT, cand[n++] = VK_FORMAT_D24_UNORM_S8_UINT;
+    else cand[n++] = VK_FORMAT_D32_SFLOAT, cand[n++] = VK_FORMAT_X8_D24_UNORM_PACK32, cand[n++] = VK_FORMAT_D16_UNORM,
+         cand[n++] = depth24_stencil8();
+    VkFormat pick = VK_FORMAT_UNDEFINED;
+    for (int pass = 0; pass < 2 && pick == VK_FORMAT_UNDEFINED; pass++)
+        for (int i = 0; i < n && pick == VK_FORMAT_UNDEFINED; i++)
+            if ((fmt_features(cand[i]) & (pass ? att : att | smp)) == (pass ? att : att | smp)) pick = cand[i];
+    if (pick == VK_FORMAT_UNDEFINED) pick = vf;
+    static int nlog;
+    if (nlog++ < 8)
+        LOG("[vk] depth format %d (nvn %#x) not usable as a sampled attachment (features %#x): %d instead (%#x)\n", vf, nf,
+            fmt_features(vf), pick, fmt_features(pick));
+    return pick;
 }
 
 // ---- wide render targets
@@ -199,7 +275,9 @@ void vk_image_init_layout(VkCommandBuffer cb, VkImage img, VkImageAspectFlags as
 }
 
 // Objects destroyed by the guest (or replaced) are kept until the submissions that may use them have completed.
-typedef struct { VkImage img; VmaAllocation mem; VkImageView view; VkFramebuffer fb; VkBuffer buf; uint64_t seq; } Dead;
+typedef struct { VkImage img; VmaAllocation mem; VkImageView view; VkFramebuffer fb; VkBuffer buf; uint64_t seq; bool bcn; } Dead;
+static _Atomic int64_t bcn_bytes;  // (the [mem] line: the images of textures decoded on the CPU, vk_bcn_bytes)
+int64_t vk_bcn_bytes(void) { return atomic_load_explicit(&bcn_bytes, memory_order_relaxed); }
 static Dead *dead;
 static int ndead, cap_dead;
 static void views_forget(TexBackend *b);
@@ -214,7 +292,15 @@ void vk_collect_dead(void) {
         if (dead[i].fb) vkDestroyFramebuffer(g_vk.dev, dead[i].fb, NULL);
         else if (dead[i].buf) vmaDestroyBuffer(g_vk.vma, dead[i].buf, dead[i].mem);
         else if (dead[i].view) vkDestroyImageView(g_vk.dev, dead[i].view, NULL);
-        else vmaDestroyImage(g_vk.vma, dead[i].img, dead[i].mem);
+        else {
+            if (dead[i].mem) {
+                VmaAllocationInfo info;
+                vmaGetAllocationInfo(g_vk.vma, dead[i].mem, &info);
+                vk_image_bytes_add(-(int64_t)info.size);
+                if (dead[i].bcn) atomic_fetch_sub_explicit(&bcn_bytes, (int64_t)info.size, memory_order_relaxed);
+            }
+            vmaDestroyImage(g_vk.vma, dead[i].img, dead[i].mem);
+        }
     }
     if (HITCH_ON && k < ndead) hitch_add(HC_DEAD, plat_now_ns() - t0, (uint64_t)(ndead - k));
     ndead = k;
@@ -231,17 +317,31 @@ void vk_defer_view(VkImageView v) { vk_framebuffers_forget_view(v); defer((Dead)
 void vk_defer_framebuffer(VkFramebuffer f) { defer((Dead){.fb = f}); }
 void vk_defer_buffer(VkBuffer b, VmaAllocation mem) { defer((Dead){.buf = b, .mem = mem}); }
 
+// The device's memory in MB. (test) MHGU_RAM_MB=<n>: as if it had that much (a 2.8 GB phone's choices on a bigger one)
+uint64_t vk_ram_mb(void) {
+    static uint64_t mb;
+    if (!mb) {
+#ifdef _WIN32
+        mb = (uint64_t)SDL_GetSystemRAM();
+#else
+        mb = ((uint64_t)sysconf(_SC_PHYS_PAGES) * (uint64_t)sysconf(_SC_PAGESIZE)) >> 20;
+#endif
+        const char *e = getenv("MHGU_RAM_MB");
+        if (e && atoi(e) > 0) {
+            mb = (uint64_t)atoi(e);
+            LOG("[vk] (test) memory taken as %llu MB\n", (unsigned long long)mb);
+        }
+    }
+    return mb;
+}
+
 // A phone with little memory and no BC support: every decoded texture takes four to eight times what it does compressed.
 // There, 3D textures (those with mipmaps: menus and text have none, and stay sharp) lose their largest level, a quarter
 // of the memory for a picture no sharper on such a screen. (Levels line up: the view's first level is the next one.)
 static bool low_memory_textures(void) {
     static int on = -1;
     if (on < 0) {
-#ifdef _WIN32
-        uint64_t ram = (uint64_t)SDL_GetSystemRAM() << 20;
-#else
-        uint64_t ram = (uint64_t)sysconf(_SC_PHYS_PAGES) * (uint64_t)sysconf(_SC_PAGESIZE);
-#endif
+        uint64_t ram = vk_ram_mb() << 20;
         on = ram < 5ull << 30;
         if (on) LOG("[vk] %llu MB of memory: 3D textures without their largest level\n", (unsigned long long)(ram >> 20));
     }
@@ -255,7 +355,7 @@ static bool very_low_memory_textures(void) {
 #ifdef _WIN32
         on = 0;
 #else
-        on = (uint64_t)sysconf(_SC_PHYS_PAGES) * (uint64_t)sysconf(_SC_PAGESIZE) < 3584ull << 20;
+        on = vk_ram_mb() < 3584;
         if (on) LOG("[vk] 3.5 GB or less: big 3D textures without their two largest levels\n");
 #endif
     }
@@ -290,7 +390,9 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     b->astc_bw = b->astc_bh = 0;
     b->bcn = BCN_NONE;
     b->mip_skip = 0;
-    if (!format_supports(vf, need)) {
+    bool depthfmt = renderer_format_is_depth(t->format);
+    if (depthfmt) vf = depth_format(t->format, vf);  // (a depth format stays one: below, only what it can do is asked)
+    else if (!format_supports(vf, need)) {
         bool astc = vf >= VK_FORMAT_ASTC_4x4_UNORM_BLOCK && vf <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK;
         const FormatInfo *fi = t->layout.fmt;
         int bcn = vf == VK_FORMAT_BC1_RGBA_UNORM_BLOCK || vf == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ? BCN_BC1
@@ -339,10 +441,14 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         }
     }
     if (b->wide) vf = VK_FORMAT_R16G16B16A16_UNORM;
-    bool depthfmt = renderer_format_is_depth(t->format);
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    if (depthfmt) usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    else if (format_supports(vf, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (depthfmt) {
+        usage = vk_usage_supported(vf, usage | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+        static int nlog;
+        if (usage != (VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+                      VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) && nlog++ < 4)
+            LOG("[vk] depth format %d: usage %#x only (what the GPU has for it)\n", vf, usage);
+    } else if (format_supports(vf, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     VkImageCreateFlags flags = 0;
     if (!depthfmt) flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT;  // format views (NVN texture views, raw sRGB views)
     if (type == VK_IMAGE_TYPE_2D && layers >= 6 && tw == th && samples == 1) flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
@@ -362,6 +468,11 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         depthfmt = false;
     }
     b->format = vf;
+    if (b->bcn != BCN_NONE) {
+        VmaAllocationInfo info;
+        vmaGetAllocationInfo(g_vk.vma, b->mem, &info);
+        atomic_fetch_add_explicit(&bcn_bytes, (int64_t)info.size, memory_order_relaxed);
+    }
     b->width = tw; b->height = th; b->depth = depth; b->layers = layers; b->levels = levels; b->samples = samples;
     b->aspect = depthfmt ? aspect_of(t->format) : VK_IMAGE_ASPECT_COLOR_BIT;
     b->base_type = type == VK_IMAGE_TYPE_1D ? (layers > 1 ? VK_IMAGE_VIEW_TYPE_1D_ARRAY : VK_IMAGE_VIEW_TYPE_1D)
@@ -375,7 +486,8 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     VkImageSubresourceRange rg = {b->aspect, 0, VK_REMAINING_MIP_LEVELS, 0, VK_REMAINING_ARRAY_LAYERS};
     if (depthfmt) {
         VkClearDepthStencilValue zero = {0.0f, 0};
-        vkCmdClearDepthStencilImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &rg);
+        if (ci.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)  // (a format the GPU can't copy into can't be cleared this way either)
+            vkCmdClearDepthStencilImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &rg);
     } else if (!(vf >= VK_FORMAT_BC1_RGB_UNORM_BLOCK && vf <= VK_FORMAT_ASTC_12x12_SRGB_BLOCK)) {
         VkClearColorValue zero = {{0, 0, 0, 0}};
         vkCmdClearColorImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &rg);
@@ -390,7 +502,7 @@ static void destroy_image(TexBackend *b) {
     if (b->ms) { destroy_image(b->ms); free(b->ms); b->ms = NULL; }
     b->ms_valid = b->ms_dirty = false;
     views_forget(b);
-    if (b->image || b->mem) defer((Dead){.img = b->image, .mem = b->mem});
+    if (b->image || b->mem) defer((Dead){.img = b->image, .mem = b->mem, .bcn = b->bcn != BCN_NONE});
     b->image = VK_NULL_HANDLE;
     b->mem = VK_NULL_HANDLE;
 }
@@ -1005,7 +1117,7 @@ void vk_rt_widen(NvnTexture *t, bool on) {
     }
     vkCmdBlitImage(cb, old.image, VK_IMAGE_LAYOUT_GENERAL, b->image, VK_IMAGE_LAYOUT_GENERAL, n, r, VK_FILTER_NEAREST);
     vk_full_barrier(cb);
-    defer((Dead){.img = old.image, .mem = old.mem});
+    defer((Dead){.img = old.image, .mem = old.mem, .bcn = old.bcn != BCN_NONE});
     static int nlog;
     if (nlog++ < 40) LOG("[vk] render target %ux%u (%u levels) %s\n", b->width, b->height, b->levels, b->wide ? "wide" : "RGBA8");
 }
