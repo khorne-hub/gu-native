@@ -5424,9 +5424,12 @@ static void draw(CmdRec *r, bool indexed) {
     }
     if (g_dump_active && !st.rt.ncolor && getenv("MHGU_DUMP_VERBOSE")) {  // (debug) depth-only passes: every draw
         Range v0 = st.vbuf[k.attr_bind[0] < 16 ? k.attr_bind[0] : 0];
-        LOG("[dump]   draw vs %llx vp %.0f,%.0f %.0fx%.0f sc %d,%d %dx%d count %u inst %u vb %llx clamp %d\n",
+        // (with its polygon offset - factor, units - and how its alpha cuts it: alpha to coverage, the alpha test's function)
+        LOG("[dump]   draw vs %llx vp %.0f,%.0f %.0fx%.0f sc %d,%d %dx%d count %u inst %u vb %llx clamp %d bias %g %g a2c %d"
+            " atest %d\n",
             (unsigned long long)st.program->stages[0].code_addr, vp[0], vp[1], vp[2], vp[3], st.scissor[0][0], st.scissor[0][1],
-            st.scissor[0][2], st.scissor[0][3], count, inst, (unsigned long long)v0.addr, k.depth_clamp);
+            st.scissor[0][2], st.scissor[0][3], count, inst, (unsigned long long)v0.addr, k.depth_clamp,
+            k.depth_bias ? st.poly_offset[0] : 0.0f, k.depth_bias ? st.poly_offset[1] : 0.0f, k.a2c, fkey.alpha_func);
     }
     {  // (debug) MHGU_CB_WATCH=<fragment code address>: that shader's first fragment uniform buffer, logged every 30 draws
         static uint64_t watch = ~0ull, nwatch;
