@@ -181,8 +181,8 @@ VkShaderModule vk_builtin_shader(const char *name);  // internal shaders (clear,
 VkResult vk_create_image(const VkImageCreateInfo *ci, VkImage *img, VmaAllocation *mem);
 VkResult vk_create_buffer(const VkBufferCreateInfo *bi, VkBuffer *buf, VmaAllocation *mem);
 void vk_image_bytes_add(int64_t n);                              // (device.c: the [mem] line's images)
-int64_t vk_bcn_bytes(void);
-uint64_t vk_ram_mb(void);                                        // (textures.c: the device's memory, MHGU_RAM_MB to test)                                      // (textures.c: of those, textures decoded on the CPU)
+int64_t vk_bcn_bytes(void);                                      // (textures.c: of those, textures decoded on the CPU)
+uint64_t vk_ram_mb(void);                                        // (textures.c: the device's memory, MHGU_RAM_MB to test)
 VkFormatFeatureFlags vk_format_features(VkFormat f);             // (textures.c: optimal tiling, MHGU_VK_FMT_MASK applied)
 VkImageUsageFlags vk_usage_supported(VkFormat f, VkImageUsageFlags usage);  // (textures.c: usage the format has)
 void vk_exec_mem(uint64_t *staging, int *chunks, uint64_t *vc);  // (exec.c: the staging ring's and vertex cache's bytes)

@@ -108,7 +108,7 @@ typedef struct { uint16_t w, h; int16_t color, depth; uint8_t ncolor, samples; u
 typedef struct {
     uint64_t seq;
     int npass, nprog;
-    uint32_t passes, draws, drawn_clears, copies;  // (all of them, also past the arrays)
+    uint32_t passes, draws, drawn_clears, copies, depth_copies;  // (all of them, also past the arrays)
     LostPass pass[LOST_PASSES];
     uint32_t prog[LOST_PROGS][2];  // (vertex and fragment code addresses)
 } LostRec;
@@ -379,8 +379,8 @@ static void lost_report(const char *where) {
         for (int i = 0; i < SUBS; i++)
             if (lost_rec[i].seq == q) r = &lost_rec[i];
         if (!r) continue;
-        LOG("[vk]  submission %llu: %u passes, %u draws, %u clears drawn, %u copies\n", (unsigned long long)q, r->passes, r->draws,
-            r->drawn_clears, r->copies);
+        LOG("[vk]  submission %llu: %u passes, %u draws, %u clears drawn, %u copies (%u of depth)\n", (unsigned long long)q, r->passes,
+            r->draws, r->drawn_clears, r->copies, r->depth_copies);
         for (int i = 0; i < r->npass; i++) {
             const LostPass *p = &r->pass[i];
             LOG("[vk]   pass %d: %ux%u, colour %d x%u, depth %d, %ux, %u draws\n", i, p->w, p->h, p->color, p->ncolor, p->depth,
@@ -5461,6 +5461,18 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
             if (nlog++ < 4)
                 LOG("[vk] depth %s %d -> %d left out: the GPU can't do it with that format\n", same ? "copy" : "blit", s->format, d->format);
             return;
+        }
+        if (ds) {  // (each kind of depth copy once in the log, wherever the game first does it: few drivers are tested with them)
+            static uint32_t seen[8];
+            static int nseen;
+            uint32_t key = ((uint32_t)sw << 20) ^ ((uint32_t)dw << 8) ^ (uint32_t)s->format ^ (same ? 0x80000000u : 0);
+            int i = 0;
+            while (i < nseen && seen[i] != key) i++;
+            if (i == nseen && nseen < 8) {
+                seen[nseen++] = key;
+                LOG("[vk] depth %s %dx%d -> %dx%d (format %d)\n", same ? "copy" : "blit", sw, sh, dw, dh, s->format);
+            }
+            lost_rec[cur_sub].depth_copies++;
         }
     }
     if (sw == dw && sh == dh && s->format == d->format) {
