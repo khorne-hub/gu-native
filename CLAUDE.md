@@ -388,8 +388,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   tracking: a change with no write reported is logged, with counts (`[vk] vertex cache check`, `[tex] check`; a texture's is told
   apart from a write reported that the sampling hash `fnv_sample` didn't see). `MHGU_VK_STATS`' `[vk] 2s copied` line splits the
   copies and the hashing by cause. Off until measured: `MHGU_PERF_VCNET=1` (the vertex cache's every 30 s, 512 KB a frame),
-  `MHGU_PERF_TEXNET=1` (a texture's 30 s after its last whole hash on Android, 4 s on a desktop, 32 MB a second), and
-  `MHGU_PERF_TEXSAMPLE=1` (the sampling hash only where it is compared: the same decisions).
+  `MHGU_PERF_TEXNET=1` (a texture's 30 s after its last whole hash on Android, 4 s on a desktop, 32 MB a second),
+  `MHGU_PERF_TEXSAMPLE=1` (the sampling hash only where it is compared: the same decisions) and `MHGU_PERF_TEXSTREAM=1` (a
+  texture changed at each of its last 4 checks is copied at once when written, hashed as it is copied: a hunt has four 1 MB
+  RGBA32F 1024x64 textures, one written a frame, hashed and then copied). The checks found no write missed: on the RG406V
+  (Mali-G57) standing at the camps of quests 101, 302 and 630 (18 min, three town and quest loads) 31446 whole texture hashes
+  with no write reported and 11095 vertex cache slices, none changed; on the PC 14422 and 8000. Standing at the quest-101 camp
+  (ABBA, 200 s runs), the four on: the RG406V at its 60 FPS, the translating thread's exec 668 -> 622 ms per 2 s, `uploads` 64
+  -> 12, copied 218 -> 161 MB; the RX 6800 XT PC at 60 FPS, the vertex cache's net on in both, 298 -> 269, 28 -> 11, 170 -> 94.
 - A Galaxy (Samsung) refuses every simpleperf event for apps (`cpu-clock`, `task-clock`, `cpu-cycles`): profile the CPU on another
   phone. Its frame is CPU-bound: the GPU span in `gpuprof` includes the gaps where the GPU waits for the render thread.
 - `[Performance] LowEnd` is Off, On or Toaster (2). On a phone (a desktop's: Building for Windows) everything that tests `low_end`
