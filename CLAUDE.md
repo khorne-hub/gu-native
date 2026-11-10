@@ -243,7 +243,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `MHGU_LIMITER_LOG=1` its sleeps and turns, on or off). `MHGU_PERF_MEMTHREAD` the minute's `[mem]` line on a thread of its own, off the
   update thread (with `MHGU_ADPF_LOG=1` each line says what it cost). `MHGU_PERF_THREADNAMES` names the runtime's threads (`g44-10a` the
   game's by priority and handle, `game+render`, `submit`, `vsync`, `audren`, `upload-N`, `shader-N`, `fence`, `ui`...): otherwise all are
-  `SDLThread`, and `scripts/pacing/threads.py` can't tell them apart. `MHGU_PERF_NODISCORD` no Discord thread on Android.
+  `SDLThread`, and the MH4U port's pacing probe (`threads.py`) can't tell them apart. `MHGU_PERF_NODISCORD` no Discord thread on Android.
 - `MHGU_FS_NEW=1` logs each fragment program the first time it draws; `MHGU_FS_WATCH=<hash>` saves the frames where one draws. A hit draws
   `cc207b43683737c8`, a 17-sample radial blur. The device's `shots` folder keeps old files: go by the names in the log, not by what's there.
 - Started with the phone locked or upright, the display says portrait: the 3D picture came out 720x576 with black at the sides. `config.c` now
