@@ -683,7 +683,14 @@ std::atomic<uint64_t> g_menu_ns;  // when one was last drawn
 // least 250 ms, at most 1.5 s: a slow frame now and then must not take them away under a finger)
 std::atomic<uint64_t> g_frame_ns{16 * 1000000ull};  // the time between presented frames, smoothed
 uint64_t stale_limit(void) { return std::clamp<uint64_t>(3 * g_frame_ns.load(), 250 * 1000000ull, 1500 * 1000000ull); }
-bool stale(const Zones &z) { return SDL_GetTicksNS() - z.ns > stale_limit(); }
+// (while the game is held - the settings menu, the layout editor, playing alone: overlay.cpp - its last picture stays on
+// the screen, and what it drew counts as just drawn: the editor's frames stay live)
+std::atomic<uint64_t> g_held_ns;
+uint64_t hud_now(void) {
+    uint64_t held = g_held_ns.load();
+    return held ? held : SDL_GetTicksNS();
+}
+bool stale(const Zones &z) { return hud_now() - z.ns > stale_limit(); }
 // Menu detection: a menu of the game's is open while one of its windows is drawn (just now: within stale_limit, or with
 // no frame presented since - a long update in a menu, a model loading for 300 ms on a slow phone, keeps it open), and
 // while the hunter is not being played (the title, the main menu, the character creation, a cutscene: no hunt camera and
@@ -878,7 +885,7 @@ Rect part_frame(int k, int prof, float w, float h, bool *live, const float *at =
         r[0] = e[0] + (sn.r[0] - sn.e[0]) * kx, r[2] = e[0] + (sn.r[2] - sn.e[0]) * kx;
         r[1] = e[1] + (sn.r[1] - sn.e[1]) * ky, r[3] = e[1] + (sn.r[3] - sn.e[1]) * ky;
     }
-    *live = same && SDL_GetTicksNS() - sn.ns <= stale_limit();
+    *live = same && hud_now() - sn.ns <= stale_limit();
     float s = hud_squeeze();
     Pic p = picture(w, h);
     return {p.x0 + (r[0] - HUD_SLOP * s) * p.w / 1280.0f, p.y0 + (r[1] - HUD_SLOP) * p.h / 720.0f,
@@ -2425,6 +2432,8 @@ extern "C" void touch_edit_begin(void) {
     std::lock_guard<std::mutex> l(g_lock);
     g_s.edit_request = true;
 }
+
+extern "C" void touch_game_held(bool on) { g_held_ns = on ? SDL_GetTicksNS() : 0; }
 
 extern "C" bool touch_editor_open(void) {
     std::lock_guard<std::mutex> l(g_lock);

@@ -651,10 +651,10 @@ extern "C" bool ldn_net_up(void);
 extern "C" void vi_menu_hold(bool on);
 extern "C" bool vk_present_again(void);
 extern "C" uint64_t vk_last_present_ns(void);
-// The settings menu is open and the player plays alone ([Application] PauseInMenu; never with others: a Local Play or
-// hub network up)
+// The settings menu, or the touch controls' layout editor opened from it, is open and the player plays alone
+// ([Application] PauseInMenu; never with others: a Local Play or hub network up)
 static bool menu_holds_game(void) {
-    return g_ready && g_settings_open && !g_modal_open && config_live_pause_menu() && !ldn_net_up();
+    return g_ready && ((g_settings_open && !g_modal_open) || touch_editor_open()) && config_live_pause_menu() && !ldn_net_up();
 }
 #endif
 
@@ -668,6 +668,7 @@ void overlay_frame(void *cpu) {
     // goes on being drawn, over the last picture presented again once the game's own presents have stopped)
     if (menu_holds_game()) {
         vi_menu_hold(true);
+        touch_game_held(true);
         uint64_t next = plat_now_ns();
         while (menu_holds_game()) {
             next += 16666667;
@@ -678,6 +679,7 @@ void overlay_frame(void *cpu) {
             frame_once(cpu);
             if (plat_now_ns() - vk_last_present_ns() > 50000000ull) vk_present_again();
         }
+        touch_game_held(false);
         vi_menu_hold(false);
     }
 #endif

@@ -31,6 +31,8 @@ void touch_edit_begin(void);  // the layout editor (settings menu: Controls), on
 void touch_edit_cancel(void);  // (the settings menu's unsaved-changes dialog cancelled: it stays open)
 // an editor is open, the touch layout's or a desktop's HUD editor: a controller's B cancels it (host_input.c)
 bool touch_editor_open(void);
+// the game is held (the settings menu or the layout editor open, playing alone: overlay.cpp): the HUD it drew last stays
+void touch_game_held(bool on);
 void touch_editor_cancel(void);
 #ifndef __ANDROID__
 // The HUD editor (a desktop's, worked with the mouse): every part of the HUD (runtime/hud_parts.h) moved, sized and
