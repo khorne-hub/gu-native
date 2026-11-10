@@ -53,6 +53,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <mutex>
+#include <string>
 
 #include "imgui.h"
 
@@ -330,6 +331,18 @@ struct Layout {
     int style;                               // STYLE_*
     HudVals hud[HUD_PROFILES][HP_COUNT];     // (HUD_TOUCH: hud_<key> in the file; HUD_PLAIN: pc_hud_<key>)
 };
+// The layout editor's panel: its middle where the player dragged it (fractions of the screen's width from the left and
+// of its height from the top; below 0 its usual place, a little above the middle) and its size (EPANEL_MIN to 100 %).
+// Kept in the file however the editor closes, Save or Cancel (editor_panel in touch_layout.txt: the MH4U port's the same)
+struct EditPanel {
+    float x = -1.0f, y = -1.0f, k = 1.0f;
+    bool operator!=(const EditPanel &o) const { return x != o.x || y != o.y || k != o.k; }
+};
+const float EPANEL_MIN = .6f;
+// (its line in the file, save_layout's and save_panel's, under this note)
+const char *const EPANEL_NOTE = "# the layout editor's panel: its middle (the screen's width from the left, its height from "
+                                "the top; -1 -1 its usual place), size\n";
+void epanel_line(char out[80], const EditPanel &ep) { snprintf(out, 80, "editor_panel %.4f %.4f %.2f\n", ep.x, ep.y, ep.k); }
 const char *const HUD_NAME[HP_COUNT] = {"Item bar", "Hunter Arts", "Target camera", "Clock", "Health and stamina",
                                         "Sharpness and gauges", "Party", "Map"};
 HudVals hud_default(void) { return {0.0f, 0.0f, 1.0f, 1.0f, false}; }
@@ -352,8 +365,8 @@ void publish_hud(const Layout &l) {  // (to the render thread)
 }
 const char *LAYOUT_FILE = "touch_layout.txt";  // (the working folder: the app's, beside mhgurecomp.ini)
 
-bool load_layout(Layout *l) {
-    *l = defaults();
+bool load_layout(Layout *l, EditPanel *ep) {
+    *l = defaults(), *ep = EditPanel{};
     FILE *f = fopen(LAYOUT_FILE, "r");
     if (!f) return false;
     char line[160], key[32];
@@ -378,12 +391,15 @@ bool load_layout(Layout *l) {
                 v.hidden = n >= 6 && hidden == 1 && hud_hide_ok(p, k);
             }
         if (!strcmp(key, "attack_style") && x >= 0 && x < STYLE_COUNT) l->style = (int)x;
+        bool usual = x < 0 && y < 0, placed = x >= 0 && x <= 1 && y >= 0 && y <= 1;
+        if (!strcmp(key, "editor_panel") && (usual || placed) && s >= EPANEL_MIN && s <= 1.0f)
+            ep->x = usual ? -1.0f : x, ep->y = usual ? -1.0f : y, ep->k = s;
     }
     fclose(f);
     return true;
 }
 
-void save_layout(const Layout &l) {
+void save_layout(const Layout &l, const EditPanel &ep) {
     FILE *f = fopen(LAYOUT_FILE, "w");
     if (!f) { rt_logf("[touch] could not save %s\n", LAYOUT_FILE); return; }
     fprintf(f, "# touch controls: name, centre (screen heights from its edge and the bottom), size\n");
@@ -400,8 +416,41 @@ void save_layout(const Layout &l) {
         const HudVals &v = l.hud[HUD_PLAIN][k];
         fprintf(f, "pc_hud_%s %.1f %.1f %.2f %.2f %d\n", HUD_KEY[k], v.dx, v.dy, v.k, v.alpha, (int)v.hidden);
     }
+    char line[80];
+    epanel_line(line, ep);
+    fprintf(f, "%s%s", EPANEL_NOTE, line);
     fclose(f);
     rt_logf("[touch] layout saved (%s)\n", LAYOUT_FILE);
+}
+// The panel's line alone into the file, the rest of it as it is: Cancel keeps where the panel was put but not the
+// controls' or the HUD's places, so that a player who never saved a layout still has none (a file with the panel only:
+// the loader takes the defaults for the rest, a later version's new ones too)
+void save_panel(const EditPanel &ep) {
+    std::string was, now;
+    if (FILE *f = fopen(LAYOUT_FILE, "r")) {
+        char buf[512];
+        for (size_t n; (n = fread(buf, 1, sizeof buf, f)) > 0;) was.append(buf, n);
+        fclose(f);
+    }
+    char line[80], key[32];
+    epanel_line(line, ep);
+    bool put = false;
+    for (size_t at = 0, end; at < was.size(); at = end) {
+        end = was.find('\n', at);
+        end = end == std::string::npos ? was.size() : end + 1;
+        std::string l = was.substr(at, end - at);
+        if (sscanf(l.c_str(), "%31s", key) != 1 || strcmp(key, "editor_panel")) now += l;
+        else if (!put) now += line, put = true;  // (in its place; a second one dropped)
+    }
+    if (!put) {  // (none yet: at the end, under its note)
+        if (!now.empty() && now.back() != '\n') now += '\n';
+        now += EPANEL_NOTE, now += line;
+    }
+    FILE *f = fopen(LAYOUT_FILE, "w");
+    if (!f) { rt_logf("[touch] could not save %s\n", LAYOUT_FILE); return; }
+    fputs(now.c_str(), f);
+    fclose(f);
+    rt_logf("[touch] layout editor: its panel saved alone (%s%s)\n", LAYOUT_FILE, was.empty() ? ", the rest the defaults" : "");
 }
 
 struct Geo {
@@ -904,6 +953,10 @@ struct State {
     int sel;
     bool pinch;
     float pinch_d0, pinch_s0;
+    EditPanel epanel, epanel_open;  // the editor's panel: where it is and how big, and as the editor opened
+    int rep_btn;                    // ...its - or + that sized it last (-1 none), when, and where it was then
+    uint64_t rep_ns;
+    Rect rep_at;
 #ifndef __ANDROID__
     // The HUD editor: open, asked for; the panel's button held down, the part being dragged (HP_*; -1 none); the
     // pointer (window pixels); the drag's start: the pointer, the part's offset and its frame; the finger that is the
@@ -961,7 +1014,7 @@ void run_clear_of_band(Layout &l) {
 void ensure_loaded(State &s) {
     if (s.loaded) return;
     s.loaded = true, s.sel = -1;
-    bool had = load_layout(&s.layout);
+    bool had = load_layout(&s.layout, &s.epanel);
     run_clear_of_band(s.layout);
     s.saved = s.layout;
     publish_hud(s.layout);
@@ -1185,12 +1238,24 @@ void to_menu(const SDL_Event *e) {
 // ---- the layout editor: the touch controls and the game's HUD. A panel in two rows: what is picked (smaller, bigger,
 // hide or show a part, back to its default) and the rest (the melee or ranged layout, the attacks' style, which HUD it
 // shows - the touch controls' or, while MoveHUD is On, the one without them -, defaults, cancel, save). Drag a control or
-// a part to move it, pinch (a second finger anywhere) or the panel's - / + to size it
+// a part to move it, pinch (a second finger anywhere) or the panel's - / + to size it. The panel itself goes where its
+// title strip is dragged (a grip at each end of it), and is as small as EPANEL_MIN: picked there, a pinch or its - / +
+// size it, so that it leaves free what is being placed
 enum { E_SMALLER, E_BIGGER, E_HIDE, E_RESET, E_SET, E_STYLE, E_PROF, E_DEFAULTS, E_CANCEL, E_SAVE, E_COUNT };
-void editor_panel(float w, float h, Rect *panel, Rect btn[E_COUNT]) {
-    float pw = std::min(w * .94f, 1.9f * h), ph = .28f * h, x0 = (w - pw) * .5f, y0 = (h - ph) * .4f;
+const int SEL_PANEL = -2;  // (s.sel / a finger's ctl: the editor's panel, picked by its title strip)
+const uint64_t PANEL_REPEAT = 700 * MS;  // (taps on its - or + this close together: one button's, State::rep_btn)
+bool grabbed(int ctl) { return ctl >= 0 || ctl == SEL_PANEL; }  // (a finger's ctl: something it moves)
+void panel_dims(float w, float h, float k, float *pw, float *ph) { *pw = std::min(w * .94f, 1.9f * h) * k, *ph = .28f * h * k; }
+// The panel, its buttons and its title strip (grab: where a finger picks and drags it), on the screen whole; its measure
+// (the screen's height at 100 %, smaller with it)
+float editor_panel(const EditPanel &ep, float w, float h, Rect *panel, Rect btn[E_COUNT], Rect *grab = nullptr) {
+    float k = std::clamp(ep.k, EPANEL_MIN, 1.0f), u = k * h, pw, ph;
+    panel_dims(w, h, k, &pw, &ph);
+    float x0 = ep.x < 0 ? (w - pw) * .5f : ep.x * w - pw * .5f, y0 = ep.y < 0 ? (h - ph) * .4f : ep.y * h - ph * .5f;
+    x0 = std::clamp(x0, 0.0f, std::max(0.0f, w - pw)), y0 = std::clamp(y0, 0.0f, std::max(0.0f, h - ph));
     *panel = {x0, y0, x0 + pw, y0 + ph, true};
-    float gap = .012f * h, bh = .082f * h, r1 = y0 + .1f * h, r2 = r1 + bh + gap, bw = (pw - gap * 5) / 4;
+    float gap = .012f * u, bh = .082f * u, r1 = y0 + .1f * u, r2 = r1 + bh + gap, bw = (pw - gap * 5) / 4;
+    if (grab) *grab = {x0, y0, x0 + pw, r1 - gap * .5f, true};
     for (int i = 0; i < E_SET; i++) btn[i] = {x0 + gap + i * (bw + gap), r1, x0 + gap + i * (bw + gap) + bw, r1 + bh, true};
     bool two = config_live_touch_hud() != 0;  // (MoveHUD Off: one HUD for all, no switch)
     int n = two ? E_COUNT - E_SET : E_COUNT - E_SET - 1, j = 0;
@@ -1201,6 +1266,26 @@ void editor_panel(float w, float h, Rect *panel, Rect btn[E_COUNT]) {
         btn[i] = {x0 + gap + j * (bw + gap), r2, x0 + gap + j * (bw + gap) + bw, r2 + bh, true};
         j++;
     }
+    return u;
+}
+// The panel dragged by (dx, dy) pixels, kept on the screen whole
+void panel_move(State &s, float dx, float dy) {
+    Rect p, b[E_COUNT];
+    editor_panel(s.epanel, s.w, s.h, &p, b);
+    float hw = (p.x1 - p.x0) * .5f, hh = (p.y1 - p.y0) * .5f;
+    s.epanel.x = std::clamp((p.x0 + p.x1) * .5f + dx, hw, std::max(hw, s.w - hw)) / s.w;
+    s.epanel.y = std::clamp((p.y0 + p.y1) * .5f + dy, hh, std::max(hh, s.h - hh)) / s.h;
+}
+// The panel sized (whole percents, EPANEL_MIN to 100 %) about a point of it that stays where it is: the - or + under the
+// finger (a few taps in a row stay on it), its middle for a pinch
+void panel_resize(State &s, float to, float ax, float ay) {
+    Rect p, b[E_COUNT];
+    editor_panel(s.epanel, s.w, s.h, &p, b);
+    float fx = (ax - p.x0) / std::max(1.0f, p.x1 - p.x0), fy = (ay - p.y0) / std::max(1.0f, p.y1 - p.y0), pw, ph;
+    s.epanel.k = std::clamp(roundf(to * 100.0f) / 100.0f, EPANEL_MIN, 1.0f);
+    panel_dims(s.w, s.h, s.epanel.k, &pw, &ph);
+    s.epanel.x = (ax + (.5f - fx) * pw) / s.w, s.epanel.y = (ay + (.5f - fy) * ph) / s.h;
+    panel_move(s, 0, 0);
 }
 
 void edit_begin(State &s) {
@@ -1208,13 +1293,17 @@ void edit_begin(State &s) {
     g_edit_set = g_ranged.load() != 0;  // (the layout in use; the panel's button changes it)
     s.edit_prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;  // (the HUD in use with the touch controls)
     g_hud_edit_prof = s.edit_prof;
-    s.saved = s.layout;
+    s.saved = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
     drop_fingers(s);
     rt_logf("[touch] layout editor\n");
 }
 void edit_end(State &s, bool keep) {
-    if (keep) save_layout(s.layout), s.saved = s.layout;
+    if (keep) save_layout(s.layout, s.epanel), s.saved = s.layout;
     else s.layout = s.saved;
+    if (s.epanel != s.epanel_open) {  // (the panel stays where it was put, and as big, Save or Cancel: Cancel its line alone)
+        if (!keep) save_panel(s.epanel);
+        rt_logf("[touch] layout editor: its panel at %.2f %.2f, %d%%\n", s.epanel.x, s.epanel.y, (int)lroundf(s.epanel.k * 100));
+    }
     publish_hud(s.layout);
     g_style = s.layout.style;
     g_edit_set = -1;
@@ -1316,6 +1405,11 @@ void edit_button(State &s, int i) {
         float by = i == E_BIGGER ? .1f : -.1f;
         if (part >= 0) part_size(s, part, s.layout.hud[s.edit_prof][part].k + by);
         else if (c >= 0) s.layout.scale[c] += by, clamp_place(s, c);
+        else if (s.sel == SEL_PANEL) {  // (about the button pressed: it stays under the finger)
+            Rect p, b[E_COUNT];
+            editor_panel(s.epanel, s.w, s.h, &p, b);
+            panel_resize(s, s.epanel.k + by, (b[i].x0 + b[i].x1) * .5f, (b[i].y0 + b[i].y1) * .5f);
+        }
         break;
     }
     case E_HIDE:  // (not the item bar with the touch controls: hud_hide_ok)
@@ -1327,18 +1421,19 @@ void edit_button(State &s, int i) {
     case E_RESET:
         if (part >= 0) s.layout.hud[s.edit_prof][part] = hud_default(), publish_hud(s.layout);
         else if (c >= 0) s.layout.x[c] = DEFS[c].x, s.layout.y[c] = DEFS[c].y, s.layout.scale[c] = 1.0f;
+        else if (s.sel == SEL_PANEL) s.epanel = EditPanel{};  // (the panel: its usual place and size)
         break;
     case E_SET:
         if (!touch) break;
         g_edit_set = g_edit_set.load() == 1 ? 0 : 1;
-        if (part < 0) s.sel = -1;
+        if (part < 0 && s.sel != SEL_PANEL) s.sel = -1;
         break;
     case E_STYLE:
         if (touch && !ranged_layout()) next_style(s);
         break;
     case E_PROF:
         s.edit_prof = touch ? HUD_PLAIN : HUD_TOUCH, g_hud_edit_prof = s.edit_prof;
-        if (part < 0) s.sel = -1;  // (a control: none in the HUD without them)
+        if (part < 0 && s.sel != SEL_PANEL) s.sel = -1;  // (a control: none in the HUD without them)
         rt_logf("[touch] layout editor: the HUD %s the touch controls\n", touch ? "without" : "with");
         break;
     case E_DEFAULTS: {
@@ -1363,31 +1458,50 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         if (!f) return;
         *f = {};
         f->id = e->tfinger.fingerID, f->x = f->x0 = x, f->y = f->y0 = y, f->ctl = -1;
-        Rect panel, btn[E_COUNT];
-        editor_panel(s.w, s.h, &panel, btn);
+        Rect panel, btn[E_COUNT], grab;
+        editor_panel(s.epanel, s.w, s.h, &panel, btn, &grab);
+        // (taps in a row where the panel's - or + was press it again, though the panel it sizes slid at the screen's edge
+        // and put another button there)
+        uint64_t now = SDL_GetTicksNS();
+        int again = s.rep_btn >= 0 && now - s.rep_ns < PANEL_REPEAT && s.rep_at.in(x, y) ? s.rep_btn : -1;
         for (int i = 0; i < E_COUNT; i++)
-            if (btn[i].in(x, y)) {
-                f->kind = F_MENU;  // (held until it lifts: nothing under it moves)
+            if (i == again || (again < 0 && btn[i].in(x, y))) {
+                f->kind = F_MENU, f->ctl = i;  // (held until it lifts: nothing under it moves; the button it lights)
+                bool sizing = s.sel == SEL_PANEL && (i == E_SMALLER || i == E_BIGGER);
                 edit_button(s, i);
+                if (sizing) s.rep_btn = i, s.rep_ns = now, s.rep_at = again < 0 ? btn[i] : s.rep_at;
+                else s.rep_btn = -1;
                 if (!s.edit) f->kind = F_NONE;
                 return;
             }
+        s.rep_btn = -1;
         Finger *drag = nullptr;
         for (Finger &g : s.f)
-            if (&g != f && g.kind == F_EDIT && g.ctl >= 0) drag = &g;
-        if (drag) {  // a second finger: pinch what the first one drags, a control or a part
+            if (&g != f && g.kind == F_EDIT && grabbed(g.ctl)) drag = &g;
+        if (drag) {  // a second finger: pinch what the first one drags, a control, a part or the panel
             s.pinch = true, s.pinch_d0 = std::max(1.0f, hypotf(x - drag->x, y - drag->y));
-            s.pinch_s0 = drag->ctl >= ZONE_SEL ? s.layout.hud[s.edit_prof][drag->ctl - ZONE_SEL].k : s.layout.scale[drag->ctl];
+            s.pinch_s0 = drag->ctl == SEL_PANEL ? s.epanel.k
+                       : drag->ctl >= ZONE_SEL ? s.layout.hud[s.edit_prof][drag->ctl - ZONE_SEL].k : s.layout.scale[drag->ctl];
             f->kind = F_EDIT;
             return;
         }
-        // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves)
+        // the panel's title strip: the panel, picked and dragged, over what is under it. A little past its edges (not into
+        // the buttons below it) it is the panel only where nothing else is: a control or a part there stays the one picked
+        auto strip = [&](float m) { return x >= grab.x0 - m && x <= grab.x1 + m && y >= grab.y0 - m && y <= grab.y1; };
+        if (strip(0.0f)) {
+            f->kind = F_EDIT, f->ctl = SEL_PANEL;
+            s.sel = SEL_PANEL;
+            return;
+        }
+        // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves),
+        // else the panel by its title strip's edge
         int c = s.edit_prof == HUD_TOUCH ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
         if (c < 0) {
             int k = part_hit(s, x, y);
             if (k >= 0) c = ZONE_SEL + k;
         }
         if (c < 0 && panel.in(x, y)) { f->kind = F_MENU; return; }
+        if (c < 0 && strip(.02f * s.h)) c = SEL_PANEL;
         f->kind = F_EDIT, f->ctl = c;
         s.sel = c;
         if (c >= ZONE_SEL) part_pickup(s, c - ZONE_SEL);
@@ -1403,12 +1517,18 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
             Finger *a = nullptr, *b = nullptr;
             for (Finger &g : s.f)
                 if (g.kind == F_EDIT) (a ? b : a) = &g;
-            int c = a && a->ctl >= 0 ? a->ctl : b && b->ctl >= 0 ? b->ctl : -1;
-            if (a && b && c >= 0) {
+            int c = a && grabbed(a->ctl) ? a->ctl : b && grabbed(b->ctl) ? b->ctl : -1;
+            if (a && b && grabbed(c)) {
                 float by = hypotf(a->x - b->x, a->y - b->y) / s.pinch_d0;
-                if (c >= ZONE_SEL) part_size(s, c - ZONE_SEL, s.pinch_s0 * by);
+                if (c == SEL_PANEL) {  // (about its middle)
+                    Rect p, bt[E_COUNT];
+                    editor_panel(s.epanel, s.w, s.h, &p, bt);
+                    panel_resize(s, s.pinch_s0 * by, (p.x0 + p.x1) * .5f, (p.y0 + p.y1) * .5f);
+                } else if (c >= ZONE_SEL) part_size(s, c - ZONE_SEL, s.pinch_s0 * by);
                 else s.layout.scale[c] = s.pinch_s0 * by, clamp_place(s, c);
             }
+        } else if (f->ctl == SEL_PANEL) {
+            panel_move(s, dx, dy);
         } else if (f->ctl >= ZONE_SEL) {
             part_move(s, f->ctl - ZONE_SEL, dx, dy);
         } else if (f->ctl >= 0) {
@@ -1500,7 +1620,7 @@ void hud_edit_begin(State &s) {
     rt_logf("[touch] HUD editor\n");
 }
 void hud_edit_end(State &s, bool keep) {
-    if (keep) save_layout(s.layout), s.saved = s.layout;
+    if (keep) save_layout(s.layout, s.epanel), s.saved = s.layout;
     else s.layout = s.saved;
     publish_hud(s.layout);
     g_hud_edit_prof = -1;
@@ -3481,6 +3601,51 @@ void draw_part_frames(ImDrawList *dl, ImFont *font, const HudVals *hud, int pick
     }
 }
 
+// A button's word on its plate: on one line, smaller where it is too long; where that would make it much smaller (a small
+// panel, a narrow screen), on two lines split at the space nearest its middle, when those come out larger (never after a
+// one-letter word: "Diseño:" over "a distancia", not "Diseño: a" over "distancia")
+void button_text(ImDrawList *dl, ImFont *font, const Rect &b, float fs, ImU32 col, const char *t) {
+    float room = (b.x1 - b.x0) * .92f, wide = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, one = wide > room ? fs * room / wide : fs;
+    ImVec2 c((b.x0 + b.x1) * .5f, (b.y0 + b.y1) * .5f);
+    int n = (int)strlen(t), cut = -1;
+    for (int k = 2; k < n - 1; k++)
+        if (t[k] == ' ' && t[k - 2] != ' ' && (cut < 0 || abs(2 * k - n) < abs(2 * cut - n))) cut = k;
+    if (one < fs * .8f && cut > 0 && n < 64) {
+        char first[64];
+        snprintf(first, sizeof first, "%.*s", cut, t);
+        const char *second = t + cut + 1;
+        float w2 = std::max(font->CalcTextSizeA(fs, FLT_MAX, 0, first).x, font->CalcTextSizeA(fs, FLT_MAX, 0, second).x);
+        float two = std::min(std::min(fs, fs * room / std::max(1.0f, w2)), (b.y1 - b.y0) * .44f);
+        if (two > one * 1.1f) {
+            text_center(dl, font, two, ImVec2(c.x, c.y - two * .52f), col, first);
+            text_center(dl, font, two, ImVec2(c.x, c.y + two * .52f), col, second);
+            return;
+        }
+    }
+    text_center(dl, font, one, c, col, t);
+}
+
+// A grip of the editor's panel: four arrowheads round a cross on a dark plate with a gold edge (its title strip drags it)
+void grip(ImDrawList *dl, const Rect &r, ImU32 col) {
+    ImVec2 c((r.x0 + r.x1) * .5f, (r.y0 + r.y1) * .5f);
+    float s = std::min(r.x1 - r.x0, r.y1 - r.y0) * .5f, a = s * .74f, hw = s * .25f, t = s * .12f;
+    dl->AddRectFilled(ImVec2(r.x0, r.y0), ImVec2(r.x1, r.y1), fade(DEEP, .9f), s * .25f);
+    dl->AddRect(ImVec2(r.x0, r.y0), ImVec2(r.x1, r.y1), fade(col, .75f), s * .25f, 0, s * .08f);
+    dl->AddLine(ImVec2(c.x - a * .6f, c.y), ImVec2(c.x + a * .6f, c.y), col, t);
+    dl->AddLine(ImVec2(c.x, c.y - a * .6f), ImVec2(c.x, c.y + a * .6f), col, t);
+    for (int q = 0; q < 4; q++) {
+        ImVec2 d = q == 0 ? ImVec2(1, 0) : q == 1 ? ImVec2(-1, 0) : q == 2 ? ImVec2(0, 1) : ImVec2(0, -1), n(-d.y, d.x);
+        ImVec2 tip(c.x + d.x * a, c.y + d.y * a), base(c.x + d.x * (a - hw * 1.6f), c.y + d.y * (a - hw * 1.6f));
+        dl->AddTriangleFilled(tip, ImVec2(base.x + n.x * hw, base.y + n.y * hw), ImVec2(base.x - n.x * hw, base.y - n.y * hw), col);
+    }
+}
+// The panel's grips, at both ends of its title strip (grab), in its measure u
+void panel_grips(const Rect &grab, float u, Rect g[2]) {
+    float gw = .07f * u, m = .012f * u;
+    g[0] = {grab.x0 + m, grab.y0 + m * 1.4f, grab.x0 + m + gw, grab.y1 - m * .5f, true};
+    g[1] = {grab.x1 - m - gw, g[0].y0, grab.x1 - m, g[0].y1, true};
+}
+
 // The editor: the game's HUD parts framed where they are (where they would be when they aren't drawn: outside a hunt,
 // hidden), named below them on a dark plate, the picked one pulsing with its size; the touch controls over them, with
 // their names (with the touch controls' HUD); a part and a control over each other both red; the panel, and a line under
@@ -3490,8 +3655,8 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     dl->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(0, 0, 0, 96));
     bool touch = s.edit_prof == HUD_TOUCH;
     const HudVals *hud = s.layout.hud[s.edit_prof];
-    Rect panel, btn[E_COUNT];
-    editor_panel(w, h, &panel, btn);
+    Rect panel, btn[E_COUNT], grab;
+    float u = editor_panel(s.epanel, w, h, &panel, btn, &grab);
     Rect fr[HP_COUNT];
     bool live[HP_COUNT], any_live = false, red_part[HP_COUNT] = {}, red_ctl[C_COUNT] = {};
     for (int k = 0; k < HP_COUNT; k++) fr[k] = part_frame(k, s.edit_prof, w, h, &live[k]), any_live |= live[k];
@@ -3599,34 +3764,47 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
         }
     }
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1;
-    float line = .004f * h;
+    float line = .004f * u;
     plate(dl, panel, line, 1.0f, false);
+    // (the panel picked: pulsing round it, its grips lit, its size by the right one)
+    bool picked = s.sel == SEL_PANEL;
+    if (picked) {
+        float pulse_a = .65f + .35f * sinf(SDL_GetTicksNS() / 1e9f * 6), m = .004f * h;
+        dl->AddRect(ImVec2(panel.x0 - m, panel.y0 - m), ImVec2(panel.x1 + m, panel.y1 + m), fade(GLOW, pulse_a), 0, 0, .006f * h);
+    }
+    Rect grips[2];
+    panel_grips(grab, u, grips);
+    for (const Rect &g : grips) grip(dl, g, picked ? GLOW : GOLD);
     ImFont *title = ImGui::GetIO().Fonts->Fonts.Size > 1 ? ImGui::GetIO().Fonts->Fonts[1] : font;  // (the serif: overlay.cpp)
-    text_center(dl, title, .034f * h, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * h), GLOW, T("Controls and HUD"));
-    const char *say = T(s.sel == C_MPAD     ? "Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size"
+    text_center(dl, title, .034f * u, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .045f * u), GLOW, T("Controls and HUD"));
+    if (picked) {
+        char pct[16];
+        snprintf(pct, sizeof pct, "%d%%", (int)lroundf(std::clamp(s.epanel.k, EPANEL_MIN, 1.0f) * 100));
+        float pf = .03f * u, pw = font->CalcTextSizeA(pf, FLT_MAX, 0, pct).x;
+        text_center(dl, font, pf, ImVec2(grips[1].x0 - .012f * u - pw * .5f, panel.y0 + .045f * u), GLOW, pct);
+    }
+    const char *say = T(picked              ? "The panel: drag its title to move it  -  pinch or use - / + for its size"
+                        : s.sel == C_MPAD   ? "Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size"
                         : part >= 0 && hud[part].hidden ? "Hidden: Show brings it back"
                         : s.sel >= 0        ? "Drag to move  -  pinch or use - / + for its size"
                                             : "Tap a control or a part of the game's screen to pick it, drag it to move it");
-    float ss = .022f * h, room = (panel.x1 - panel.x0) * .94f, wide = font->CalcTextSizeA(ss, FLT_MAX, 0, say).x;
+    float ss = .022f * u, room = grips[1].x0 - grips[0].x1 - .024f * u, wide = font->CalcTextSizeA(ss, FLT_MAX, 0, say).x;
     if (wide > room) ss *= room / wide;  // (a narrow screen, a long sentence: on one line, smaller)
-    text_center(dl, font, ss, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .078f * h), INK, say);
+    text_center(dl, font, ss, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .078f * u), INK, say);
     static const char *const STYLE_LABEL[STYLE_COUNT] = {"Attacks: pill", "Attacks: buttons", "Attacks: corner"};
     const char *const LABEL[E_COUNT] = {"-", "+", part >= 0 && hud[part].hidden ? "Show" : "Hide", "Reset",
                                         ranged_layout() ? "Layout: ranged" : "Layout: melee", STYLE_LABEL[s.layout.style],
                                         touch ? "HUD: touch" : "HUD: controller", "Defaults", "Cancel", "Save"};
     for (int i = 0; i < E_COUNT; i++) {
         if (!btn[i].ok) continue;
-        bool off = ((i == E_SMALLER || i == E_BIGGER || i == E_RESET) && s.sel < 0) ||
+        bool off = ((i == E_SMALLER || i == E_BIGGER || i == E_RESET) && s.sel < 0 && !picked) ||
                    (i == E_HIDE && (part < 0 || !hud_hide_ok(s.edit_prof, part))) || ((i == E_SET || i == E_STYLE) && !touch) ||
                    (i == E_STYLE && ranged_layout());
         bool lit = false;
         for (const Finger &f : s.f)
-            if (f.kind == F_MENU && btn[i].in(f.x, f.y)) lit = true;
+            if (f.kind == F_MENU && f.ctl == i) lit = true;
         plate(dl, btn[i], line * .8f, off ? .45f : 1.0f, lit && !off);
-        float fs = (i < E_HIDE ? .05f : .028f) * h, room = (btn[i].x1 - btn[i].x0) * .92f, wide = font->CalcTextSizeA(fs, FLT_MAX, 0, T(LABEL[i])).x;
-        if (wide > room) fs *= room / wide;  // (a narrow screen, a long word: on one line, smaller)
-        text_center(dl, font, fs, ImVec2((btn[i].x0 + btn[i].x1) * .5f, (btn[i].y0 + btn[i].y1) * .5f),
-                    fade(i == E_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
+        button_text(dl, font, btn[i], (i < E_HIDE ? .05f : .028f) * u, fade(i == E_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
     }
     // (what the player should know: about the part picked first, else a hidden part a tap no longer works, else why the
     // frames show outside a hunt)
@@ -3638,9 +3816,11 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     if (!note && !any_live && s.sel < 0) note = "Outside a hunt the frames show where each part goes";
     if (note) {
         const char *t = T(note);
-        float fs = .022f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, maxw = (panel.x1 - panel.x0) * .96f;
+        float fs = .022f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, maxw = std::max((panel.x1 - panel.x0) * .96f, w * .6f);
         if (tw > maxw) fs *= maxw / tw, tw = maxw;
-        ImVec2 c((panel.x0 + panel.x1) * .5f, panel.y1 + fs * 1.1f);
+        ImVec2 c((panel.x0 + panel.x1) * .5f, panel.y1 + fs * 1.1f);  // (under the panel, above it at the bottom edge)
+        if (c.y + fs * .75f > h) c.y = panel.y0 - fs * 1.1f;
+        c.x = std::clamp(c.x, tw * .5f + fs * .5f, std::max(tw * .5f + fs * .5f, w - tw * .5f - fs * .5f));
         dl->AddRectFilled(ImVec2(c.x - tw * .5f - fs * .5f, c.y - fs * .75f), ImVec2(c.x + tw * .5f + fs * .5f, c.y + fs * .75f),
                           IM_COL32(28, 20, 15, 215), fs * .3f);
         text_center(dl, font, fs, c, GOLD, t);
