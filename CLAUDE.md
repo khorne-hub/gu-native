@@ -659,6 +659,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   its private folder (`home.txt` in `getFilesDir()`, which `runtime/main.c` reads for `MHGU_HOME`) and says so once; game files
   put in the old folder's `data/` stay there, named by the private folder's `game_folder.txt` (`keepGameFiles`). Test with
   `adb shell` (the shell uid, as Shizuku's): `echo x > .../files/game_folder.txt` after deleting the app's own.
+  A replacement: the copy as `<name>.mine.tmp`, the original aside as `<name>.other-app.tmp`, the copy into the name (copied under
+  it if neither can be renamed back); one cut short is put back at the next start, the app's own copy first, and a lone `.mine.tmp`
+  never takes the name. Copies to the private folder go through `<name>.copy.tmp`. Seen on the RG406V (2026-11-10, MH4U the same).
+  `repair` stops after 4000 entries in all: there `cache/` had 5361 and the top-level files listed after it were never looked at,
+  so test a replacement inside `MHGURecomp/`.
 - The save folder (`runtime/savefolder.h` lists its files): only `save_0` moves (`services/fs.c` asks `savefolder_root` at each
   mount; the game mounts at every save), `g_save_dir`, `bonus/` and `save_backups/` stay local. A folder that can't be reached at
   a save mounts the local one instead and writes `save_folder_missed.txt`; the start gate (`SaveFolderActivity.gate`) asks.
@@ -666,6 +671,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   read locally because the folder wasn't there yet went over the folder's newer one at the next save once it came back.
   A `.mhgu-commit` of `system` / `system_backup` is applied only at the save's full size (a sync app can bring one half-written).
   The in-use mark `.mhgu-in-use` is renewed every 5 minutes (`savefolder_tick`) and counts for 15.
+  Its browser offers an SD card only when `AppHome.probe` can write at the card's root (`FolderBrowser.roots(c, true)`), and the
+  intro names the card only from Android 11 (Android 9 and 10 let no app write on a removable card outside its own folder); the game
+  folder's browser lists every card. RG406V (Android 13): the SD card tab shows and lists the card, the probe leaves nothing there.
 - The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,
   never with an LDN network up): the update thread stays in `overlay_frame`, drawing the menu (`frame_once`) and presenting the
   last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the

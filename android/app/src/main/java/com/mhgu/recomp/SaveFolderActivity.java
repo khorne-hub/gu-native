@@ -54,11 +54,18 @@ public class SaveFolderActivity extends Activity {
         TextView title = Look.text(this, es ? "CARPETA DE PARTIDAS" : "SAVE FOLDER", 20, Look.GOLD, true);
         title.setGravity(Gravity.CENTER);
         page.addView(title);
+        // (an SD card only from Android 11: before, Android lets no app write on a removable card outside its own folder,
+        // and the folder browser offers a card only when the game can write in it)
+        boolean card = Build.VERSION.SDK_INT >= 30;
         TextView intro = Look.text(this, es
-                ? "Guarda tu partida en la carpeta que elijas: en este dispositivo, en su tarjeta SD o en una que una app de "
-                  + "sincronización comparta con tus otros dispositivos."
-                : "Keep your save in a folder of your choice: on this device, on its SD card, or in one a sync app shares "
-                  + "with your other devices.", 14, Look.CREAM, false);
+                ? (card ? "Guarda tu partida en la carpeta que elijas: en este dispositivo, en su tarjeta SD o en una que una app de "
+                          + "sincronización comparta con tus otros dispositivos."
+                        : "Guarda tu partida en la carpeta que elijas: en este dispositivo o en una que una app de sincronización "
+                          + "comparta con tus otros dispositivos.")
+                : (card ? "Keep your save in a folder of your choice: on this device, on its SD card, or in one a sync app shares "
+                          + "with your other devices."
+                        : "Keep your save in a folder of your choice: on this device, or in one a sync app shares with your other "
+                          + "devices."), 14, Look.CREAM, false);
         intro.setGravity(Gravity.CENTER);
         intro.setPadding(0, Look.dp(this, 2), 0, Look.dp(this, 4));
         page.addView(intro);
@@ -232,7 +239,7 @@ public class SaveFolderActivity extends Activity {
                 (dir, holds) -> holds ? (es ? "✓ Aquí hay una partida." : "✓ There is a save here.")
                                       : (es ? "Tu partida va en una carpeta llamada MHGU save, que se crea aquí."
                                             : "Your save goes in a folder named MHGU save, made here."),
-                this::picked, this::systemPicker);
+                this::picked, this::systemPicker, true);
     }
 
     private void systemPicker() {

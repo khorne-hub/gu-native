@@ -145,9 +145,13 @@ final class AppHome {
         for (File k : kids) {
             if (++seen[0] > 4000) return;
             String name = k.getName();
-            if (name.endsWith(".other-app.tmp") || name.endsWith(".mine.tmp")) {  // (a replacement cut short: the file back)
-                File was = new File(dir, name.substring(0, name.lastIndexOf('.', name.length() - 5)));
-                if (!was.exists() && k.isFile() && k.renameTo(was)) Log.w(TAG, "home: " + was + " put back from " + name);
+            if (name.endsWith(".other-app.tmp") || name.endsWith(".mine.tmp")) {
+                // (a replacement cut short, the name left empty: a whole file back under it, the app's own copy first. The
+                // original is moved aside only once the copy is whole; a copy with no original beside it was cut short)
+                String base = name.substring(0, name.lastIndexOf('.', name.length() - 5));
+                File was = new File(dir, base), mine = new File(dir, base + ".mine.tmp"), theirs = new File(dir, base + ".other-app.tmp");
+                File back = mine.isFile() ? mine : theirs;
+                if (!was.exists() && theirs.isFile() && back.renameTo(was)) Log.w(TAG, "home: " + was + " put back from " + back.getName());
                 continue;
             }
             if (name.contains(".other-app-") || name.endsWith(".tmp")) continue;
@@ -169,19 +173,35 @@ final class AppHome {
                 }
             } else if (!k.canWrite() && k.canRead()) {
                 // (the copy made, the original moved aside, the copy put in its place, and only then the original deleted:
-                // whatever fails, a whole copy keeps the name or stays beside it. Such a file can be the save)
-                File tmp = new File(dir, k.getName() + ".mine.tmp"), aside = new File(dir, k.getName() + ".other-app.tmp");
+                // whatever fails, a whole file keeps the name, or the copy and the original both stay beside it for the next
+                // start. Never the only copy deleted: such a file can be the save)
+                File tmp = new File(dir, name + ".mine.tmp"), aside = new File(dir, name + ".other-app.tmp");
+                boolean whole = true;  // (the name holds a whole file: the original, or the app's copy)
                 try {
                     copy(k, tmp);
                     if (!k.renameTo(aside)) throw new IOException("can't move it aside");
-                    if (!tmp.renameTo(k)) {
-                        if (aside.renameTo(k)) throw new IOException("can't put the copy in its place");
-                        throw new IOException("can't put the copy in its place: the original is " + aside.getName() + ", the copy " + tmp.getName());
+                    whole = tmp.renameTo(k);
+                    if (!whole) {
+                        whole = aside.renameTo(k);
+                        if (whole) throw new IOException("can't put the copy in its place (the original stays)");
+                        // (neither takes the name back: the copy is copied under it, or this start's game finds no file there
+                        // and may make a new one, which the next start would not replace)
+                        String both = "the original is " + aside.getName() + ", the copy " + tmp.getName();
+                        if (k.exists()) throw new IOException("can't put the copy in its place, something else took the name: " + both);
+                        try {
+                            copy(tmp, k);
+                        } catch (IOException e) {
+                            k.delete();  // (never a copy cut short under the name: the next start puts a whole one back)
+                            throw new IOException("can't put the copy in its place (" + e.getMessage() + "): " + both);
+                        }
+                        whole = true;
+                        Log.w(TAG, "home: " + k + ": the copy couldn't be renamed, so it was copied under the name");
+                        if (!tmp.delete()) Log.w(TAG, "home: " + tmp + " couldn't be deleted");
                     }
                     if (!aside.delete()) Log.w(TAG, "home: " + aside + " (the other app's original) couldn't be deleted");
                     Log.w(TAG, "home: " + k + " belonged to another app: replaced by the app's own copy");
                 } catch (IOException e) {
-                    if (k.exists()) tmp.delete();  // (never the only copy left)
+                    if (whole) tmp.delete();  // (only with a whole file under the name: never the only copy left)
                     Log.w(TAG, "home: " + k + " belongs to another app: " + e.getMessage());
                 }
             }
@@ -196,10 +216,15 @@ final class AppHome {
             return;
         }
         if (!from.canRead() || to.exists()) return;
+        // (through a temporary file: a copy cut short - the app closed meanwhile - is never taken for a whole one by the
+        // next start, which skips what is there)
+        File tmp = new File(to.getParentFile(), to.getName() + ".copy.tmp");
         try {
-            copy(from, to);
+            copy(from, tmp);
+            if (!tmp.renameTo(to)) throw new IOException("can't rename " + tmp.getName());
             count[0]++;
         } catch (IOException e) {
+            tmp.delete();
             Log.w(TAG, "home: copying " + from + ": " + e.getMessage());
         }
     }
