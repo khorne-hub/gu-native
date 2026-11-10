@@ -52,7 +52,8 @@
 // 100 at x 1200, y 42..82) left of them
 
 static uint64_t stat_draws, stat_skipped, stat_passes, stat_dispatches, stat_snapshots;
-static uint64_t stat_grass;  // (MHGU_VK_STATS) draws with alpha to coverage: the tall grass and foliage ([Performance] Grass)
+static uint64_t stat_a2c;  // (MHGU_VK_STATS) draws with alpha to coverage (none in the Marshland's grass at 1x or 4x: the grass
+                           // is the game's uGrass2, which [Performance] Grass leaves out in runtime/hle/grass.c)
 // (MHGU_VK_STATS) time spent: translating command lists, waiting for the GPU, guest memory copied per submission
 uint64_t stat_exec_ns, stat_wait_ns, stat_copy_bytes, stat_upload_ns;
 static _Atomic int stat_compiles;
@@ -4829,9 +4830,7 @@ static void draw(CmdRec *r, bool indexed) {
     begin_pass();
     pass_skip_clear = 0;  // (drawn into: later clears are clears again)
     VkCommandBuffer cb = vk_cmd();
-    // ([Performance] Grass Off: the tall grass and foliage, drawn with alpha to coverage, are left out: #85, #121)
-    // (the live value: Off applies once saved, as the menu's row says; the start's value took a restart, #159)
-    if (st.ms[0xC] && (stat_grass++, !config_live_grass())) { stat_skipped++; return; }
+    if (st.ms[0xC]) stat_a2c++;
     int af = fkey.alpha_func;
     // One sample on an Adreno: the game's alpha to coverage became nothing at all for partly transparent texels (the
     // tall grass missing on an Adreno 640, #70; Mali keeps those at alpha 0.5 and up): done as an alpha test at 0.5
@@ -5556,10 +5555,10 @@ void backend_execute(uint64_t handle) {
     }
     if (stats && now - last > 2000000000ull) {
         last = now;
-        LOG("[vk] 2s: vcache %llu hits %llu copies | %llu draws, %llu skipped, %llu grass (%s), %llu passes (%llu cleared as they began), %llu sets (%llu reused), %llu dispatches, %llu snapshots, %d compiles | exec %.0f ms (uploads %.0f) gpu wait %.0f ms, copied %.1f MB\n",
+        LOG("[vk] 2s: vcache %llu hits %llu copies | %llu draws, %llu skipped, %llu alpha to coverage, %llu passes (%llu cleared as they began), %llu sets (%llu reused), %llu dispatches, %llu snapshots, %d compiles | exec %.0f ms (uploads %.0f) gpu wait %.0f ms, copied %.1f MB\n",
             (unsigned long long)stat_vc_hits, (unsigned long long)stat_vc_refresh,
-            (unsigned long long)stat_draws, (unsigned long long)stat_skipped, (unsigned long long)stat_grass,
-            config_live_grass() ? "drawn" : "left out", (unsigned long long)stat_passes, (unsigned long long)stat_noload,
+            (unsigned long long)stat_draws, (unsigned long long)stat_skipped, (unsigned long long)stat_a2c,
+            (unsigned long long)stat_passes, (unsigned long long)stat_noload,
             (unsigned long long)(stat_set_new + stat_set_reused), (unsigned long long)stat_set_reused,
             (unsigned long long)stat_dispatches, (unsigned long long)stat_snapshots, atomic_exchange(&stat_compiles, 0),
             stat_exec_ns / 1e6, stat_upload_ns / 1e6, stat_wait_ns / 1e6, stat_copy_bytes / 1048576.0);
@@ -5596,7 +5595,7 @@ void backend_execute(uint64_t handle) {
                 (unsigned long long)atomic_load(&stat_pw_left));
         }
         stat_prog_cached = stat_skip_prog = stat_skip_pipe = stat_skip_frames = stat_waited_ns = stat_waits = stat_rescued = stat_frame_max = 0;
-        stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = stat_grass = 0;
+        stat_draws = stat_skipped = stat_passes = stat_noload = stat_dispatches = stat_snapshots = stat_a2c = 0;
         stat_set_new = stat_set_reused = 0;
         stat_exec_ns = stat_wait_ns = stat_copy_bytes = stat_upload_ns = stat_vc_hits = stat_vc_refresh = 0;
     }

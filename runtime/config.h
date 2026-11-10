@@ -133,8 +133,8 @@ typedef struct {
                               // at the start that says how (overlay.cpp menu_hint) no longer shows
     int mouse_menus;          // [Controls] MouseMenus (a desktop): in the game's menus the mouse points and clicks
                               // (runtime/hle/mousemenu.c, host_input.c); off, it turns the camera there as elsewhere
-    int grass;                // [Performance] Grass: 0 the tall grass and foliage drawn with alpha to coverage left out
-                              // (nvn/vulkan/exec.c; the Marshland's area 8 slowed weak phones down: #85, #121)
+    int grass;                // [Performance] Grass: 0 the game's grass fields (its uGrass2 units) are not drawn
+                              // (runtime/hle/grass.c; the Marshland's area 8 slowed weak phones down: #85, #121, #159)
 } Config;
 uint32_t config_combo_mask(const char *text);  // "A+X" -> the BTN_* bits, 0 if there is nothing or anything else in it
 void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
