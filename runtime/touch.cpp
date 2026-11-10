@@ -130,8 +130,8 @@ struct Def {
 // buttons on an arc above it; the menus in a column at the left edge, below the status
 const Def DEFS[C_COUNT] = {
     {"attack", "Attack  A / X", I_ATTACK, "", 0, true, .255f, .27f, .085f},
-    {"dodge", "Dodge  B", I_DODGE, "B", B(BTN_B), true, .10f, .12f, .056f},
-    {"guard", "Guard  R", I_SHIELD, "R", B(BTN_R), true, .505f, .095f, .058f},
+    {"dodge", "Evade  B", I_DODGE, "B", B(BTN_B), true, .10f, .12f, .056f},
+    {"guard", "Guard / dash  R", I_SHIELD, "R", B(BTN_R), true, .505f, .095f, .058f},
     {"zr", "Special  ZR", I_BURST, "ZR", B(BTN_ZR), true, .075f, .68f, .045f},
     {"target", "Target  ZL", I_TARGET_SELECT, "ZL", B(BTN_ZL), true, .19f, .70f, .045f},
     {"camera", "Camera / lock-on  L", I_CAMERA, "L", B(BTN_L), true, .31f, .64f, .045f},
@@ -167,7 +167,7 @@ const Def DEFS[C_COUNT] = {
     {"second", "Reload / melee", I_RELOAD, "", 0, true, .365f, .13f, .07f},
     {"aim", "Aim", I_SCOPE, "", 0, true, .415f, .29f, .07f},
     {"rspecial", "Crouching fire / coating", I_CROUCH, "", 0, true, .33f, .445f, .058f},
-    {"rdodge", "Dodge  B", I_DODGE, "B", B(BTN_B), true, .085f, .10f, .056f},
+    {"rdodge", "Evade  B", I_DODGE, "B", B(BTN_B), true, .085f, .10f, .056f},
     {"rsheathe", "Sheathe  Y", I_SHEATHE, "Y", B(BTN_Y), true, .175f, .47f, .046f},
     {"ammo_up", "Next ammo", I_UP, "", 0, true, .56f, .30f, .05f},
     {"ammo_down", "Previous ammo", I_DOWN, "", 0, true, .56f, .13f, .05f},
@@ -3679,8 +3679,10 @@ extern "C" void touch_draw(float w, float h) {
         if (dbg && m && was > 0.0f && out <= 0.0f) rt_logf("[touch] menu pad gone, %.0f ms after the last menu window\n", (now - m) / 1e6);
         was = out;
     }
+    // (in a menu of the game's the player's buttons stay, at half strength so its window reads under them, as in the
+    // MH4U port; the menu pad's group over them at full)
     for (int i = 0; i < C_COUNT; i++)
-        if (in_mode(i, s.menu)) control(dl, font, s.layout, i, w, h, s, of_mpad(i) ? a * pad_a : a);
+        if (in_mode(i, s.menu)) control(dl, font, s.layout, i, w, h, s, of_mpad(i) ? a * pad_a : s.menu ? a * .5f : a);
     // the HUD parts that answer a finger: the item bar's turn, the art performed (the item bar's arrows as
     // in a hunt while a menu is open too: nothing changes as one opens, though they turn nothing then)
     Rect item = zone_rect(z, HP_ITEMS, w, h), arts = zone_rect(z, HP_ARTS, w, h);
