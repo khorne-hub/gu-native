@@ -224,6 +224,23 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   bow's layout presses the wrong button. Letting go of a button that doesn't draw does nothing, which looks like a broken bow.
 - `HN_WeaponControlsMsg_eng.gmd`, `HN_HunterTipsMsg_eng.gmd` and `StartMenuMsg_eng.gmd` in `romfs/nativeNX/eng/table` are the game's own manual: read them
   before guessing what a button does. L + X and L + B change the ammo, and the game takes L only after about 300 ms.
+- Running with the stick (`[Touch] StickRun`, on by default; `touch.cpp` `run_*`, `lock_*`, the same constants, drawing and
+  texts in the MH4U port's touch.cpp). A zone farther out that locked by itself was tried and dropped: the old feel stays, the
+  thumb past 1.6 stick radii runs (R) and lets go under 1.45, sheathed only, as in 0.1.8, plus Call of Duty Mobile's sprint
+  lock: a small circle with a padlock 2.4 radii above the stick (0.02 screen heights below the top at least) fades in as the
+  thumb pushes up past the rim; slid into it (within 0.55 radii of its middle) the run locks with a click and goes on forward
+  (the stick held full up: the camera steers) while the thumb stays past the rim and after it lifts, until the stick is touched
+  again, the thumb comes back inside the rim, the weapon comes out, a menu opens or the hunter isn't played (an area change
+  too: `run_end` logs why under MHGU_TOUCH_LOG). It locks for a thumb that landed anew (not in the circle) or came back
+  inside the rim since a lock ended (`run_armed`). X holds the run's R back for 400 ms: a thumb at the rim through a sheathe started R in the same update
+  as an X + A, and the game read R + X + A (#151). Off: a Run button (`run_button` in touch_layout.txt: the old left-side
+  `run` line every saved layout has is dropped), held only, dimmed with the weapon out, hidden in menus; slid onto an attack
+  it is that attack; in a corner layout saved before it, it starts in the band's hollow.
+  `[Touch] GuardSlide` (off by default): a thumb from Guard keeps R as it slides onto the attacks (`Finger.keep`), and is
+  R + Y on the item bar.
+- The item bar's long press (#109): bit 0 of the hunter's word +0x2770 is the bar open (its neighbouring items shown); the
+  item bar's handler clears it and sets it while L is held (vfuncs +0x25c / +0x260 / +0x264 test, set and clear its bits).
+  `itembar_hold` sets it after the handler, past the same checks, with no L pressed (L would turn the camera).
 - The aim's pitch: hunter +0x14b8 (a float, -100 down to 100 up) and +0x2714 (16-bit units, 45 degrees up, 30 down). A shot that isn't aimed ignores them, so a
   locked shot from a bowgun goes through quick aim (`touch.cpp`, `assist_*`). With a gun aimed or a bow drawn the hunt camera's handler does not run: per-update
   work goes in the item bar's hook (`hle/itembar.c`).

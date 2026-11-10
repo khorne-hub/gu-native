@@ -2206,19 +2206,25 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks", "Dodge (B)", "Guard (R)", "S
                                          "L", "ZL", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item arrows", "ZL in menus", "ZR in menus",
-                                         "Menu pad"};
+                                         "Menu pad", "Run with the stick", "Keep guarding while sliding"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
-                                       "ShowMenuZR", "ShowMenuPad"};
+                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide"};
+// (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick -, the menu pad before
+// the tabs that go with it)
+const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L,
+                                TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
+                                TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_ZL, TB_MENU_ZR};
+static_assert(TB_COUNT == 25, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
     bool fingers = touch_rows();  // (none: the combined buttons alone, for a controller's button or a key)
     if (fingers) {
         header(r, "tb.head", tr("Buttons on the screen"));
-        for (int n = 0; n < TB_COUNT; n++) {  // (the menu pad before the tabs that go with it)
-            int i = n < TB_MENU_ZL ? n : n == TB_MENU_ZL ? TB_MENU_PAD : n - 1;
+        for (int n = 0; n < TB_COUNT; n++) {
+            int i = TB_ORDER[n];
             add_bool(r, ("tb." + std::to_string(i)).c_str(), TB_TITLES[i], &c.touch_show[i], nullptr);
             r.back().key = TB_KEYS[i];
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
@@ -2500,6 +2506,10 @@ const PhoneHelp PHONE_HELP[] = {
     {"ShowRangedSpecial", "A bowgun's crouching fire. A bow applies its coating.", "El fuego agachado de la ballesta. El arco aplica su capa."},
     {"ShowAmmo", "Change the ammo or the coating. A swipe up or down on the item bar does it too.", "Cambian la munición o la capa. También se puede deslizar hacia arriba o abajo sobre la barra de ítems."},
     {"ShowItemArrows", "Arrows beside the item bar. A swipe on the bar turns it too.", "Flechas a los lados de la barra de ítems. Deslizar sobre la barra también la gira."},
+    {"StickRun", "On: push the movement stick past its edge to run, as before. Slide it up into the small circle with a padlock that shows above it and the run locks: the hunter keeps running forward after you lift your thumb (steer with the camera), until you touch the stick again, draw the weapon or open a menu. Off: the stick only walks, and a Run button shows above the attacks instead: it runs while held.",
+     "Activado: empuja la palanca de movimiento más allá de su borde para correr, como siempre. Deslízala hacia arriba hasta el círculo chico con un candado que aparece encima y la carrera se fija: el cazador sigue corriendo hacia adelante al levantar el pulgar (giras con la cámara), hasta que vuelvas a tocar la palanca, desenvaines o abras un menú. Desactivado: la palanca solo camina, y aparece un botón Correr sobre los ataques: corre mientras lo mantienes."},
+    {"GuardSlide", "On: with the weapon out, a thumb that lands on Guard and slides onto the attacks keeps guarding (R held), for the moves that need R and an attack together, like a lance's counter or a shield's thrust; slid onto the item bar, it presses R and Y together. Off: the slide lets go of R.",
+     "Activado: con el arma desenvainada, un pulgar que se apoya en Guardia (R) y se desliza a los ataques sigue en guardia (R mantenido), para los movimientos que piden R junto con un ataque, como el contraataque de la lanza o el empujón del escudo; deslizado a la barra de ítems, aprieta R e Y juntos. Desactivado: al deslizar se suelta R."},
     {"UIAnchor", "On a screen wider than 16:9, where the HUD goes.", "En una pantalla más ancha que 16:9, dónde va el HUD."},
     {"FillScreen", "Movies and menu backdrops fill the screen, with a little cut above and below, instead of bars at the sides.",
      "Los videos y los fondos de los menús llenan la pantalla, con un pequeño recorte arriba y abajo, en lugar de barras a los costados."},

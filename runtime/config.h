@@ -36,11 +36,13 @@ enum {
 #define HP_QUESTS_MAX 256
 #define HP_SCALE_MIN 0.05f
 #define HP_SCALE_MAX 20.0f
-// The game's buttons, for showing each on the screen or not ([Touch] Show*: runtime/touch.cpp)
+// The game's buttons, for showing each on the screen or not ([Touch] Show*: runtime/touch.cpp); and two of the touch
+// controls' ways, kept with them: [Touch] StickRun (the stick pushed far out runs, locked; Off: a Run button instead) and
+// GuardSlide (a thumb from Guard keeps R as it slides onto the attacks)
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
-       TB_COUNT };
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1}
+       TB_STICK_RUN, TB_GUARD_SLIDE, TB_COUNT };
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 0}
 #define TOUCH_COMBOS 6
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
