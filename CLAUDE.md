@@ -388,14 +388,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
     and blit are read back and give the same bytes on that GPU (`fill_check`, logged; else the blit stays). Anything that reads
     H' or that depth target first, or a pass that doesn't cover it whole, gets the old blit or clear first. RX 6800 XT, 50 %:
     806x360 -> 1612x720, the same bytes.
+  - `MHGU_PERF_FXAA_COPYDRAW=1` (FXAA Off, not with FSR or plain scaling): `fxaa_skipped`'s copy of the FXAA pass's input into its
+    target is drawn as the first draw of the next pass when that pass draws into the target (with Bloom On the game adds the
+    bloom there next), its target begun cleared under it, instead of a copy that pass then read back in; checked once against
+    the copy as bit 2 above (`copy.frag`, each texel fetched). Any other pass, copy or dispatch first gets the copy. With Bloom
+    Off the next pass draws into the input instead, so nothing changes. RX 6800 XT, 100 %: 1612x720, the same bytes.
   - `MHGU_PERF_FMTLIST`: set at all, the log says what the driver makes of `VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT` (`fmt_probe`: an RGBA8
     image's memory with it, with a format list, without it; a compressed image needs more, its metadata) and names each image / view
     format pair the game asks for. `=1`: images no view of the game reads as another format (decoded BCn and ASTC, widened, fallback
     formats) get their own format and its sRGB / UNORM twin as their list, or no flag. RX 6800 XT: 4194304 bytes for a 1024x1024
     target with the flag, 4211056 with a list or without it (AMD's colour compression: off with the bare flag).
   Left out, with why: Shadows Off skipping the shadow mask's pass (its draws write the scene's depth, and what they write depends on
-  each frame's receivers, so no check proves a frame's draws change nothing); FXAA Off sampling its input instead of a copy (the
-  copy's target is drawn into right after, over a load, or its input is drawn into while the target is read).
+  each frame's receivers, so no check proves a frame's draws change nothing); FXAA Off sampling its input in place of its target
+  (the target is drawn into right after, over a load, or its input is drawn into while the target is read: hence the copy drawn
+  in that next pass instead).
 - Descriptor sets: `stage_set` reuses one written earlier in the same submission when every write is the same (about a quarter of the
   sets), and draw skips binding the same two again (`SS_SETS`; any other graphics bind forgets them). Zeros, the identity rescale table,
   the alpha reference and each stage's driver constants are copied once per submission (`shared_*`, `zero_ubo`), or every set would be
