@@ -139,7 +139,8 @@ In Git Bash, with llvm-mingw 20241217 (UCRT) and the Android SDK's CMake 3.22.1 
 
 A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/files`; a public build reads neither:
 
-- `env.txt`: `NAME=value` lines. `MHGU_QUICKHUNT=101` goes straight into a quest, `MHGU_VK_STATS=1` logs statistics,
+- `env.txt`: `NAME=value` lines. `MHGU_QUICKHUNT=101` goes straight into a quest (`MHGU_QUICKHUNT_AREA=5` with it: the quest
+  starts in zone 5 of its map, not the camp; quest 203, Village 2 stars, is Verdant Hills), `MHGU_VK_STATS=1` logs statistics,
   `MHGU_TOUCH_LOG=1` logs fingers. `MHGU_HOME=<folder>` moves the settings and the log, but not the saves: those are
   `Android/data/com.mhgu.recomp/files/MHGURecomp/save` (or the Save folder chosen: `save_folder.txt`), so copy them first. `MHGU_CAMLOG=1` logs the hunt camera and the monsters,
   `MHGU_LOG_MOVES=1` the hunter's actions, `MHGU_LOG_NET=1` the network, `MHGU_PAD_DEBUG=1` what SDL reads from a controller,
@@ -421,9 +422,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `MHGU_VK_FMT_MASK=<VkFormat>:<hex features>` takes features away to test those paths on any GPU.
 - A lost device (`VK_ERROR_DEVICE_LOST` at a submit or a wait) logs every submission not known finished: its passes (size, first colour
   format, depth format, samples, draws), the programs drawn (vertex / fragment code address), drawn clears and copies, then the GPU
-  driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted.
-  `devicelost` in the control file fakes one. Each kind of depth copy or blit is named once in the log where the game first does it
-  (`[vk] depth blit ...`, `depth_copy_note`): on the Adreno 618 of #160 (1.1.87, Verdant Hills area 5) they are a suspect, not a proven cause.
+  driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted,
+  so the last 4 known finished are listed too (`(finished)`): Adreno's KGSL retires a batch that faulted, its fence signalled, and
+  refuses the next submission with EPROTO (`IOCTL_KGSL_GPU_COMMAND failed: errno 71`, "the context faulted before"; EDEADLK once it
+  gives the context up). 0.1.9.1's report named only that next one: an empty submission (#191). `devicelost` in the control file
+  fakes one. Each kind of depth copy or blit is named once in the log where the game first does it (`[vk] depth blit ...`,
+  `depth_copy_note`).
+- Adreno 618, Android 10 (1.1.87, Xiaomi surya; #138, #140, #160, #191, one player): the GPU faults the moment the hunter walks
+  from Verdant Hills' area 4 into area 5 (a cave), every time, 0.1.6 to 0.1.9.1, 30 or 40 FPS, Shadows on or off; 3D 790x356
+  (33 %), Low-end mode, MSAA 1x, FXAA off. Both 0.1.9.1 crashes came at submission 15203. No depth copy or blit is new there,
+  and the vertex cache was under its 384 MB. Not the cause, checked on the RG406V (Mali-G57) with the validation layer, the
+  Adreno paths (`MHGU_VK_ADRENO=1 MHGU_VK11=1 MHGU_CLEAR_FORCE=1 MHGU_VK_D24=0`, no int64, divisor or border colours), the
+  player's settings and size (`MHGU_RENDER=792x356 MHGU_ASPECT=2400:1080`) and the quest started in area 5: no validation
+  error, the same samplers and formats as area 4 (the depth target sampled nearest), no program with subgroup operations
+  (that driver has them in compute only). Not tried: walking from 4 into 5 under the validation layer.
 - A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
   area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
   tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy).
