@@ -20,7 +20,7 @@ JOBS=${JOBS:-12}
 mkdir -p "$OUT"
 if [ "$ABI" = win64 ]; then
   # Windows x64 con llvm-mingw (clang + libc++, UCRT), sin archivo de toolchain
-  LLVM_MINGW=$(cygpath -u "${LLVM_MINGW:-E:/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64/bin}")
+  LLVM_MINGW=$(cygpath -u "${LLVM_MINGW:-E:/Ports/MH4U/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64/bin}")
   [ -f "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang.exe" ] && LLVM_MINGW="$LLVM_MINGW/bin"  # (su carpeta en vez de bin: lo mismo)
   export PATH="$LLVM_MINGW:$PATH"
   MW="$(cygpath -m "$LLVM_MINGW")"

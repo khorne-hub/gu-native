@@ -12,7 +12,7 @@ ROOT=$(dirname "$HERE")
 SDK=$(cygpath -u "$LOCALAPPDATA/Android/Sdk")
 CMAKE=${CMAKE:-"$SDK/cmake/3.22.1/bin/cmake.exe"}
 NINJA=${NINJA:-"$SDK/cmake/3.22.1/bin/ninja.exe"}
-LLVM_MINGW=${LLVM_MINGW:-E:/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64}
+LLVM_MINGW=${LLVM_MINGW:-E:/Ports/MH4U/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64}
 [ -f "$LLVM_MINGW/x86_64-w64-mingw32-clang.exe" ] && LLVM_MINGW=$(dirname "$LLVM_MINGW")  # (its bin folder given: the same)
 DEPS=${DEPS:-"$ROOT/deps/out/win64"}  # (otra copia de trabajo: DEPS=<las de esta>)
 OUT="$HERE/build/win64"

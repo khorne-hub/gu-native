@@ -23,7 +23,7 @@ SRC=$(cd "${DEPS_SRC:-$HERE/src}" && pwd)  # (despues de lo anterior: ya compila
 rm -rf "$BUILD" && mkdir -p "$BUILD" "$OUT"
 if [ $ABI = win64 ]; then
   # Windows x64 con llvm-mingw (clang + UCRT), sin nasm; hilos de Windows (si faltan, configure falla)
-  LLVM_MINGW=${LLVM_MINGW:-E:/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64/bin}
+  LLVM_MINGW=${LLVM_MINGW:-E:/Ports/MH4U/MH4U_Android/build/game_vanilla/toolchain/llvm-mingw-20241217-ucrt-x86_64/bin}
   [ -f "$LLVM_MINGW/bin/x86_64-w64-mingw32-clang.exe" ] && LLVM_MINGW="$LLVM_MINGW/bin"  # (su carpeta en vez de bin: lo mismo)
   export PATH="$(cygpath -u "$LLVM_MINGW"):$NDK/prebuilt/windows-x86_64/bin:$PATH"
   TOS=mingw32; XCC=$TRIPLE-clang.exe; XCXX=$TRIPLE-clang++.exe; EXTRA=(--enable-w32threads)
