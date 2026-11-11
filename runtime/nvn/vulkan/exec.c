@@ -856,6 +856,24 @@ static uint64_t vc_budget(void) {
     return b;
 }
 #define VC_BUDGET vc_budget()
+// The budget is what the cache keeps, not what the frames may need: entries go least recently used first, and when the
+// least recently used one was drawn from in the last VC_HOT_FRAMES frames, all of them were, and dropping it only means
+// copying it whole again a moment later. With 0.1.9's 128 MB a town's menus dropped and copied ranges again all the
+// time: the Palico info (the town and the menu's models, 173 MB) on a Moto g06 taken for a 2.8 GB phone, 1.4 GB a
+// second, the translating thread 13 -> 35 ms a frame, 30 -> 16-26 FPS; on a player's 2.8 GB phone the item box at 12 FPS,
+// the smithy and the canteen at 19-20. So the cache then goes over the budget, up to vc_ceiling (a phone's: twice it, 384 MB at
+// most); past that a draw copies what it reads (guest_copy) and the entries in use stay. vc_trim brings it back under
+// the budget once they are no longer drawn from.
+#define VC_HOT_FRAMES 4
+static uint64_t vc_ceiling(void) {
+    uint64_t b = VC_BUDGET;
+#ifdef __ANDROID__
+    uint64_t top = 384ull << 20;
+    return b >= top ? b : b * 2 < top ? b * 2 : top;
+#else  // (a desktop keeps 384 MB: vc_trim, which brings it back, is a phone's)
+    return b;
+#endif
+}
 #define VC_IDLE_NS 20000000000ull
 #define VC_FULL_NS 2000000000ull
 #ifdef __ANDROID__
@@ -868,6 +886,7 @@ static uint64_t vc_budget(void) {
 static uint64_t vc_full_ns = VC_FULL_NS, vc_slice = VC_SLICE;  // (the net's period and slice: MHGU_PERF_VCNET, vc_safety)
 typedef struct {
     uint64_t addr, size, used_seq, checked_seq, full_t;  // (full_t: when its last full copy or safety pass ended)
+    uint64_t used_frame;                                 // (the frame a draw last read it from: VC_HOT_FRAMES)
     uint32_t gen, full_off;                              // (full_off: the safety pass's next slice)
     uint64_t *sums;                                      // (checked: each slice's hash as last copied, 0 unknown)
     VkBuffer buf;
@@ -878,6 +897,8 @@ static uint64_t vc_bytes;
 static _Atomic uint64_t vc_bytes_seen;  // (vc_bytes for the [mem] line's thread)
 static uint64_t vc_frame = ~0ull, vc_t, vc_full_left;  // (the frame's number, its time, the safety net's bytes left)
 uint64_t stat_vc_hits, stat_vc_refresh;
+static uint64_t stat_vc_full;  // (MHGU_VK_STATS) draws whose range didn't fit under vc_ceiling (copied, guest_copy)
+static bool vc_hot(const VcEnt *e) { return e->used_frame + VC_HOT_FRAMES > vk_frame_counter(); }
 
 // (read once, by vcache's first call: the net's period and slice too)
 static int vc_safety(void) {
@@ -1008,14 +1029,29 @@ static void vc_trim(void) {
     uint64_t before = 0, idle = memory_short(now) ? 2000000000ull : VC_IDLE_NS;
     for (int i = 0; i < 16 && i < nh; i++)
         if (now - hist_t[i] >= idle && hist_seq[i] > before) before = hist_seq[i];
-    if (!before || !vc_bytes) return;
     uint64_t freed = 0;
     int n = 0;
-    for (int i = 0; i < VC_TAB; i++)
-        if (vc_tab[i].buf && vc_tab[i].used_seq < before) freed += vc_tab[i].size, n++, vc_drop(&vc_tab[i]);
+    if (before && vc_bytes)
+        for (int i = 0; i < VC_TAB; i++)
+            if (vc_tab[i].buf && vc_tab[i].used_seq < before) freed += vc_tab[i].size, n++, vc_drop(&vc_tab[i]);
     static int nlog;
     if (n && nlog++ < 6) LOG("[vk] vertex cache: %d idle range(s) dropped (%llu MB), %llu MB kept\n", n, (unsigned long long)(freed >> 20),
                              (unsigned long long)(vc_bytes >> 20));
+    // (over the budget, VC_HOT_FRAMES: back under it, least recently used first, with what the frames no longer draw from)
+    uint64_t over_freed = 0;
+    while (vc_bytes > VC_BUDGET) {
+        int lru = -1;
+        for (int i = 0; i < VC_TAB; i++)
+            if (vc_tab[i].buf && !vc_hot(&vc_tab[i]) && (lru < 0 || vc_tab[i].used_seq < vc_tab[lru].used_seq)) lru = i;
+        if (lru < 0) break;
+        over_freed += vc_tab[lru].size;
+        vc_drop(&vc_tab[lru]);
+    }
+    static int nover;
+    if (over_freed && nover++ < 6)
+        LOG("[vk] vertex cache over its %llu MB: %llu KB no longer drawn from dropped, %llu MB kept%s\n",
+            (unsigned long long)(VC_BUDGET >> 20), (unsigned long long)(over_freed >> 10), (unsigned long long)(vc_bytes >> 20),
+            vc_bytes > VC_BUDGET ? " (the rest still drawn from)" : "");
 #endif
 }
 
@@ -1048,16 +1084,33 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
         uint32_t now = 0;
         if (vk_pages_changed(addr, size, 0, &now) < 0) return false;  // (no tracking here: per-submission copies)
         if (free_slot == ~0u) {
-            if (old == ~0u) return false;
+            if (old == ~0u || vc_hot(&vc_tab[old])) return false;
             vc_drop(&vc_tab[old]);
             free_slot = old;
         }
-        while (vc_bytes + size > VC_BUDGET) {  // the least recently used go
-            int lru = -1;
-            for (int i = 0; i < VC_TAB; i++)
-                if (vc_tab[i].buf && vc_tab[i].used_seq < pend && (lru < 0 || vc_tab[i].used_seq < vc_tab[lru].used_seq)) lru = i;
-            if (lru < 0) return false;
-            vc_drop(&vc_tab[lru]);
+        // the least recently used go, unless the last frames drew from it, and so from all of them (VC_HOT_FRAMES): then
+        // over the budget up to the ceiling. (hot_frame: the frame that found so; all stay in use till it ends)
+        static uint64_t hot_frame = ~0ull;
+        uint64_t frame = vk_frame_counter();
+        while (vc_bytes + size > VC_BUDGET) {
+            if (hot_frame != frame) {
+                int lru = -1;
+                for (int i = 0; i < VC_TAB; i++)
+                    if (vc_tab[i].buf && vc_tab[i].used_seq < pend && (lru < 0 || vc_tab[i].used_seq < vc_tab[lru].used_seq)) lru = i;
+                if (lru < 0) return false;
+                if (!vc_hot(&vc_tab[lru])) { vc_drop(&vc_tab[lru]); continue; }
+                hot_frame = frame;
+            }
+            static bool said_over, said_full;
+            if (vc_bytes + size > vc_ceiling()) {
+                stat_vc_full++;
+                if (!said_full) said_full = true, LOG("[vk] vertex cache: at %llu MB, all of it drawn from: a draw past that copies what it reads\n",
+                                                      (unsigned long long)(vc_ceiling() >> 20));
+                return false;
+            }
+            if (!said_over) said_over = true, LOG("[vk] vertex cache: the frames draw from more than its %llu MB: kept over it while they do, up to %llu MB\n",
+                                                  (unsigned long long)(VC_BUDGET >> 20), (unsigned long long)(vc_ceiling() >> 20));
+            break;
         }
         e = &vc_tab[free_slot];
         VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
@@ -1127,6 +1180,7 @@ static bool vcache(uint64_t addr, uint64_t size, VkBuffer *buf) {
         stat_vc_hits++;
     }
     e->used_seq = pend;
+    e->used_frame = vk_frame_counter();
     *buf = e->buf;
     return true;
 }
@@ -7058,13 +7112,15 @@ void backend_execute(uint64_t handle) {
             (unsigned long long)stat_dispatches, (unsigned long long)stat_snapshots, atomic_exchange(&stat_compiles, 0),
             stat_exec_ns / 1e6, stat_upload_ns / 1e6, stat_wait_ns / 1e6, stat_copy_bytes / 1048576.0);
         extern uint64_t stat_tex_hashed, stat_tex_net, stat_tex_untracked, stat_tex_changed, stat_tex_streamed, stat_tex_samples;
-        LOG("[vk] 2s copied: vertex cache %.1f MB whole, %.1f MB written pages, %.1f MB safety net | %.1f MB for one submission"
+        LOG("[vk] 2s copied: vertex cache %.1f MB whole, %.1f MB written pages, %.1f MB safety net (%.0f MB held, %llu draws past "
+            "it) | %.1f MB for one submission"
             " | textures hashed whole %.1f MB (no write reported, the safety net: %.1f; untracked %.1f; changed %.1f),"
             " copied at once %.1f MB, %llu samplings\n",
             stat_vc_whole_bytes / 1048576.0, stat_vc_pages_bytes / 1048576.0, stat_vc_net_bytes / 1048576.0,
+            atomic_load_explicit(&vc_bytes_seen, memory_order_relaxed) / 1048576.0, (unsigned long long)stat_vc_full,
             stat_gcopy_bytes / 1048576.0, stat_tex_hashed / 1048576.0, stat_tex_net / 1048576.0, stat_tex_untracked / 1048576.0,
             stat_tex_changed / 1048576.0, stat_tex_streamed / 1048576.0, (unsigned long long)stat_tex_samples);
-        stat_vc_whole_bytes = stat_vc_pages_bytes = stat_vc_net_bytes = stat_gcopy_bytes = 0;
+        stat_vc_whole_bytes = stat_vc_pages_bytes = stat_vc_net_bytes = stat_gcopy_bytes = stat_vc_full = 0;
         stat_tex_hashed = stat_tex_net = stat_tex_untracked = stat_tex_changed = stat_tex_streamed = stat_tex_samples = 0;
         {
             static const char *const site[W_SITES] = {"other", "ring", "finish", "syncwait", "flush", "present", "readback"};

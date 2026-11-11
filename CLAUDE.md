@@ -461,7 +461,14 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Phones give memory back (`staging_trim`, `vc_trim`, `exec.c`): a staging chunk the ring hasn't taken for 8 s, and vertex cache ranges no
   draw used for 20 s. Before, both only grew: the chunks a burst of uploads made (an area's textures, decoded on a Mali) and the
   vertex data of every area visited, up to the cache's 384 MB, which a 2.8 GB phone couldn't hold (#59, #156). The vertex cache is
-  192 MB at 4 GB of memory or less, 128 at 3 GB. Under 350 MB of the system's memory available (`memory_short`: Android 14 and newer
+  192 MB at 4 GB of memory or less, 128 at 3 GB. That is what it keeps, not a wall: when the least recently used range was drawn
+  from in the last 4 frames (`VC_HOT_FRAMES`), so all were, it goes over it up to `vc_ceiling` (twice it, 384 MB at most), past that
+  a draw copies what it reads, and `vc_trim` drops what is no longer drawn from to get back under it. Before (0.1.9, 0.1.9.1) it
+  dropped ranges in use and copied them whole again: a town's menus (the Palico info: the town and the menu's models, 173 MB) on
+  the Moto with `MHGU_RAM_MB=2800 MHGU_LOWMEM_MB=4000` copied 1.4 GB a second, the translating thread 13 -> 35 ms, 30 -> 16-26 FPS
+  (12 FPS at the item box on a 2.8 GB Infinix), and the staging ring grew to 160 MB carrying those copies; now 30 FPS, 14.5 ms, VMA
+  364 MB instead of 524 there. `MHGU_VK_STATS`' `[vk] 2s copied` line gives the bytes held and the draws past the ceiling.
+  Under 350 MB of the system's memory available (`memory_short`: Android 14 and newer
   no longer tell a foreground app memory runs low) both wait 2 s instead. `MHGU_LOWMEM_MB=<n>` sets that threshold;
   `MHGU_VK_STAGING_TRIM=0`, `MHGU_VK_VC_TRIM=0`, `MHGU_VK_VC_MB=<n>`: as before;
   `MHGU_RAM_MB=<n>` takes the device's memory as that much (the texture and cache choices of a smaller phone).
