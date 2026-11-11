@@ -76,6 +76,7 @@ static void boot(const char *root) {
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     grass_init();  // ([Performance] Grass: the game's grass unit left out while Off: runtime/hle/grass.c)
+    guimark_init();  // (the HUD's markers over the world shown below 1280x720 too: runtime/hle/guimark.c)
     limiter_init();  // (MHGU_PERF_LIMITER: the frame limiter sleeps instead of turning on the clock: runtime/hle/limiter.c)
     inflate_init();  // (zlib's inflate_fast as host code, for loading: runtime/hle/inflate.c)
     movelog_init();  // (debug, MHGU_LOG_MOVES: runtime/hle/movelog.c)

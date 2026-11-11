@@ -2910,7 +2910,11 @@ static VkRect2D scissor_rect(void) {
     }
     if (!st.rt.ncolor && g_shadow_scissor_mode == 1) { x = (int)st.viewport[0][0]; y = (int)st.viewport[0][1]; sw = (int)st.viewport[0][2]; sh = (int)st.viewport[0][3]; }
     if (!st.rt.ncolor && g_shadow_scissor_mode == 2) y = 2 * (int)st.viewport[0][1] + (int)st.viewport[0][3] - y - sh;
-    if (pass_sx != 1.0f) {  // FSR: the guest's rectangle (render size) on the output-size stand-in
+    // FSR: the guest's rectangle (render size) on the output-size stand-in. Not a relaxed one: that is the whole pass
+    // already, in the stand-in's size (pass_size). Scaled again it covered pass_sx of it, which is below 1 with Toaster's
+    // HUD (at most 540 lines) under a taller 3D picture: the item bar, drawn through it, was cut off past 75 % of the
+    // screen at 66 % on a 1080-line one
+    if (pass_sx != 1.0f && !ui_relax_scissor) {
         double x1 = floor(x * (double)pass_sx), y1 = floor(y * (double)pass_sy);
         double x2 = ceil(((double)x + sw) * pass_sx), y2 = ceil(((double)y + sh) * pass_sy);
         x = (int)x1, y = (int)y1;
