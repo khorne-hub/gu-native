@@ -622,7 +622,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   Bloom, Reverb and Grass off (leaving Toaster gives the Reverb and the Grass back, as leaving Low-end does the rest).
   `[Performance] Bloom` (the bloom and depth of field chain, `lowend_skipped`; not with real FSR: the plain scaling sets `g_fsr_on`
   too, so test `g_config.fsr`) and `[Audio] Reverb` are switches for everyone. A file with LowEnd on and no Bloom key gets Bloom off,
-  as before.
+  as before. Toaster's HUD can be smaller than the 3D picture (one over 540 lines: 66 % of a 1080-line screen), so the stand-ins are
+  then smaller than what they stand for (`pass_sx` below 1): a rectangle already in the stand-in's size must not be scaled again
+  (`scissor_rect`: the item bar's relaxed scissor was, and the bar was cut off past 75 % of the screen; the RG406V shows it at 80-90 %).
 - Test runs can override the device's settings without touching its ini: `MHGU_LOWEND=0|1|2`, `MHGU_SCALE`, `MHGU_SHADOWS`, `MHGU_BLOOM`,
   `MHGU_GRASS`, `MHGU_FPS_LIMIT`, `MHGU_NO_REVERB=1`, `MHGU_UI_ANCHOR=Edges`. A phone on its charger reads charging current: unplug it to measure watts. At 30 FPS the GPU runs at
   lower clocks, so `gpuprof` times are longer: compare frame rates or watts, not milliseconds, across FPS limits.
