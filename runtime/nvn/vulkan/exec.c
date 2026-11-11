@@ -466,24 +466,28 @@ static void lost_logcat(void) {
 }
 #endif
 
-// (device lost, once) every submission not known finished: its passes (size, first colour format and how many, depth
-// format, samples, draws), the programs it drew with, the clears drawn and the copies; and the driver's own words
+// (device lost, once) every submission not known finished, and the last LOST_FINISHED that are: its passes (size, first
+// colour format and how many, depth format, samples, draws), the programs it drew with, the clears drawn and the copies;
+// and the driver's own words. The finished ones too because a driver may say the one that faulted finished: the Adreno 618's
+// of Android 10 (1.1.87, #160, #191) retires a batch that faulted, its fence signalled, and refuses the next submission
+// (KGSL's EPROTO: "the context faulted before"), so 0.1.9.1's report named only that next one, an empty submission.
+#define LOST_FINISHED 4
 static void lost_report(const char *where) {
     static _Atomic int once;
     if (atomic_exchange(&once, 1)) return;
     uint64_t done = g_vk.has_timeline ? 0 : atomic_load(&fence_done), last = submit_seq + 1;
     if (g_vk.has_timeline && vkGetSemaphoreCounterValue(g_vk.dev, g_vk.timeline, &done) != VK_SUCCESS) done = 0;
-    LOG("[vk] device lost (%s): submission %llu was being submitted, %llu known finished; the work since:\n", where,
-        (unsigned long long)last, (unsigned long long)done);
+    LOG("[vk] device lost (%s): submission %llu was being submitted, %llu known finished; the last finished and the work since:\n",
+        where, (unsigned long long)last, (unsigned long long)done);
     uint64_t first = last >= SUBS ? last - SUBS + 1 : 1;
-    if (done + 1 > first) first = done + 1;
+    if (done >= LOST_FINISHED && done + 1 - LOST_FINISHED > first) first = done + 1 - LOST_FINISHED;
     for (uint64_t q = first; q <= last; q++) {
         const LostRec *r = NULL;
         for (int i = 0; i < SUBS; i++)
             if (lost_rec[i].seq == q) r = &lost_rec[i];
         if (!r) continue;
-        LOG("[vk]  submission %llu: %u passes, %u draws, %u clears drawn, %u copies (%u of depth)\n", (unsigned long long)q, r->passes,
-            r->draws, r->drawn_clears, r->copies, r->depth_copies);
+        LOG("[vk]  submission %llu%s: %u passes, %u draws, %u clears drawn, %u copies (%u of depth)\n", (unsigned long long)q,
+            q <= done ? " (finished)" : "", r->passes, r->draws, r->drawn_clears, r->copies, r->depth_copies);
         for (int i = 0; i < r->npass; i++) {
             const LostPass *p = &r->pass[i];
             LOG("[vk]   pass %d: %ux%u, colour %d x%u, depth %d, %ux, %u draws\n", i, p->w, p->h, p->color, p->ncolor, p->depth,
