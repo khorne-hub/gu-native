@@ -145,7 +145,7 @@ static void perf_init(void) {
     perf.getenv = perf_switch("GETENV", all), perf.drvtab = perf_switch("DRVTAB", all);
     perf.texscan = perf_switch("TEXSCAN", all), perf.textime = perf_switch("TEXTIME", all);
     perf.pipememo = perf_switch("PIPEMEMO", all), perf.lazyidx = perf_switch("LAZYIDX", all);
-    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", true);
+    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", g_vk.api12);  // (a Vulkan 1.1 driver: off unless set, device.c)
     perf_check = perf_switch("CHECK", false);
     perf_dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL, perf_tex_log = getenv("MHGU_TEX_LOG") != NULL;
     vk_perf_textime = perf.textime;
@@ -1520,9 +1520,11 @@ static void st_defaults(void) {
 void vk_exec_init(void) {
     perf_init();
     st_defaults();
-    perf.rodepth = perf_env("MHGU_PERF_RODEPTH", 1);
-    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR", 2);
-    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW", 1);
+    // (a Vulkan 1.1 driver: off unless set, as the translator's IPA and VSTRIM, device.c)
+    perf.rodepth = perf_env("MHGU_PERF_RODEPTH", g_vk.api12 ? 1 : 0);
+    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR", g_vk.api12 ? 2 : 0);
+    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW", g_vk.api12 ? 1 : 0);
+    if (!g_vk.api12) LOG("[perf] a Vulkan 1.1 driver: IPA, VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set\n");
     if (!g_vk.has_timeline) fence_init();
 #ifdef _WIN32
     ready_event = plat_event_new();  // (NULL: the draws wait on winpthreads' condition variable)
