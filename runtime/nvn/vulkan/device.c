@@ -652,9 +652,13 @@ static void create_device(void) {
         // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
         bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
         maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
-        // (IPA and VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c: off by default on a Vulkan 1.1
-        // driver, where none was ever checked; a Mali-G57 on 1.1.177 drew the 3D picture almost black with them in 0.1.9)
-        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : g_vk.api12;
+        // (VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c: off by default on a Vulkan 1.1 driver,
+        // where none was ever checked; a Mali-G57 on 1.1.177 drew the 3D picture almost black with 0.1.9's defaults.)
+        // IPA stays on there: without it a varying the shader multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w),
+        // a round trip through position w that an Adreno 618 on 1.1.128 doesn't survive far away - with 0.1.9.1 the
+        // Volcano's distant plants and trees were black bars and white noise, with 0.1.9 (IPA on) they were right. The
+        // varying read as it is is also the exact value
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
         maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : g_vk.api12;
         if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
             LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
