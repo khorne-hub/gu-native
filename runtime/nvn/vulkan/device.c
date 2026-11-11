@@ -1595,13 +1595,36 @@ static void exit_handler(void) {
     _exit(0);
 }
 
+#ifdef __ANDROID__
+// The first surface, while the game starts. Sent to the background before it (Home in the first seconds of loading),
+// the activity has no window ("Android native window is not available") and the game stopped there with an error.
+// It waits for the window on its own thread instead (SDL's main thread keeps the lifecycle: runtime/ui.c), and goes on
+// once the app is back; the first frame then makes the surface and swapchain again, as after any return. Only a window
+// missing for 5 s with the app in the foreground is an error.
+static bool start_surface(void) {
+    uint64_t fg = plat_now_ns();  // (since when the app is in the foreground)
+    bool waited = false;
+    while (!make_surface()) {
+        if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE) == 1) fg = plat_now_ns();
+        else if (plat_now_ns() - fg > 5000000000ull) return false;
+        if (!waited) LOG("[vk] no window for the surface (%s): the app is in the background, waiting for it\n", SDL_GetError());
+        waited = true;
+        SDL_Delay(50);
+    }
+    if (waited) LOG("[vk] the window is back: the start goes on\n");
+    return true;
+}
+#else
+#define start_surface() make_surface()
+#endif
+
 void backend_init(void) {
     static bool done;
     if (done) return;
     done = true;
     if (!ui_window()) FATAL("no window\n");
     create_instance();
-    if (!make_surface()) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
+    if (!start_surface()) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
     pick_device();
     create_device();
     vk_exec_init();
