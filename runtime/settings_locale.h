@@ -197,6 +197,10 @@ static inline const char *settings_text(int language, const char *english) {
          "Una tecla o un botón del ratón que aprieta estos botones mientras se mantiene. También está en Asignación de teclas."},
         {"Buttons of your own that press several of the game's at once: on a controller's button, or on a key in Keybinds.",
          "Botones propios que aprietan varios del juego a la vez: en un botón del mando, o en una tecla en Asignación de teclas."},
+        {"Buttons of your own that press several of the game's at once, on a controller's button.",
+         "Botones propios que aprietan varios del juego a la vez, en un botón del mando."},
+        {"A button of your own presses several of the game's together. Give it a controller's button here.",
+         "Un botón propio aprieta varios del juego a la vez. Dale un botón del mando aquí."},
         {"A button of your own presses several of the game's together. Give it a controller's button here, or a key in Keybinds.",
          "Un botón propio aprieta varios del juego a la vez. Dale un botón del mando aquí, o una tecla en Asignación de teclas."},
         // (the GPU row: settings_panel.cpp, [Display] GPU)
