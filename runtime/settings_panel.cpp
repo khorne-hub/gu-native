@@ -38,6 +38,7 @@
 // (nvn/vulkan/device.c) the Vulkan devices that can run the game and the one in use, for the GPU row
 extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 #endif
+extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
@@ -184,6 +185,9 @@ bool touch_screen() {
 // The touch controls' rows: with a touch screen, or with the controls shown anyway ([Touch] Controls On, as saved:
 // their rows stay, to turn them off)
 bool touch_rows() { return touch_screen() || s.saved.touch_controls == TOUCH_ON; }
+// View::TouchButtons opened from the controller's rows: its combined buttons alone (a phone with a controller connected;
+// the MH4U port's the same)
+bool s_combos_alone = false;
 // The menu's colours ([Application] Theme, applied as it is picked): Blue, the original look; Gold, a warm panel
 // where rows light up with a gold bar at their left instead of a frame, and tabs that are only their names,
 // underlined; and Hunter, after the game's own windows (the item pouch) - a maroon panel with a red and green rule at
@@ -2297,7 +2301,10 @@ std::vector<Row> main_rows() {
             r.back().value = std::to_string((int)std::lround(c.touch_opacity * 100)) + "%";
             number(r, "touch.camera", tr("Camera speed"), &c.touch_camera, lo("CameraSpeed"), hi("CameraSpeed"), .05f, ini("CameraSpeed"));
             r.back().value = fmt("%.2fx", c.touch_camera);
-            action(r, "touch.buttons", tr("Buttons on the screen"), []() { push(View::TouchButtons, "tb.0"); });
+            action(r, "touch.buttons", tr("Buttons on the screen"), []() {
+                s_combos_alone = false;
+                push(View::TouchButtons, "tb.0");
+            });
             r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");
             {
                 int shown = 0;
@@ -2364,9 +2371,21 @@ std::vector<Row> main_rows() {
         if (!fingers) {  // (a controller's button or a key presses them: that view's combined buttons alone)
             lock_row();
             gyro_rows();
-            action(r, "touch.combos", tr("Combined buttons"), []() { push(View::TouchButtons, "tc.0"); });
+            action(r, "touch.combos", tr("Combined buttons"), []() {
+                s_combos_alone = true;
+                push(View::TouchButtons, "tc.0");
+            });
             r.back().help = tr("Buttons of your own that press several of the game's at once: on a controller's button, or on a key in Keybinds.");
         }
+#ifdef __ANDROID__  // (a phone while a controller is connected: Buttons on the screen's combined buttons alone, as the MH4U port's)
+        if (host_input_real_pad()) {
+            action(r, "pad.combos", tr("Combined buttons"), []() {
+                s_combos_alone = true;
+                push(View::TouchButtons, "tc.0");
+            });
+            r.back().help = tr("Buttons of your own that press several of the game's at once, on a controller's button.");
+        }
+#endif
         action(r, "pad.map", tr("Map a controller"), []() { push(View::PadList, "pad.0"); });
         r.back().help = tr("For a controller the game does not read well: press each button once and it works from then on.");
 #ifndef __ANDROID__
@@ -2649,7 +2668,7 @@ static_assert(TB_COUNT == 25, "TB_ORDER: a place for each of the touch settings"
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
-    bool fingers = touch_rows();  // (none: the combined buttons alone, for a controller's button or a key)
+    bool fingers = touch_rows() && !s_combos_alone;  // (none: the combined buttons alone, for a controller's button or a key)
     if (fingers) {
         header(r, "tb.head", tr("Buttons on the screen"));
         for (int n = 0; n < TB_COUNT; n++) {
@@ -2676,7 +2695,11 @@ void touch_button_rows(std::vector<Row> &r) {
         });
         r.back().value = c.touch_combo[k][0] ? c.touch_combo[k] : tr("Empty");
         if (!fingers)
+#ifdef __ANDROID__  // (no Keybinds on a phone)
+            r.back().help = tr("A button of your own presses several of the game's together. Give it a controller's button here.");
+#else
             r.back().help = tr("A button of your own presses several of the game's together. Give it a controller's button here, or a key in Keybinds.");
+#endif
     }
     if (fingers)
         r.back().help = tr("A button of your own presses several of the game's together. Place it with Customize controls and HUD.");
@@ -3749,7 +3772,7 @@ std::string view_title() {
                     : s.view == View::Move       ? "Move menu"
                     : s.view == View::Conflicts  ? "Mod conflicts"
                     : s.view == View::Keybinds   ? "Keybinds"
-                    : s.view == View::TouchButtons ? (touch_rows() ? "Buttons on the screen" : "Combined buttons")
+                    : s.view == View::TouchButtons ? (touch_rows() && !s_combos_alone ? "Buttons on the screen" : "Combined buttons")
                     : s.view == View::ComboEdit  ? "Combined button"
                     : s.view == View::PadList    ? "Map a controller"
                     : s.view == View::PadMap     ? "Map a controller"

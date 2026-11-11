@@ -690,6 +690,8 @@ static bool real_pad_connected(void) {  // (from the open pads every call: follo
         if (pads[i].real) return true;
     return false;
 }
+static SDL_AtomicInt real_pad_seen;  // (host_input_real_pad: real_pad_connected at the last update, for other threads)
+bool host_input_real_pad(void) { return SDL_GetAtomicInt(&real_pad_seen) != 0; }
 
 static void open_pad(SDL_JoystickID id) {
     if (find_pad(id) >= 0) return;
@@ -1379,7 +1381,9 @@ void host_input_update(void) {
     int ck = cx && cy ? 23170 : 32767;
     rx += cx * ck, ry += cy * ck;
     float tdx = 0, tdy = 0;  // (the touch controls: buttons, the stick, and a drag that turns the camera as the mouse)
-    touch_input(real_pad_connected(), typing, &b, &lx, &ly, &tdx, &tdy);  // (a real controller open hides them)
+    bool real_pad = real_pad_connected();
+    SDL_SetAtomicInt(&real_pad_seen, real_pad);
+    touch_input(real_pad, typing, &b, &lx, &ly, &tdx, &tdy);  // (a real controller open hides them)
     touch_right_stick(&rx, &ry);  // (a Hunter Art tapped that the game's controls put on the right stick)
     if (tdx != 0 || tdy != 0) mouse_dx += tdx, mouse_dy += tdy, touch_cam_ns = plat_now_ns();
     gyro_update();  // (aiming a bow or a bowgun: the gyroscope's turn, as a drag)
