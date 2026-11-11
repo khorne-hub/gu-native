@@ -296,6 +296,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   now listens 1.5 s and asks every 0.5 s, on each interface's own broadcast address too, with a Wi-Fi multicast lock held.
 - `touch_hud_menu` decides the touch layout from the HUD's layers. Layer 97 is the game's menus, but aiming a heavy bowgun draws there too
   (`weapon_aiming`), and the multiplayer menu and the hub form are on layer 100, as stretched panels, which the HUD's parts there are not.
+- A menu's left windows on layer 100 keep the middle 16:9 with its windows at 21:9 and Edges. Some are drawn before the menu's windows
+  in the frame (the smithy's parchment and its model, the quest counter's quest card: under the window beside them), so a window of
+  this frame or the two before tells (`ui_window_frame`); by the pass alone they went Right, over that window. hudtrace marks them.
 - The hunter: heading at +0x14a0, in the camera's units, (x, z) = (sin, cos); written, the hunter turns at once. Place at +0xa0, zone at
   +0x1054, which monsters have too. The classes are `uPlayerQuest00..15` in weapon order, no 05: 04 and 06 the bowguns, 10 the bow.
   Writing the place does nothing: the game puts it back. Each zone of a map has its own coordinates.
