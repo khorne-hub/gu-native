@@ -1704,6 +1704,7 @@ static bool ui_scissor_mid;    // wider than 16:9: the draw being set up is a pi
                                // Hunters' map), and its scissor narrows about the middle with it
 static bool ui_menu_pass;  // this pass drew a layer 97 menu before (the windows of layer 100 then sit beside Top-anchored ones)
 static bool ui_window_pass;  // and one of a menu's windows (not the chat's log or the Quest Complete stamp, drawn there too)
+static uint64_t ui_window_frame;  // the frame (g_present_count) that drew one of a menu's windows last, 0 none yet
 // The HUD quads this pass drew last (16:9 canvas place, vertical anchor 0 top / 1 centre / 2 bottom, horizontal 0 left /
 // 1 right / 2 centre): a model preview follows the window drawn over it (ui_preview_map)
 #define UI_RECENT 256
@@ -2852,8 +2853,8 @@ static bool ui_preview_map(PreviewMap *pm) {
         float anchor = ui < asp ? ui : asp;
         float left_px = 640.0f * (1.0f - anchor / asp) * (pw / 1280.0f);
         float cx = (vp[0] + w * 0.5f) / pw * 1280.0f;
-        // sideways as its window went (the smithy's parchment, layer 100, goes Right: by its own place the model went
-        // Left, out of it), or by where it is when no window is over it
+        // sideways as its window went (the smithy's parchment, layer 100, keeps the middle 16:9 with the menu: by its own
+        // place the model went Left, out of it), or by where it is when no window is over it
         if (hanchor < 0) hanchor = cx <= 430.0f ? 0 : cx >= 650.0f ? 1 : 2;
         pm->kx = s;
         if (hanchor == 0) pm->sx = left_px;
@@ -4563,6 +4564,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                 bool window_piece = false;  // (a menu window's, layer 97 / 98: hud_on_window)
                 bool hud_hidden = false;    // (a part hidden, or on a menu's window: not drawn)
                 bool meownster_mid = false; // (the Meownster Hunters' map and what is on it: kept in the middle 16:9)
+                bool window_before = false; // (a left window of layer 100 drawn before the menu's own: hudtrace says so)
                 hud_new_frame();
                 bool grouped = false;
                 int vgroup = 1;
@@ -4625,7 +4627,8 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                             // stays a few seconds after a line is sent or comes, and kept a menu believed open under the
                             // player. Measured on a Motorola g06, a village)
                             bool chat_log = pos_x < 620.0f && pos_y >= 540.0f;
-                            if (!ui_stamp_pass && !chat_log) ui_window_pass = true, ui_menu_drawn();
+                            if (!ui_stamp_pass && !chat_log)
+                                ui_window_pass = true, ui_window_frame = g_present_count, ui_menu_drawn();
                         }
                         if (ui_stamp_pass) anchor = ANCHOR_CENTER;
                     } else if (fabsf(pos_z - 100.0f) < 0.5f) {
@@ -4640,12 +4643,17 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // The left windows (Request Log info panel, quest card: x < 630, y < 560) are drawn here too, beside the Top-anchored menus
                         // of layer 97: one anchor for the whole window, or it splits. Without a menu in the pass (the results screen, whose
                         // labels on the left and numbers on the right are one table) they stay Bottom like the rest of the layer.
-                        vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f || (ui_menu_pass && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
+                        // Some come before the menu's windows in the frame (the smithy's parchment and its model, the quest
+                        // counter's quest card: drawn under the windows beside them): a window drawn in this frame or the
+                        // last two tells as well, or at 21:9 / Edges they went Right, over the window beside them
+                        bool window_lately = ui_window_pass || (ui_window_frame && g_present_count - ui_window_frame <= 2);
+                        vanchor = ((pos_x > 1000.0f && pos_y < 360.0f) || pos_y < 10.0f ||
+                                   ((ui_menu_pass || window_lately) && pos_x < 630.0f && pos_y < 560.0f)) ? V_TOP : V_BOTTOM;
                         // and sideways those left windows keep the middle 16:9 with the menu's own (layer 97, since 0.1.8):
                         // Right, at 21:9 / Edges they slid over the window beside them (the canteen's dish and its Meal
                         // Effects over the Felyne skills, #167). Not a cinematic's bar, nor the Meownster screen's frame
-                        if (ui_window_pass && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
-                            anchor = ANCHOR_CENTER;
+                        if (window_lately && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
+                            anchor = ANCHOR_CENTER, window_before = !ui_window_pass;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (target_piece) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's)
@@ -4811,8 +4819,9 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                               !(part >= 0 && ((prof == HUD_TOUCH && (part == HP_ARTS || part == HP_TARGET)) || part_custom));
                     vgroup = v;
                     if (g_hudtrace_active)
-                        LOG("[hud] z %.1f pos %.1f,%.1f m %.2f %.2f %.2f %.2f -> %c%c %.1f,%.1f%s sc %d,%d %dx%d%s%s%s%s\n", pos_z, pos_x, pos_y, m[0], m[1],
-                            m[4], m[5], "LRC"[anchor], "TBC"[vanchor], new_pos_x, new_pos_y, ui_menu_pass ? " menu" : "", st.scissor[0][0],
+                        LOG("[hud] z %.1f pos %.1f,%.1f m %.2f %.2f %.2f %.2f -> %c%c %.1f,%.1f%s%s sc %d,%d %dx%d%s%s%s%s\n", pos_z, pos_x, pos_y, m[0], m[1],
+                            m[4], m[5], "LRC"[anchor], "TBC"[vanchor], new_pos_x, new_pos_y, ui_menu_pass ? " menu" : "",
+                            window_before ? " (before the menu's windows)" : "", st.scissor[0][0],
                             st.scissor[0][1], st.scissor[0][2], st.scissor[0][3], part >= 0 ? " part " : "", part >= 0 ? HUD_KEY[part] : "",
                             part >= 0 && part_nearest ? " (nearest)" : "", hud_hidden ? " hidden" : "");
                 }
