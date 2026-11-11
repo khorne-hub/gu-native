@@ -358,8 +358,15 @@ static void efficiency_follow(APerformanceHintSession *s, int64_t work) {
     if (want) on_since = now, easy_runs = 0;
     else if (now - on_since < 60000000000ull) need = need * 2 > EASY_RUNS_MAX ? EASY_RUNS_MAX : need * 2;
     else need = EASY_RUNS;
+    // (a window on them that averaged more than the frame period: every frame of it late, not a few. An Infinix Smart 10
+    // (Unisoc T7250) in a hunt: 11.7 ms on the fast cores, 33.6 of 33.3 on the efficient ones, and each later try two
+    // more seconds of dropped frames. They don't hold this rate there: no more tries this session)
+    int64_t period = (int64_t)(1e9 / live_fps());
+    bool never = !want && avg > period;
     LOG("[perf] efficient cores %s (work %.1f ms of %.1f)%s\n", want ? "on" : "off", avg / 1e6, target / 1e6,
-        want ? "" : need > EASY_RUNS ? ": the next try waits longer" : "");
+        want ? "" : never ? ": over the frame period on them, not tried again this session"
+                  : need > EASY_RUNS ? ": the next try waits longer" : "");
+    if (never) off = 1;
 }
 
 // Once a minute (and at the first present): the process's memory map entries against vm.max_map_count, its resident
