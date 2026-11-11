@@ -1495,9 +1495,13 @@ void part_pickup(State &s, int k) {
 // The panel's buttons. Reset: what is picked, back to its default; Defaults: the touch controls (while their HUD shows)
 // and the HUD shown, the other HUD kept; the HUD switch: the touch controls' or the one without them, the game showing
 // it live (g_hud_edit_prof)
+// The touch layout editor shows and edits the touch controls with their HUD; with MoveHUD Off there is one HUD for all,
+// the one the touch controls play over, so they show and move with it (they were left out: only the HUD moved, #189)
+static bool edit_controls(const State &s) { return s.edit_prof == HUD_TOUCH || !config_live_touch_hud(); }
+
 void edit_button(State &s, int i) {
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1, c = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
-    bool touch = s.edit_prof == HUD_TOUCH;
+    bool touch = edit_controls(s);
     switch (i) {
     case E_SMALLER:
     case E_BIGGER: {
@@ -1594,7 +1598,7 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         }
         // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves),
         // else the panel by its title strip's edge
-        int c = s.edit_prof == HUD_TOUCH ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
+        int c = edit_controls(s) ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
         if (c < 0) {
             int k = part_hit(s, x, y);
             if (k >= 0) c = ZONE_SEL + k;
@@ -3905,7 +3909,7 @@ void panel_grips(const Rect &grab, float u, Rect g[2]) {
 // longer works, the frames outside a hunt)
 void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h) {
     dl->AddRectFilled(ImVec2(0, 0), ImVec2(w, h), IM_COL32(0, 0, 0, 96));
-    bool touch = s.edit_prof == HUD_TOUCH;
+    bool touch = edit_controls(s);
     const HudVals *hud = s.layout.hud[s.edit_prof];
     Rect panel, btn[E_COUNT], grab;
     float u = editor_panel(s.epanel, w, h, &panel, btn, &grab);

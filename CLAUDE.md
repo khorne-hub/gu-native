@@ -158,7 +158,10 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
   effects start the HUD again, as before 0.1.9.
 - Performance switches (`MHGU_PERF_<NAME>=0|1`, read once at the start). Unset, each has its default: on where 0.1.9's
   performance pass measured a win (the list below), off (the old way) for the others; `=0` or `=1` in `env.txt` or the
-  environment overrides it for a test, and the log's `[perf]` lines say which are set:
+  environment overrides it for a test, and the log's `[perf]` lines say which are set. On a Vulkan 1.1 driver (`g_vk.api12`
+  false, `MHGU_VK11=1` too) the ones that change what the GPU is given are off unless set: `IPA`, `VSTRIM`, `DYNUBO`, `RODEPTH`,
+  `SHADOW_CLEAR`, `FXAA_COPYDRAW` and `HUDSTART_FUSE` (0.1.9.1: a Mali-G57 MC2 on 1.1.177 drew the 3D picture almost black with
+  0.1.9's defaults; none had been checked on a real 1.1 driver, and forcing the path on a newer one looked right):
   - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
     runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
     the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings

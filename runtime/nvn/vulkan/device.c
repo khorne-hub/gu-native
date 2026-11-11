@@ -652,8 +652,10 @@ static void create_device(void) {
         // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
         bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
         maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
-        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
-        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : true;
+        // (IPA and VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c: off by default on a Vulkan 1.1
+        // driver, where none was ever checked; a Mali-G57 on 1.1.177 drew the 3D picture almost black with them in 0.1.9)
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : g_vk.api12;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : g_vk.api12;
         if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
             LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
                 nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
