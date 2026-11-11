@@ -29,8 +29,9 @@ Follow `README.md`. In short:
 5. The person opens the app, grants file access and chooses the folder.
 
 To diagnose a device: `adb logcat -s MHGU`, or `Android/data/com.mhgu.recomp/files/log.txt`. A player whose game stays black can
-still share the log: a long press on the app's icon offers Share log (`res/xml/shortcuts.xml`). The log's `[vk] limits` line says
-what the GPU allows (vertex streams, a stage's buffers and textures...).
+still share the log: a long press on the app's icon offers Share log (`res/xml/shortcuts.xml`; `LogShareActivity` is exported for
+it, and `adb shell am start -a android.intent.action.VIEW -f 0x1000c000 -n com.mhgu.recomp/.LogShareActivity` fires the same
+intent). The log's `[vk] limits` line says what the GPU allows (vertex streams, a stage's buffers and textures...).
 
 ## Layout
 
