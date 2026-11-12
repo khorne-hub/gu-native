@@ -173,7 +173,9 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
   drew the stage black again with it (ground, buildings, sky, Shagaru Magala; the hunters and the effects right: one player
   saw it go with 0.1.9.1 and come back with 0.1.9.2). An Infinix with that Mali and driver showed 0.1.9's whole set right at
   Toaster 66 %, so the Mali's culprit isn't proven to be `IPA` alone: they stay off together there. `MHGU_VK_ADRENO=1` or
-  `MHGU_VK_MALI=1` (or `=0`) with `MHGU_VK11=1` takes a family's choice on another GPU. Without `IPA` a varying the shader
+  `MHGU_VK_MALI=1` (or `=0`) with `MHGU_VK11=1` takes a family's choice on another GPU. On the Moto g06 (Mali-G52, a 1.3
+  driver) `MHGU_VK11=1` alone names the Mali and draws quest 101's camp right with them all off, and `MHGU_VK_ADRENO=1` with
+  them all on: neither shows the 1.1.177 driver's black. Without `IPA` a varying the shader
   multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w), and far away that round trip through position w is all a
   driver's precision has to spoil: a test build reading gl_FragCoord.w at half precision there turned the Galaxy S25's distant
   cliffs flat and its sky black; the varying read as it is doesn't use w at all:
@@ -285,7 +287,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   timestamps turned off on a null window: SIGSEGV at 0x98, a POCO X3 NFC at its first start at 60 FPS, #203): there the old one
   is destroyed first and the new one made without it (`create_swapchain`; `MHGU_VK_SC_FIRST=1` does it on a newer phone). A
   driver whose reported rate keeps changing (that phone: 120 Hz for one swapchain, 50 for the next) made the swapchain again every
-  2 s: the fourth change within 30 s keeps presents untimed for the session (`paced_change`).
+  2 s: the fourth change within 30 s keeps presents untimed for the session (`paced_change`). On the Moto g06 (Android 14,
+  `MHGU_VK_SC_FIRST=1`, 30 FPS, `prerotate 0` and `1` in the control file) the timed swapchain was made again four times so,
+  the picture right both ways round.
   `vkGetRefreshCycleDurationGOOGLE` said 16.65 to 16.68 ms where the vsyncs come every 16.667: the period is measured from the
   presents' own times, and every slot put on the newest vsync's grid (chained on the period given, the slots drifted half a
   period in 15 s and a frame showed a vsync late each time). `MHGU_PRESENT_MARGIN=<us>` fixes the margin (tests). At the refresh
@@ -684,6 +688,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   0xb13490), live; its +0x24 only sorts its clusters, and skipping that changed nothing. The game draws no alpha to coverage there at
   1x or 4x MSAA, so the first Grass, which skipped those draws, did nothing. Galaxy S25 Ultra, area 8, standing: 83 fps on, about 100
   off. The weeds, reeds and lotus of an area's ground are part of the area's own model (uStage, with its terrain and trees) and stay.
+  The tall grass an Adreno 640 on 1.1.128 doesn't draw (#171, #93: Jurassic Frontier's area 1, the Marshland's 8) isn't the
+  port's Adreno path: on the PC, `MHGU_VK11=1 MHGU_VK_ADRENO=1 MHGU_VK_NO_BORDER=1 MHGU_VK_NO_BC=1 MHGU_VK_NO_INT64=1` draws
+  Jurassic Frontier's area 1 grass as a plain run does (quest 101, `MHGU_QUICKHUNT_AREA=1`).
 - Finding what draws something: the classes are the DTI names in the executable (each `MtDTI` constructor call, 0x9aedcc: r0 the
   DTI, r1 its name, r2 the parent, r3 the size; a class's vtable has its getDti at +0x14). In a running game `fnnew <lo> <hi> 1`
   lists the functions of a range that run, and `poke` of a vtable slot with the base class's empty one (cUnit's +0x30 is 0x21f858)
