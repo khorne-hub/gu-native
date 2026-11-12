@@ -75,6 +75,8 @@ SDL_Window *ui_window(void);
 #include "logwriter.h"  // (rt_logf: Windows queues the line, the log's own thread writes it)
 #include "overlay.h"
 #include "settings_locale.h"
+#include "settings_panel.h"  // (SETTINGS_VIEW_GAME_TEXT: the keyboard plate's)
+#include "textinput.h"
 #include "touch.h"
 
 volatile int g_touch_hud;
@@ -1063,6 +1065,11 @@ struct TapAfterUnlock {
 };
 std::atomic<bool> g_visible;
 std::atomic<bool> g_gear_only;  // (the controls hidden: only the settings button shows, and answers)
+// (Android) a text entry of the game's open (the hunter's name at character creation...), the port's menu closed: the
+// controls hide for the phone's keyboard, and a Keyboard plate at the top shows. A tap on it opens the menu's keyboard
+// view for the entry (SETTINGS_VIEW_GAME_TEXT): the phone's keyboard comes up there, and its own keys type where the
+// phone's doesn't show (a player had no keyboard at all at character creation)
+std::atomic<bool> g_text_plate;
 #ifndef __ANDROID__
 std::atomic<bool> g_hud_edit;   // (s.hud_edit, for the game thread: touch_drawn, touch_draw)
 std::atomic<bool> g_hud_hold;   // (the left button that closed it is still down: the rest of that press is its own)
@@ -1901,6 +1908,14 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if (f->part) to_menu(e);
             return true;
         }
+        if (g_text_plate && text_plate(s.w, s.h).in(x, y)) {  // (the keyboard plate: the menu's keyboard for the entry)
+            f->kind = F_MENU;  // (nothing more of it until it lifts)
+            rt_logf("[touch] the keyboard plate: the menu's keyboard view for the game's text\n");
+            if (!overlay_menu_open()) overlay_toggle_settings();
+            settings_panel_request_view(SETTINGS_VIEW_GAME_TEXT);
+            tap_due();
+            return true;
+        }
         if (!g_visible && !s.auto_wait) {
             int part = 0;
             if (g_gear_only && hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu) == C_SETTINGS) {
@@ -2294,6 +2309,9 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // (hidden, by a controller or by Off: the settings button alone stays, or a phone without a controller had no way
     // back to the menu but clearing the app's data)
     g_gear_only = !visible && !typing && screen;
+#ifdef __ANDROID__
+    g_text_plate = typing && textinput_active() && !menu;
+#endif
 #ifndef __ANDROID__
     if (s.hud_edit) g_gear_only = false;
 #endif
@@ -2475,9 +2493,9 @@ extern "C" bool touch_busy(void) {
 extern "C" bool touch_visible(void) { return g_visible; }
 extern "C" uint64_t touch_menu_buttons(void) { return g_menu_buttons; }
 #ifndef __ANDROID__
-extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_hud_edit; }
+extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_hud_edit || g_text_plate; }
 #else
-extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()); }
+extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_text_plate; }
 #endif
 extern "C" bool touch_game_menu(void) { return g_game_menu.load(); }
 
@@ -4266,7 +4284,7 @@ extern "C" void touch_draw(float w, float h) {
 #ifndef __ANDROID__
     if ((!g_visible && !g_gear_only && !g_lock_mark && !g_hud_edit) || overlay_menu_open()) return;
 #else
-    if ((!g_visible && !g_gear_only && !g_lock_mark) || overlay_menu_open()) return;
+    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_text_plate) || overlay_menu_open()) return;
 #endif
     State s;
     {
@@ -4304,6 +4322,12 @@ extern "C" void touch_draw(float w, float h) {
     Rect target = zone_rect(z, HP_TARGET, w, h);
     if (!g_visible) {  // (hidden: the settings button alone, a little fainter; while the lock-on is on its padlock, opaque
                        // as the HUD it goes by)
+        if (g_text_plate) {  // (a text entry of the game's: the Keyboard plate, as the menu's buttons look)
+            g_language = config_editable().language;
+            Rect r = text_plate(w, h);
+            plate(dl, r, .004f * h, 1.0f, false);
+            text_center(dl, font, .036f * h, ImVec2((r.x0 + r.x1) * .5f, (r.y0 + r.y1) * .5f), INK, T("Keyboard"), w);
+        }
         if (g_gear_only) control(dl, font, s.layout, C_SETTINGS, w, h, s, a * .75f);
         if (g_lock_mark && target.ok) lock_mark(dl, target, 1.0f, h, now);
         Rect arts = zone_rect(z, HP_ARTS, w, h);  // (a Hunter Art tapped: its row lit a moment, as with them shown)

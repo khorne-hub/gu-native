@@ -86,8 +86,11 @@ struct Keyboard {
     bool upper = false, select_all = false;
     std::function<bool(const std::string &, std::string &)> commit;
     bool phone = false;  // (Android) its Phone keyboard key asked for the phone's own keyboard: up while this view is,
-                         // until Back puts it away (the view and its text stay; the key brings it back)
+                         // until Back puts it away (the view and its text stay; the key brings it back). Up as the
+                         // view opens on a phone played by touch (no controller): the phone's keyboard first
+    bool game = false;   // the game's text entry's (SETTINGS_VIEW_GAME_TEXT): leaving the view closes the menu
 };
+bool g_close_now;  // (the game's text entry's view left: the menu closes at its next frame)
 // The phone's sizes (touch_panel, each frame), from the screen's height in its pixels: a row, a tab and a button about
 // 0.09 of it, the text 0.034
 struct Metrics {
@@ -799,7 +802,7 @@ bool pending_text() {
     bool editing = s.view == View::Keyboard;
     for (const auto &o : s.origins)
         editing |= o.view == View::Keyboard;
-    return editing && s.keyboard.buffer != s.keyboard.original;
+    return editing && !s.keyboard.game && s.keyboard.buffer != s.keyboard.original;
 }
 std::string quest_id(int index) { return "quest." + std::to_string(s.quest_keys[index]); }
 void quest_keys() {
@@ -881,6 +884,7 @@ void leave_view(bool *open) {
         s.position_override = true;
     }
     if (s.view == View::CloseChanges) touch_edit_cancel();  // (B / Esc / the chord: the menu stays, no editor)
+    if (s.view == View::Keyboard && s.keyboard.game) g_close_now = true;  // (the game's entry stays as it was)
 #ifndef __ANDROID__
     if (s.view == View::ImportSave) pc_import_save_cancel();
     if (s.view == View::PadMap) padmap_cancel();  // (as its Cancel: or the controller stayed in the mapping, unread)
@@ -914,6 +918,26 @@ void keyboard(const std::string &title, const std::string &initial, size_t cap,
               std::function<bool(const std::string &, std::string &)> commit) {
     s.keyboard = {title, initial, initial, initial.size(), cap, false, false, std::move(commit)};
     push(View::Keyboard, "key.0");
+#ifdef __ANDROID__  // (played by touch: the phone's own keyboard comes up at once, the view's keys under it - a
+    // controller's player keeps the view's keys first. Up to 0.1.9.2 its key had to be found first: "the phone's keyboard
+    // was taken out". The MH4U port's the same)
+    if (!host_input_real_pad()) {
+        s.keyboard.phone = true;
+        textinput_menu_keyboard_show();
+    }
+#endif
+}
+// The keyboard view for the game's text entry (the hunter's name...): its text now, confirmed into it with Accept
+void game_text_keyboard() {
+    char text[2048];
+    textinput_peek(text, sizeof text);
+    keyboard(tr("Text"), text, 500, [](const std::string &t, std::string &) {
+        textinput_set(t.c_str());
+        textinput_key(TI_ENTER);
+        g_close_now = true;
+        return true;
+    });
+    s.keyboard.game = true;
 }
 void insert(const std::string &text) {
     if (s.keyboard.select_all) {
@@ -2818,7 +2842,10 @@ std::vector<Row> rows_for_view(bool *open) {
         });
 #endif
         action(r, "key.accept", tr("Accept"), []() { accept_keyboard(); });
-        action(r, "key.cancel", tr("Cancel"), []() { pop(); });
+        action(r, "key.cancel", tr("Cancel"), []() {
+            if (s.keyboard.game) g_close_now = true;  // (the game's entry stays as it was)
+            pop();
+        });
     } else if (s.view == View::Conflicts) {
         conflict_rows(r);
         action(r, "conflicts.back", tr("Back"), []() { pop(); });
@@ -4945,7 +4972,17 @@ void settings_panel(bool *open) {
 #endif
         if (s.view != View::Restart) push(View::Restart, "dialog.cancel");
         break;
+    case SETTINGS_VIEW_GAME_TEXT:  // (the touch controls' Keyboard plate, a game's text entry open)
+        if (textinput_active() && s.view != View::Keyboard) game_text_keyboard();
+        break;
     default: break;
+    }
+    if (g_close_now) {  // (the game's text entry's view left)
+        g_close_now = false;
+        if (s.view == View::Main && !dirty()) {
+            *open = false;
+            return;
+        }
     }
     Config before = s.draft;
 #ifndef __ANDROID__

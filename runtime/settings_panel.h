@@ -18,7 +18,10 @@ void settings_panel_request_close(void); // Thread-safe request; consumed by the
 bool settings_panel_confirming(void);
 // Any thread, C too: a confirmation the menu opens at its next frame (a desktop's dialogs answer on their own thread:
 // runtime/pc_actions.c)
-enum { SETTINGS_VIEW_IMPORT_SAVE = 1, SETTINGS_VIEW_RESTART = 2 };
+// SETTINGS_VIEW_GAME_TEXT: the menu's keyboard view for the game's text entry (the hunter's name...), as the touch
+// controls' Keyboard plate asks while one is open (runtime/touch.cpp): its text goes into the entry, Accept confirms it,
+// and leaving the view closes the menu
+enum { SETTINGS_VIEW_IMPORT_SAVE = 1, SETTINGS_VIEW_RESTART = 2, SETTINGS_VIEW_GAME_TEXT = 3 };
 #ifdef __cplusplus
 extern "C"
 #endif

@@ -107,6 +107,18 @@ void textinput_type(const char *s) {
     pthread_mutex_unlock(&g_lock);
 }
 
+void textinput_set(const char *text) {
+    pthread_mutex_lock(&g_lock);
+    if (g_active) {
+        g_text[0] = 0;
+        pthread_mutex_unlock(&g_lock);
+        textinput_type(text);  // (the entry's limit and the control characters as typed)
+        pthread_mutex_lock(&g_lock);
+        post(TI_CHANGED);
+    }
+    pthread_mutex_unlock(&g_lock);
+}
+
 void textinput_key(int what) {
     pthread_mutex_lock(&g_lock);
     if (g_active) {

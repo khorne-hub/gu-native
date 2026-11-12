@@ -499,6 +499,8 @@ static inline const char *settings_text(int language, const char *english) {
         {"Space", "Espacio"},
         {"Case", "Mayúsculas"},
         {"Phone keyboard", "Teclado del teléfono"},
+        {"Keyboard", "Teclado"},
+        {"Text", "Texto"},
         {"Accept", "Aceptar"},
         {"Reset", "Restablecer"},
         {"Save and close", "Guardar y cerrar"},
