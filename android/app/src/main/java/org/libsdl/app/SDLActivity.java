@@ -1561,6 +1561,9 @@ public class SDLActivity extends Activity implements View.OnSystemUiVisibilityCh
             }
         }
 
+        if (event.getAction() == KeyEvent.ACTION_DOWN && event.getRepeatCount() == 0) {
+            SDLControllerManager.keySeen(deviceId, keyCode, source);  // (MHGU: the log's input report, #87)
+        }
         if (event.getAction() == KeyEvent.ACTION_DOWN) {
             onNativeKeyDown(keyCode);
 
