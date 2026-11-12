@@ -383,6 +383,43 @@ void vk_full_barrier(VkCommandBuffer cb) {
 static void guest_copy_new_submission(void);
 static void staging_trim(void);
 static void vc_trim(void);
+// (submit_again) the trims give back at once whatever no submission still to finish uses, whenever it was last used
+static bool trim_now;
+
+volatile int g_fake_oom;  // (test) MHGU_CONTROL "submitoom <n>": the next n tries to submit work with a pass are refused
+static VkResult queue_submit(const VkSubmitInfo *si, VkFence fence, bool pass) {
+    if (g_fake_oom > 0 && pass) {
+        g_fake_oom--;
+        return VK_ERROR_OUT_OF_DEVICE_MEMORY;
+    }
+    return vkQueueSubmit(g_vk.queue, 1, si, fence);
+}
+
+// A submission the driver refused for memory: a 2.7 GB phone with a PowerVR GE8320 closed with vkQueueSubmit -2 at a
+// potion, an attack, the smithy or a quest's start, with the system's memory at 150 to 450 MB (#201, #139). Nothing of it
+// ran, and the spec keeps what it names as it was, so it may be submitted again: first the GPU's work in flight ends (the
+// driver gives back what it held for it), what waited for that is destroyed, idle staging and vertex cache memory goes
+// back, a moment passes; then it is submitted again, up to 4 tries in about a second. Still refused: the error as before.
+static VkResult submit_again(const VkSubmitInfo *si, VkFence fence, bool pass, VkResult sr) {
+    static int nlog;
+    for (int tries = 1; tries <= 4 && (sr == VK_ERROR_OUT_OF_DEVICE_MEMORY || sr == VK_ERROR_OUT_OF_HOST_MEMORY); tries++) {
+        uint64_t t0 = plat_now_ns();
+        vk_wait_seq(submit_seq);  // (every submission taken so far: this one never was)
+        vk_collect_dead();
+        trim_now = true;
+        staging_trim();
+        vc_trim();
+        trim_now = false;
+        struct timespec ts = {0, 50000000L * tries};  // (50 to 200 ms: the system's own reclaim has a moment)
+        nanosleep(&ts, NULL);
+        VkResult was = sr;
+        sr = queue_submit(si, fence, pass);
+        if (nlog++ < 20)
+            LOG("[vk] vkQueueSubmit refused for memory (%d): the GPU's work waited for, idle memory given back, submitted again "
+                "(try %d, %.0f ms): %s\n", was, tries, (double)(plat_now_ns() - t0) / 1e6, sr == VK_SUCCESS ? "taken" : "refused");
+    }
+    return sr;
+}
 
 // Submit the pending work (if any). wait / signal: binary semaphores for presentation (may be null).
 void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
@@ -417,7 +454,9 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
     }
     vk_upload_jobs_finish();  // (the upload buffer's copies read staging memory the texture workers may still be writing)
     uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
-    VkResult sr = vkQueueSubmit(g_vk.queue, 1, &si, fence);
+    bool pass = s->main_begun && lost_rec[cur_sub].passes;
+    VkResult sr = queue_submit(&si, fence, pass);
+    if (sr == VK_ERROR_OUT_OF_DEVICE_MEMORY || sr == VK_ERROR_OUT_OF_HOST_MEMORY) sr = submit_again(&si, fence, pass, sr);
     if (g_fake_lost && sr == VK_SUCCESS && s->main_begun && lost_rec[cur_sub].passes) sr = VK_ERROR_DEVICE_LOST;  // (test: "devicelost")
     if (sr != VK_SUCCESS) {
         if (sr == VK_ERROR_DEVICE_LOST) lost_report("vkQueueSubmit");
@@ -742,9 +781,9 @@ static void staging_trim(void) {
     static int on = -1;
     if (on < 0) { const char *e = getenv("MHGU_VK_STAGING_TRIM"); on = !e || atoi(e) != 0; }
     uint64_t now = plat_now_ns();
-    if (!on || now < next || nchunks <= 1) return;
+    if (!on || (now < next && !trim_now) || nchunks <= 1) return;
     next = now + 1000000000ull;
-    uint64_t done = vk_completed_seq(), freed = 0, idle = memory_short(now) ? 2000000000ull : STAGING_IDLE_NS;
+    uint64_t done = vk_completed_seq(), freed = 0, idle = trim_now ? 0 : memory_short(now) ? 2000000000ull : STAGING_IDLE_NS;
     int n = 0;
     for (int i = nchunks - 1; i >= 0 && nchunks > 1; i--) {
         Chunk *c = &chunks[i];
@@ -1026,11 +1065,11 @@ static void vc_trim(void) {
     static int nh, on = -1;
     if (on < 0) { const char *e = getenv("MHGU_VK_VC_TRIM"); on = !e || atoi(e) != 0; }
     uint64_t now = plat_now_ns();
-    if (!on || now < next) return;
+    if (!on || (now < next && !trim_now)) return;
     next = now + 2000000000ull;
     // (the submission that was next VC_IDLE_NS ago: samples every 2 s; entries last used before it are idle)
     hist_t[nh % 16] = now, hist_seq[nh % 16] = vk_pending_seq(), nh++;
-    uint64_t before = 0, idle = memory_short(now) ? 2000000000ull : VC_IDLE_NS;
+    uint64_t before = 0, idle = trim_now ? 0 : memory_short(now) ? 2000000000ull : VC_IDLE_NS;
     for (int i = 0; i < 16 && i < nh; i++)
         if (now - hist_t[i] >= idle && hist_seq[i] > before) before = hist_seq[i];
     uint64_t freed = 0;
