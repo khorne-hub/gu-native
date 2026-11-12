@@ -652,14 +652,14 @@ static void create_device(void) {
         // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
         bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
         maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
-        // (VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c: off by default on a Vulkan 1.1 driver,
-        // where none was ever checked; a Mali-G57 on 1.1.177 drew the 3D picture almost black with 0.1.9's defaults.)
-        // IPA stays on there: without it a varying the shader multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w),
-        // a round trip through position w that an Adreno 618 on 1.1.128 doesn't survive far away - with 0.1.9.1 the
-        // Volcano's distant plants and trees were black bars and white noise, with 0.1.9 (IPA on) they were right. The
-        // varying read as it is is also the exact value
-        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
-        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : g_vk.api12;
+        // (IPA and VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c, on a Vulkan 1.1 driver: by the
+        // family of its GPU, vk_v11_switches. Without IPA a varying the shader multiplies by 1 / w is read as
+        // v * gl_FragCoord.w * (1 / w), a round trip through position w that an Adreno 618 on 1.1.128 doesn't survive far
+        // away - with 0.1.9.1 the Volcano's distant plants and trees were black bars and white noise, with 0.1.9 (IPA on)
+        // they were right; the varying read as it is is also the exact value)
+        int fam = vk_v11_switches();
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : fam != V11_NONE;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : fam == V11_ALL;
         if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
             LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
                 nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
@@ -901,6 +901,41 @@ bool vk_gpu_adreno(void) {
     return v;
 }
 bool vk_gpu_adreno_fix_applies(void) { return vk_gpu_adreno() && !g_vk.api12; }  // ([Performance] AdrenoFix: its menu row)
+
+// An Arm Mali (MHGU_VK_MALI=1 or 0 says so for a test, as MHGU_VK_ADRENO does)
+bool vk_gpu_mali(void) {
+    static int v = -1;
+    if (v < 0) {
+        if (!g_vk.props.deviceName[0]) return false;  // (no device chosen yet)
+        const char *e = getenv("MHGU_VK_MALI");
+        v = e ? atoi(e) != 0 : strstr(g_vk.props.deviceName, "Mali") != NULL;
+    }
+    return v;
+}
+
+// 0.1.9's switches that change what the GPU is given - the translator's IPA and VSTRIM (create_device), DYNUBO, RODEPTH,
+// SHADOW_CLEAR and FXAA_COPYDRAW (exec.c), HUDSTART_FUSE (fsr.c) - by default, each read once as it is set up.
+// A Vulkan 1.2 driver: all of them (V11_ALL). A Vulkan 1.1 driver, by its GPU's family, from the players' logs:
+// - an Adreno: all of them, as in 0.1.9. With them off (0.1.9.1, and 0.1.9.2 but IPA) Adreno 610 and 618 phones on
+//   1.1.128 lost the device every few minutes (KGSL errno 71: at a town's load, an area change, in hunts), where a
+//   Galaxy A52 on that driver had played 0.1.9 without it, and a Redmi Note 8 went from 35 to 17 FPS.
+// - a Mali: none of them, IPA neither (V11_NONE), as in 0.1.9.1. Mali-G57 MC2 phones on 1.1.177 drew the stage black
+//   (its ground, buildings and sky, some monsters; the hunters and the effects right) with 0.1.9's set, right with
+//   0.1.9.1's, and black again with 0.1.9.2's IPA (a player saw it go and come back).
+// - any other (a PowerVR's): IPA alone (V11_IPA), as in 0.1.9.2.
+// MHGU_VK11=1 with MHGU_VK_ADRENO=1 or MHGU_VK_MALI=1 takes a family's choice on another GPU.
+int vk_v11_switches(void) {
+    if (g_vk.api12) return V11_ALL;
+    static int fam = -1;
+    if (fam < 0) {
+        fam = vk_gpu_adreno() ? V11_ALL : vk_gpu_mali() ? V11_NONE : V11_IPA;
+        LOG("[perf] a Vulkan 1.1 driver%s: %s\n", fam == V11_ALL ? " on an Adreno" : fam == V11_NONE ? " on a Mali" : "",
+            fam == V11_ALL    ? "0.1.9's render switches on, as with a newer driver"
+            : fam == V11_NONE ? "IPA, VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set"
+                              : "VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set");
+    }
+    return fam;
+}
 
 // (platform/android_perf.c, the minute's [mem] line) VMA's VkDeviceMemory blocks, its allocations and their bytes, and
 // what uses them: images (textures, render targets), the vertex cache and the staging ring (exec.c)

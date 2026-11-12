@@ -161,14 +161,22 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 - Performance switches (`MHGU_PERF_<NAME>=0|1`, read once at the start). Unset, each has its default: on where 0.1.9's
   performance pass measured a win (the list below), off (the old way) for the others; `=0` or `=1` in `env.txt` or the
   environment overrides it for a test, and the log's `[perf]` lines say which are set. On a Vulkan 1.1 driver (`g_vk.api12`
-  false, `MHGU_VK11=1` too) the ones that change what the GPU is given are off unless set: `VSTRIM`, `DYNUBO`, `RODEPTH`,
-  `SHADOW_CLEAR`, `FXAA_COPYDRAW` and `HUDSTART_FUSE` (0.1.9.1: a Mali-G57 MC2 on 1.1.177 drew the 3D picture almost black with
-  0.1.9's defaults; none had been checked on a real 1.1 driver, and forcing the path on a newer one looked right). `IPA` was
-  off there in 0.1.9.1 too and is on again since 0.1.9.2: an Adreno 618 on 1.1.128 (Toaster, 33 %) drew the Volcano's distant
-  plants and dead trees as black bars and white noise without it, and right with it in 0.1.9 (the player's two videos). Without
-  it a varying the shader multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w), and far away that round trip through
-  position w is all a driver's precision has to spoil: a test build reading gl_FragCoord.w at half precision there turned the
-  Galaxy S25's distant cliffs flat and its sky black; the varying read as it is doesn't use w at all:
+  false, `MHGU_VK11=1` too) the ones that change what the GPU is given (`IPA`, `VSTRIM`, `DYNUBO`, `RODEPTH`, `SHADOW_CLEAR`,
+  `FXAA_COPYDRAW`, `HUDSTART_FUSE`) go by the GPU's family (`device.c vk_v11_switches`, the log's `[perf] a Vulkan 1.1 driver`
+  line): an Adreno's all on, as on a newer driver and as in 0.1.9; a Mali's all off, `IPA` too, as in 0.1.9.1; any other's
+  (a PowerVR's) `IPA` alone, as in 0.1.9.2. The players' logs behind it: 0.1.9.1 turned them all off on every 1.1 driver
+  (a Mali-G57 MC2 on 1.1.177 drew the 3D picture almost black with 0.1.9's defaults), and then Adreno 610 and 618 phones on
+  1.1.128 lost the device every few minutes (KGSL errno 71, at a town's load, an area change, in hunts; a Galaxy A52 on that
+  driver had played 0.1.9 without it) and a Redmi Note 8 went from 35 to 17 FPS. 0.1.9.2 turned `IPA` on again for every 1.1
+  driver: an Adreno 618 on 1.1.128 (Toaster, 33 %) drew the Volcano's distant plants and dead trees as black bars and white
+  noise without it, and right with it in 0.1.9 (the player's two videos); and Mali-G57 MC2 phones (Helio G99, Dimensity 6080)
+  drew the stage black again with it (ground, buildings, sky, Shagaru Magala; the hunters and the effects right: one player
+  saw it go with 0.1.9.1 and come back with 0.1.9.2). An Infinix with that Mali and driver showed 0.1.9's whole set right at
+  Toaster 66 %, so the Mali's culprit isn't proven to be `IPA` alone: they stay off together there. `MHGU_VK_ADRENO=1` or
+  `MHGU_VK_MALI=1` (or `=0`) with `MHGU_VK11=1` takes a family's choice on another GPU. Without `IPA` a varying the shader
+  multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w), and far away that round trip through position w is all a
+  driver's precision has to spoil: a test build reading gl_FragCoord.w at half precision there turned the Galaxy S25's distant
+  cliffs flat and its sky black; the varying read as it is doesn't use w at all:
   - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
     runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
     the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings
