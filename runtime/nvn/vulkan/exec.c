@@ -6675,7 +6675,7 @@ static void copy_buffer_to_texture(uint64_t src, const TexRef *dst) {
     vk_ms_resolve(b);
     b->ms_valid = false;
     renderer_mark_gpu_owned(t);
-    if (b->aspect == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) || b->astc_bw || b->bcn) return;
+    if (b->aspect == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) || b->astc_bw || b->bcn || b->stand_in) return;
     bool array = b->layers > 1 && b->depth == 1;
     uint32_t hb = ((uint32_t)rg[4] + fi->bh - 1) / fi->bh, wb = ((uint32_t)rg[3] + fi->bw - 1) / fi->bw;
     uint32_t out_bpb = b->wide ? 8 : fi->bpb == 3 ? 4 : fi->bpb;  // (wide: RGBA8 texels widened to RGBA16)
@@ -6718,6 +6718,7 @@ static void copy_texture_to_buffer(const TexRef *src, uint64_t dst) {
             (unsigned long long)img, (unsigned long long)dst);
     if (!fi || !fi->bpb || fi->bpb == 3 || row % fi->bpb) return;
     TexBackend *b = vk_tex(t, false);
+    if (b->stand_in) return;  // (no image of its own: textures.c stand_in)
     bool array = b->layers > 1 && b->depth == 1;
     uint32_t nz = (uint32_t)rg[5];
     uint64_t total = img * nz;
@@ -6754,6 +6755,7 @@ static void copy_texture(const TexRef *src, const TexRef *dst, uint64_t flags) {
     vk_end_pass();
     st.rt_dirty = true;
     TexBackend *s = vk_tex(st_, false), *d = vk_tex(dt, true);
+    if (s->stand_in || d->stand_in) return;  // (no image of its own: textures.c stand_in)
     vk_ms_resolve(s);
     vk_ms_resolve(d);
     d->ms_valid = false;

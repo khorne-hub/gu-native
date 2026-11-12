@@ -430,6 +430,36 @@ static void fmt_probe(void) {
     LOG("[perf] formats: VK_EXT_image_compression_control %s\n", cc ? "available" : "not available");
 }
 
+// A texture that gets no image of its own: a size no image of this GPU can have (a texture made from garbage, "256 x
+// 2396769997 x 1519567012", a cube array, on a Mali-G57 entering an area: its driver said out of host memory and the game
+// stopped with an error, #198), or both tries in create_image failed. A 1x1 image stands in: never uploaded to (its guest
+// memory isn't read), copied to or rendered into, and sampled as the empty dummy of the shader's kind (vk_view). The game
+// goes on.
+static void stand_in(NvnTexture *t, TexBackend *b, const char *why) {
+    static int nlog;
+    if (nlog++ < 20)
+        LOG("[vk] texture nvn fmt %#x %ux%ux%u target %u, %u levels: %s, an empty 1x1 image stands in\n", t->format, t->width,
+            t->height, t->depth, t->target, t->levels, why);
+    b->bcn = BCN_NONE, b->astc_bw = b->astc_bh = 0, b->mip_skip = 0, b->wide = false;
+    VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D,
+                            .format = VK_FORMAT_R8G8B8A8_UNORM, .extent = {1, 1, 1}, .mipLevels = 1, .arrayLayers = 1,
+                            .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+                            .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+    VK_CHECK(vk_create_image(&ci, &b->image, &b->mem));
+    b->format = VK_FORMAT_R8G8B8A8_UNORM;
+    b->width = b->height = b->depth = b->layers = b->levels = b->samples = 1;
+    b->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+    b->base_type = VK_IMAGE_VIEW_TYPE_2D;
+    b->stand_in = b->gpu_owned = b->uploaded = true;
+    VkCommandBuffer cb = vk_upload_cmd();
+    vk_image_init_layout(cb, b->image, b->aspect);
+    VkClearColorValue zero = {{0, 0, 0, 0}};
+    VkImageSubresourceRange rg = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdClearColorImage(cb, b->image, VK_IMAGE_LAYOUT_GENERAL, &zero, 1, &rg);
+    vk_full_barrier(cb);
+}
+
 static void create_image(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
     {
@@ -457,6 +487,21 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     }
     uint32_t samples = t->samples > 1 ? t->samples : 1;
     if (samples > 1) levels = 1;
+    {   // (a size beyond this GPU's images: the driver is never asked for it, stand_in)
+        static int64_t test_most = -1;  // (test) MHGU_TEST_IMAGE_MAX=<n>: as if no image could be wider or taller than n
+        if (test_most < 0) {
+            const char *e = getenv("MHGU_TEST_IMAGE_MAX");
+            test_most = e && atoi(e) > 0 ? atoi(e) : 0;
+        }
+        const VkPhysicalDeviceLimits *l = &g_vk.props.limits;
+        uint32_t most = type == VK_IMAGE_TYPE_1D ? l->maxImageDimension1D
+                      : type == VK_IMAGE_TYPE_3D ? l->maxImageDimension3D : l->maxImageDimension2D;
+        if (test_most && (uint32_t)test_most < most) most = (uint32_t)test_most;
+        if (tw > most || th > most || depth > most || layers > l->maxImageArrayLayers) {
+            stand_in(t, b, "larger than this GPU's images");
+            return;
+        }
+    }
     VkFormat vf = mf.vf;
     VkFormatFeatureFlags need = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
     b->astc_bw = b->astc_bh = 0;
@@ -544,7 +589,11 @@ static void create_image(NvnTexture *t, TexBackend *b) {
                    VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         ci.flags &= ~VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
         ci.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, ci.pNext = NULL;  // (as before: any view)
-        VK_CHECK(vk_create_image(&ci, &b->image, &b->mem));
+        if ((r = vk_create_image(&ci, &b->image, &b->mem)) != VK_SUCCESS) {  // (it stopped the game here, #198)
+            LOG("[vk] image creation failed (%d) as RGBA8 too\n", r);
+            stand_in(t, b, "no image could be made");
+            return;
+        }
         depthfmt = false;
     }
     b->format = vf;
@@ -1365,7 +1414,7 @@ TexBackend *vk_tex(NvnTexture *t, bool for_render) {
 void vk_rt_widen(NvnTexture *t, bool on) {
     if (t->format != 0x25 || t->target != 1) return;
     TexBackend *b = tex_backend(t);
-    if (b->wide == on || b->format != (b->wide ? VK_FORMAT_R16G16B16A16_UNORM : VK_FORMAT_R8G8B8A8_UNORM)) return;
+    if (b->stand_in || b->wide == on || b->format != (b->wide ? VK_FORMAT_R16G16B16A16_UNORM : VK_FORMAT_R8G8B8A8_UNORM)) return;
     if (b->pending_rgba) upload_pending(b);
     vk_ms_resolve(b);
     if (b->ms) { destroy_image(b->ms); free(b->ms); b->ms = NULL; }
@@ -1465,6 +1514,7 @@ static const VkComponentMapping IDENTITY = {VK_COMPONENT_SWIZZLE_IDENTITY, VK_CO
 // with the NVN component swizzle, converting between compatible types.
 VkImageView vk_view(NvnTexture *t, const NvnTextureView *v, bool has_view, bool render, int want_textype) {
     TexBackend *b = vk_tex(t, render);
+    if (b->stand_in) return render ? VK_NULL_HANDLE : vk_dummy_view(want_textype);  // (no image of its own: stand_in)
     if (!has_view) v = NULL;
     VkFormat fmt = b->format;
     if (v && (v->setmask & 4) && !(b->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
