@@ -735,6 +735,13 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   keyboard's), at the start and when a device comes or goes or such a key first comes (`GameActivity.inputReport`,
   `SDLControllerManager.keySeen`): an Ipega PG-9025 Android calls "... Keyboard" left no line at all (#87, #29). Letters aren't
   logged (a keyboard's typing in a shared log).
+- The Hunter Arts' pieces on layer 100 are taken from y 560 to the canvas's end (720): a style with fewer than three arts draws
+  the empty slots' frames below it (one art: rows at 676, 721, 766), out of sight on the console, and the touch arrangement lifted
+  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 103 left of x 950 (the item
+  bar's pieces start at x 1005 even with L held, its neighbours shown: hudtrace on a Moto g06), and go with the arts.
+- Phone tests of the touch controls without the player's save: `MHGU_SAVE_DIR` to a copy and `MHGU_CONFIG` to a copy of the ini
+  (`Controls = On`). On the Moto g06 adb can't read the app's save files (the app's uid, rw-rw----): copy a save from another phone's backup.
+  A folder the game made in an `MHGU_SAVE_DIR` (a new game's save_0) is the app's and adb can't remove it.
 - The HUD's parts (`runtime/hud_parts.h`: the item bar, the Hunter Arts, the target camera, the clock, health and stamina, the
   sharpness and gauges, the party, the minimap) are found by layer and place in `cbuf_info` (`nvn/vulkan/exec.c`; the status, layer
   103, split by region, a piece in none going with the nearest part: `hudtrace` says which part and "nearest") and placed by
