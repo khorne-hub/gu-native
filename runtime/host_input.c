@@ -1496,7 +1496,7 @@ void host_input_update(void) {
     bool rstick = (b & B(BTN_RSTICK)) && mousecam_active() && config_live_lock_on();
     bool r3_targets = rstick && (mousecam_target_buttons() & B(BTN_RSTICK)) != 0;
     if (rstick && !rstick_was) {
-        if (r3_targets) rstick_hold = plat_now_ns() + 600000000ull;  // (as the touch controls' long press on L)
+        if (r3_targets) rstick_hold = plat_now_ns() + 600000000ull;  // (a long press: the click alone changes the target)
         else touch_lock_toggle(), rstick_hold = 0;
     }
     if (!rstick) rstick_hold = 0;
