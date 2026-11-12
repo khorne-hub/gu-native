@@ -498,6 +498,17 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `dumpsys meminfo` GL mtrack 631, 500 and 453 MB, total PSS 1377, 1273 and 1241 MB; the same frame rate. A staging chunk is a VMA
   allocation of its own and goes at once, but a vertex cache range shares VMA's 32 MB blocks with images: memory goes back only
   when a whole block empties (56 MB of ranges dropped gave back one block). A pool of its own for the cache would give more back.
+- A submission the driver refuses for memory (`vkQueueSubmit` -2 or -1) is made again (`submit_again`, `exec.c`): nothing of it ran
+  and the spec keeps what it names as it was, so after the GPU's work in flight ends, the objects waiting for it go and every idle
+  staging chunk and vertex cache range goes back at once (`trim_now`), it is submitted again, up to 4 tries in about a second; still
+  refused, the error as before. A 2.7 GB phone with a PowerVR GE8320 closed so at a potion, an attack, the smithy or a quest's start
+  with the system's memory at 150-450 MB (#201, #139; its GPU memory was 250-410 MB, 928 MB before 0.1.8's 32 MB blocks): whether
+  a second try is taken there is unproven (no such phone here). `submitoom <n>` in `control.txt` refuses the next n tries (a test).
+- A texture whose size no image of the GPU can have (an NVN texture made from garbage: "256x2396769997x1519567012", a cube array,
+  entering area 4 of map m01d on a Mali-G57 with a Vulkan 1.1 driver, #198: out of host memory, then the RGBA8 try's error stopped the game), or one
+  no image could be made for at all, gets a 1x1 stand-in (`stand_in`, `textures.c`): never uploaded (its guest memory isn't read),
+  copied or rendered into, sampled as the dummy of the shader's kind. `MHGU_TEST_IMAGE_MAX=<n>` (a test) takes the GPU's images as
+  no wider or taller than n.
 - A player's driver is checked once the device is made (`gpu_driver_check`): no library from its folder loaded means the system's runs,
   and the choice moves to `failed`. `DriverActivity` renames a library named as the system's (`vulkan.adreno.so`) to `vulkan.player.so`.
 - The Khronos validation layer: put `libVkLayer_khronos_validation.so` (Android binaries of Vulkan-ValidationLayers) in `jniLibs` for a
