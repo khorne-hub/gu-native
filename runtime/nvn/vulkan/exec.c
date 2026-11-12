@@ -4212,6 +4212,20 @@ static void plist_export_finish(void) {
     LOG("[vk] pipeline list exported: %s (%d pipelines)\n", getenv("MHGU_PIPELIST_EXPORT"), plist_ex_n);
 }
 
+#ifdef __ANDROID__
+// A crash inside a PowerVR driver's compiler (#100: a GE8322's SIGSEGV in libufwriter.so while the one pipeline worker built
+// a pipeline, the game paused in the settings): the program of the build under way, for the crash report, so the next log
+// names it. Only on a PowerVR, whose builds go one at a time (device.c one_compiler_install).
+static const Prog *volatile building_prog;
+static volatile pid_t building_tid;
+static void building_note(void) {  // (rt_fault_note: in the crash report, async-signal-safe)
+    const Prog *p = building_prog;
+    if (p && building_tid == gettid())
+        fprintf(stderr, "[vk] this thread was building a pipeline in the GPU driver: the program of code %llx (vertex) and "
+                        "%llx (fragment)\n", (unsigned long long)p->code[0], (unsigned long long)p->code[1]);
+}
+#endif
+
 static void build_pipeline(void *arg) {
     Pipe *pp = arg;
     uint64_t t0 = plat_now_ns();
@@ -4281,7 +4295,18 @@ static void build_pipeline(void *arg) {
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = k->prog->layout, .renderPass = k->rp};
+#ifdef __ANDROID__
+    if (vk_gpu_powervr()) {
+        rt_fault_note = building_note, building_tid = gettid(), building_prog = k->prog;
+        static _Atomic int test_left = -1;  // (test) MHGU_TEST_PIPECRASH=<n>: the n-th build faults here, as the driver did
+        if (test_left < 0) test_left = getenv("MHGU_TEST_PIPECRASH") ? atoi(getenv("MHGU_TEST_PIPECRASH")) : 0;
+        if (test_left > 0 && atomic_fetch_sub(&test_left, 1) == 1) *(volatile int *)(uintptr_t)8 = 1;
+    }
+#endif
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &pp->pipe);
+#ifdef __ANDROID__
+    building_prog = NULL;
+#endif
     if (r != VK_SUCCESS) {
         static int n;
         if (n++ < 10) LOG("[vk] pipeline creation failed: %d\n", r);
