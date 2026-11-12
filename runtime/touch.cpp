@@ -260,14 +260,17 @@ bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the pag
     return i == C_MMINUS && !config_live_touch_show(TB_MINUS);
 }
 std::atomic<bool> g_menu_town;  // (the menu opened in a town: its ZL stays while the menu is open, touch_input)
+std::atomic<bool> g_in_quest;   // (a hunter of a quest is there, weapon_hunter: touch_input, each update)
 bool in_mode(int i, bool menu) {
     // (the run button: with StickRun Off, in a hunt and in towns, either layout, never in a menu - R turns its pages;
     // what a hunt can do without is off until asked for: [Touch] Show*)
     if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
     if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
     if (i == C_RUNLOCK) return false;                // (drawn and armed with the stick: control, on_lock_circle)
-    // (the Lock-on button: with the lock-on allowed, in a hunt - not in a town, where nothing is locked on)
-    if (i == C_LOCKON && (!config_live_lock_on() || plat_now_ns() - g_town_ns < 500 * 1000000ull || (menu && g_menu_town.load())))
+    // (the Lock-on button: with the lock-on allowed, in a quest - not in a town, nor on the title, the intro or the
+    // character's making, where nothing is locked on; the MH4U port's the same)
+    if (i == C_LOCKON && (!config_live_lock_on() || !g_in_quest.load() || plat_now_ns() - g_town_ns < 500 * 1000000ull ||
+                          (menu && g_menu_town.load())))
         return false;
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
@@ -756,7 +759,16 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // menu pad and its cursor could not move (#210), nor a town's "choose a destination" (#163, #216)
 std::atomic<uint64_t> g_menu_press_ns;  // (SDL_GetTicksNS) when Plus or Minus was last pressed
 bool game_menu(uint32_t hunter) {
-    if (menu_dialog_age() <= 2) return true;
+    {
+        static bool was;  // (MHGU_TOUCH_LOG: as it changes)
+        static int dbg = -1;
+        if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+        bool dialog = menu_dialog_age() <= 2;
+        if (dialog != was && dbg)
+            rt_logf("[touch] a dialog of the game's %s (frame %llu)\n", dialog ? "up: a menu" : "gone", (unsigned long long)g_present_count);
+        was = dialog;
+        if (dialog) return true;
+    }
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
         bool gun = hunter && weapon_ranged(hunter) && weapon_drawn() == 1;
@@ -2152,6 +2164,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     g_menu_buttons = 0;
     bool menu = overlay_menu_open();
     uint32_t hunter = weapon_hunter();
+    g_in_quest = hunter != 0;  // (in_mode: the Lock-on button)
     play_seen(hunter);
     // (a bow or a gun being aimed draws on the layer of the game's menus, and it is the hunt's controls that it needs)
     bool game = game_menu(hunter) && !weapon_aiming(hunter) && !ranged_aim(hunter);
