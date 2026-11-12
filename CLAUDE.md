@@ -419,6 +419,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Adreno 630 on Android 10 (driver 1.1.87): SIGSEGV in `vulkan.sdm845.so+1dd318`, from `vkCmdClearAttachments`. Drivers under 1.1.128 clear with draws
   (`clears_drawn`, `MHGU_CLEAR_FORCE=1` tests it anywhere). Adreno with Vulkan 1.1: below 720 lines and without MSAA the 3D picture repeats in a grid, so
   `msaa_floor` keeps 2x unless `[Performance] AdrenoFix = Off` (an Adreno 610 on 1.1.128 looked dark and flickered with it). Its cause is unknown.
+  The one picture of it (#12: Adreno 710, 1.1.128, 894x402, Low-end off) shows the whole scene shrunk into tiles of about 160x128 of the
+  3D picture's pixels, the HUD right: the size of a tiler's bins, a lead for whoever has such a phone. On Android a 3D picture 704 to
+  719 lines tall is made 720 (`config.c`, any GPU): 66% of a 1080-line screen gave 1582x712, which got the 2x for those 8 lines
+  (a Galaxy M55's Adreno 644: 15-20 FPS, against 30 at 1600x720 with no MSAA; #190).
 - On the Adreno 616 and 630 drivers of Android 10 (1.1.87) D32_SFLOAT_S8_UINT can't be sampled or copied into (one of the two), and D24S8
   lacked something asked of it (blits, most likely). Up to 0.1.8 DEPTH24_STENCIL8 became D32S8 there and `create_image` then made the
   game's depth buffer RGBA8 ("format 130 (nvn 0x35) not supported: RGBA8 instead"): the device was lost at the first 3D scene after the
