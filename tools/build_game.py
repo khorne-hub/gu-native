@@ -342,6 +342,14 @@ def main():
     ap.add_argument('--keep', action='store_true', help='keep the work folder')
     a = ap.parse_args()
 
+    # (a build_game.py moved out of its download, or a download unzipped in part, finds none of the files it reads: say so
+    # in plain words instead of a FileNotFoundError on runtime/hle/hle_symbols.txt)
+    missing = [n for n in ID_FILES if not os.path.isfile(os.path.join(ROOT, n))]
+    if missing:
+        fail(f'this tool can\'t find the rest of its download ({missing[0]} is not in {ROOT}).\n'
+             'Unzip ALL of the "Source code (zip)" of the release that matches your app, open its "tools" folder and run '
+             'build_game.py from there, without moving it.')
+
     t0 = time.time()
     game = check_game(os.path.abspath(a.game))
     wanted = [k for k in ('android', 'pc') if getattr(a, k)] or ['android', 'pc']
