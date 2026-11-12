@@ -2731,7 +2731,12 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons, bool still) {
             } else if (now < s.assist_until && weapon_aiming(hunter)) {
                 s.assist_until = now + SHOT_AIM;  // (the hunter in its aim: this one passes at once, and the aim stays)
                 if (now < s.still_until) s.still_until = now + SHOT_AIM;
-            } else if (!s.combo_t0 && still && !others && !mods && !crouch_fire(act)) {
+            } else if (!s.combo_t0 && still && !others && !mods && !crouch_fire(act) &&
+                       (mousecam_hunt_camera() || weapon_aim_action(hunter))) {
+                // (the hunt camera running, or an aim's actions: not crouching fire of another style's, whose actions
+                // aren't crouch_fire's - its own camera stops the hunt camera's handler, as the stance's test knows.
+                // With Valor's, a press held for its fire went to the help's aim and was held back, and the hunter was
+                // turned meanwhile: #209)
                 s.still_until = now + SHOT_AIM;
                 bool in_aim = weapon_aim_action(hunter) && act != (1u << 16 | 45);
                 if (in_aim) {
