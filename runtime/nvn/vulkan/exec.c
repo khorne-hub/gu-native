@@ -4660,9 +4660,12 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                             anchor = ANCHOR_CENTER, window_before = !ui_window_pass;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (target_piece) left of them
-                        // (not a stretched panel: the multiplayer menu's, the hub form's)
+                        // (not a stretched panel: the multiplayer menu's, the hub form's). Not below the canvas: a
+                        // style with fewer than three arts has the empty slots' frames there (one art: rows at y 676,
+                        // 721, 766), out of sight on the console; taken by their top row, they came into view as blank
+                        // rows under the arts (#125, Discord)
                         bool flat = !(fabsf(m[0]) > 2.0f && fabsf(m[5]) > 2.0f);
-                        if (hunt_hud && flat && pos_x >= 700.0f && pos_x <= 900.0f && pos_y > 560.0f &&
+                        if (hunt_hud && flat && pos_x >= 700.0f && pos_x <= 900.0f && pos_y > 560.0f && pos_y < 720.0f &&
                             hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) {
                             part = HP_ARTS, part_touch = true;
                             if (prof == HUD_TOUCH) vanchor = V_TOP;
@@ -4683,6 +4686,13 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                                 int p = hud_status_part(pos_x, pos_y, &part_nearest);
                                 if (hud_accept(p, pos_z, pos_x, pos_y)) part = p;
                             }
+                        } else if (hunt_hud && pos_x < 950.0f && pos_y >= 560.0f && pos_y < 720.0f) {
+                            // (the Hunter Arts' "ZL +" before each art's button with Control Type 3, drawn on this
+                            // layer left of the item bar's art (x 992..): the arts' own, with them. Taken for the item
+                            // bar's, they stayed by the moved bar when the arts were moved: Discord, and a 0.1.8 shot)
+                            anchor = ANCHOR_RIGHT;
+                            vanchor = prof == HUD_TOUCH ? V_TOP : V_BOTTOM;
+                            if (hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) part = HP_ARTS, part_touch = true;
                         } else {
                             anchor = ANCHOR_RIGHT;
                             vanchor = V_BOTTOM;
