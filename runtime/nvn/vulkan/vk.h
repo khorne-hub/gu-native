@@ -43,6 +43,7 @@ typedef struct {
     volatile uint32_t msaa;    // samples for the 3D scene's passes (settings MSAA, as far as the GPU allows): 1 = off
     uint32_t msaa_counts;      // the sample counts MSAA can use (bits 2, 4, 8)
     bool fsr_fp16, fsr_storage_wo_format;  // FSR (fsr.c): shaderFloat16 / shaderStorageImageWriteWithoutFormat enabled
+    bool creation_feedback;    // VK_EXT_pipeline_creation_feedback: a pipeline build says whether the driver's cache had it
     // window
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;
@@ -57,6 +58,10 @@ extern VkG g_vk;
 // One lock for everything that records or submits (the game may submit from more than one thread).
 void vk_lock(void);
 void vk_unlock(void);
+
+// The driver's pipeline cache written to cache/vk_pipelines.bin now (any thread; one write at a time): its size in KB,
+// 0 if nothing was written. device.c also writes it when the app goes to the background and at exit.
+size_t vk_pipeline_cache_save(void);
 
 // exit() has begun (set by device.c's atexit handler): driver calls are no longer safe, the process leaves
 // through _exit. Late guest threads park at vk_lock and drop their GPU waits.

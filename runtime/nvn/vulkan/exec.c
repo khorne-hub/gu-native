@@ -1225,12 +1225,51 @@ static int compile_workers(void) {
 #endif
 }
 
+// ---- the driver's pipeline cache (device.c: cache/vk_pipelines.bin) kept on disk while the game runs too, not only when
+// the app goes to the background or quits: a session that ended in a crash or a lost device kept none of it, and the
+// next start could build every pipeline again (a PowerVR builds them on one worker; a player there saw the scene come
+// late at every start). A compile worker writes it once the start's queued builds are done, then at most every 2
+// minutes while builds the cache didn't have keep coming (64 or more). A driver with VK_EXT_pipeline_creation_feedback
+// tells which builds its cache had (the start's line counts them); without it every build counts as new.
+static _Atomic uint64_t pc_told, pc_hit, pc_new, pc_saved_ns;
+static _Atomic int pc_start_done;
+static void pcache_built(VkPipelineCreationFeedbackFlags f) {
+    bool told = (f & VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT) != 0;
+    if (told) atomic_fetch_add(&pc_told, 1);
+    if (told && (f & VK_PIPELINE_CREATION_FEEDBACK_APPLICATION_PIPELINE_CACHE_HIT_BIT)) atomic_fetch_add(&pc_hit, 1);
+    else atomic_fetch_add(&pc_new, 1);
+}
+// (a compile worker, after each job)
+static void pcache_autosave(void) {
+    static pthread_mutex_t one = PTHREAD_MUTEX_INITIALIZER;
+    uint64_t now = plat_now_ns(), last = atomic_load(&pc_saved_ns);
+    if (!last) { atomic_compare_exchange_strong(&pc_saved_ns, &last, now); return; }  // (the clock starts at the first)
+    bool start = atomic_load(&pc_start_done);
+    if (!start && (atomic_load(&pc_new) < 64 || now - last < 120000000000ull)) return;
+    if (pthread_mutex_trylock(&one)) return;
+    start = atomic_exchange(&pc_start_done, 0);
+    uint64_t n = atomic_exchange(&pc_new, 0);
+    if (n) {
+        size_t kb = vk_pipeline_cache_save();
+        LOG("[vk] pipeline cache kept: %zu KB, %llu pipeline(s) new to it since the last time%s\n", kb, (unsigned long long)n,
+            start ? " (the start's builds done)" : "");
+    }
+    atomic_store(&pc_saved_ns, plat_now_ns());
+    pthread_mutex_unlock(&one);
+}
+
 // (under q->lock) the builds queued at the start all done (progcache_open): logged once, with how long they took
 static void queue_caught_up(JobQueue *q) {
     if (q->watch != 1 || q->head || q->lhead || q->busy) return;
     q->watch = 0;
-    LOG("[shader] the builds queued at the start are done: %llu in %.1f s\n", (unsigned long long)q->watch_jobs,
-        (plat_now_ns() - q->watch_t0) / 1e9);
+    uint64_t told = atomic_load(&pc_told), hit = atomic_load(&pc_hit);
+    char had[96] = "";
+    if (told)
+        snprintf(had, sizeof had, " (the driver's pipeline cache had %llu of the %llu pipelines)", (unsigned long long)hit,
+                 (unsigned long long)told);
+    LOG("[shader] the builds queued at the start are done: %llu in %.1f s%s\n", (unsigned long long)q->watch_jobs,
+        (plat_now_ns() - q->watch_t0) / 1e9, had);
+    atomic_store(&pc_start_done, 1);
 }
 
 static void *worker(void *a) {
@@ -1270,6 +1309,7 @@ static void *worker(void *a) {
         q->busy--;
         if (q->watch) q->watch_jobs++, queue_caught_up(q);
         pthread_mutex_unlock(&q->lock);
+        if (q == &compile_q) pcache_autosave();
     }
     return NULL;
 }
@@ -4242,10 +4282,16 @@ static void build_pipeline(void *arg) {
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = k->prog->layout, .renderPass = k->rp};
+    VkPipelineCreationFeedback fb = {0};
+    VkPipelineCreationFeedbackCreateInfo fbi = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO,
+                                                .pPipelineCreationFeedback = &fb};
+    if (g_vk.creation_feedback) pi.pNext = &fbi;
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &pp->pipe);
     if (r != VK_SUCCESS) {
         static int n;
         if (n++ < 10) LOG("[vk] pipeline creation failed: %d\n", r);
+    } else {
+        pcache_built(fb.flags);
     }
     atomic_fetch_add(&stat_compiles, 1);
     job_stat(2, t0);
@@ -5037,6 +5083,7 @@ static void build_compute(void *arg) {
                                                 .pSpecializationInfo = &spec},
                                       .layout = cp->p.layout};
     VkResult r = vkCreateComputePipelines(g_vk.dev, g_vk.pcache, 1, &ci, NULL, &cp->pipe);
+    if (r == VK_SUCCESS) pcache_built(0);
     atomic_fetch_add(&stat_compiles, 1);
     set_state(&cp->p.state, r == VK_SUCCESS ? 1 : 2, 0);
     if (r != VK_SUCCESS) LOG("[compute] pipeline failed: %d\n", r);

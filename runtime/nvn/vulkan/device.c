@@ -617,6 +617,10 @@ static void create_device(void) {
     if (g_vk.divisor) ext[n_ext++] = VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME;
     g_vk.stencil_export = has_ext(ep, ne, VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME);  // (MSAA stencil resolve)
     if (g_vk.stencil_export) ext[n_ext++] = VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME;
+    // (only a structure a pipeline build fills in: whether the driver's pipeline cache had it, for the log's line when the
+    // start's builds are done, exec.c. MHGU_VK_NO_FEEDBACK=1: not asked for)
+    g_vk.creation_feedback = has_ext(ep, ne, VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME) && !getenv("MHGU_VK_NO_FEEDBACK");
+    if (g_vk.creation_feedback) ext[n_ext++] = VK_EXT_PIPELINE_CREATION_FEEDBACK_EXTENSION_NAME;
     no_exclusive = surface_caps2 && has_ext(ep, ne, "VK_EXT_full_screen_exclusive") && !getenv("MHGU_VK_EXCLUSIVE");
     if (no_exclusive) ext[n_ext++] = "VK_EXT_full_screen_exclusive";
 #ifdef __ANDROID__
@@ -839,35 +843,55 @@ static void create_device(void) {
         fclose(fp);
     }
     VkPipelineCacheCreateInfo pc = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, .initialDataSize = sz, .pInitialData = data};
+    bool taken = true;
     if (vkCreatePipelineCache(g_vk.dev, &pc, NULL, &g_vk.pcache) != VK_SUCCESS) {
-        pc.initialDataSize = 0;
+        pc.initialDataSize = 0, taken = false;
         VK_CHECK(vkCreatePipelineCache(g_vk.dev, &pc, NULL, &g_vk.pcache));
     }
     free(data);
+    LOG("[vk] the driver's pipeline cache: %zu KB from the last run%s\n", sz >> 10,
+        !sz ? "" : taken ? "" : " (refused by the driver: begun empty)");
 }
 
-static void pipeline_cache_save(void) {
-    size_t sz = 0;
+// (one write at a time: the background, the exit and the compile workers' saves, exec.c pcache_autosave)
+static pthread_mutex_t pcache_save_lock = PTHREAD_MUTEX_INITIALIZER;
+static size_t pipeline_cache_write(void);
+static void pipeline_cache_save(void) { vk_pipeline_cache_save(); }
+size_t vk_pipeline_cache_save(void) {
+    if (!g_vk.dev || !g_vk.pcache) return 0;
+    pthread_mutex_lock(&pcache_save_lock);
+    size_t kb = pipeline_cache_write();
+    pthread_mutex_unlock(&pcache_save_lock);
+    return kb;
+}
+static size_t pipeline_cache_write(void) {
+    size_t sz = 0, kb = 0;
     void *data = NULL;
     VkResult res = VK_INCOMPLETE;
-    // (the shader workers may add pipelines between the size and the data: VK_INCOMPLETE, asked again with the new size)
-    for (int tries = 0; tries < 3 && res == VK_INCOMPLETE; tries++) {
+    // (the shader workers may add pipelines between the size and the data: VK_INCOMPLETE, asked again with the new size.
+    // A Mali keeps about 14 KB a pipeline (a Moto g06: 21 MB for 1600), and three workers building a list from nothing
+    // can add more than the 64 KB once left for it between the two calls: three tries like that wrote nothing, and the log
+    // said it was saved all the same. Now a quarter more and 1 MB of room, five tries, and the log says what was written)
+    for (int tries = 0; tries < 5 && res == VK_INCOMPLETE; tries++) {
         free(data), data = NULL;
-        if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) != VK_SUCCESS || !sz) return;
-        sz += 64 * 1024;  // (room for what is added meanwhile)
-        if (!(data = malloc(sz))) return;
+        if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) != VK_SUCCESS || !sz) return 0;
+        sz += sz / 4 + (1u << 20);  // (room for what is added meanwhile)
+        if (!(data = malloc(sz))) return 0;
         res = vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, data);
     }
+    if (res != VK_SUCCESS) LOG("[vk] pipeline cache not saved: %d\n", res);
     if (res == VK_SUCCESS) {
         mkdir("cache", 0755);
         FILE *f = fopen("cache/vk_pipelines.bin.tmp", "wb");
         if (f) {
             bool ok = fwrite(data, 1, sz, f) == sz;
-            fclose(f);
+            ok = !fclose(f) && ok;
             if (ok) { remove("cache/vk_pipelines.bin"); rename("cache/vk_pipelines.bin.tmp", "cache/vk_pipelines.bin"); }
+            if (ok) kb = (sz >> 10) ? sz >> 10 : 1;
         }
     }
     free(data);
+    return kb;
 }
 
 // An Adreno on a Vulkan 1.1 driver (seen: Adreno 710, 1.1.128) shows the 3D picture repeated in a grid over the screen with
@@ -1228,9 +1252,9 @@ static void android_window_check(void) {
 static bool bg_cache_saved;
 static void background_cache_save(void) {
     if (bg_cache_saved || !g_vk.dev || !g_vk.pcache) return;
-    pipeline_cache_save();
+    size_t kb = vk_pipeline_cache_save();
     bg_cache_saved = true;
-    LOG("[vk] in the background: pipeline cache saved\n");
+    LOG("[vk] in the background: pipeline cache saved (%zu KB)\n", kb);
 }
 void vk_background_save(void) {
     vk_lock();
