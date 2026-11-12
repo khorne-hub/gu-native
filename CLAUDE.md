@@ -482,7 +482,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   backend, which looks them up itself, gets the same through `vk_device_proc_addr`). Not on the
   render thread: 0.1.8 did that, and the start built every saved program and pipeline before its first picture, a black screen on a
   Helio G35 (#157). `MHGU_VK_POWERVR=1` gives any GPU what a PowerVR gets (this, no prewarm, VMA as Vulkan 1.0). The log's `[shader]
-  the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s).
+  the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s) and,
+  where the driver has VK_EXT_pipeline_creation_feedback, how many of the pipelines its cache had; the start's `[vk] the driver's
+  pipeline cache: N KB from the last run` says what was read. Players' Mali phones on the Moto's own driver took 84.5 s (#199, Helio G85)
+  and 86.8 s (Discord, Unisoc T7250, whose session before had ended in a crash) there: their driver cache was cold or incomplete.
+  `cache/vk_pipelines.bin` used to be written only in the background and at exit, and a run that ended otherwise (a crash, a lost
+  device, the process killed; perhaps a write cut short by a quick swipe from Recents: not seen) kept nothing of it. A compile worker
+  now also writes it once the start's builds are done and then at most every 2 minutes while 64 or more new pipelines came
+  (`pcache_autosave`, exec.c), and the render thread queues that save when a burst ended inside the 2 minutes (`pcache_tick`: the
+  workers only look after a job, and a town's and a quest's pipelines, built in the minute after the start's were kept, waited for
+  the next build). The PC, a killed run: 0 of 933 from the cache at the next start, with the autosave 933 of 933. The Moto g06
+  (MHGU_HOME with the program cache but no driver cache, quest 101, killed each time): the start's 152 pipelines 15.6 s, then 0.2 s
+  from the 1663 KB kept; the quest's pipelines lost without `pcache_tick` (next start 178 of 308 from the cache, 16.4 s), kept
+  with it (3313 KB 2 minutes in, next start 308 of 308, 0.4 s). A save asks the driver again with a quarter more and 1 MB of room
+  (64 KB before) and logs what it wrote.
 - Phones give memory back (`staging_trim`, `vc_trim`, `exec.c`): a staging chunk the ring hasn't taken for 8 s, and vertex cache ranges no
   draw used for 20 s. Before, both only grew: the chunks a burst of uploads made (an area's textures, decoded on a Mali) and the
   vertex data of every area visited, up to the cache's 384 MB, which a 2.8 GB phone couldn't hold (#59, #156). The vertex cache is

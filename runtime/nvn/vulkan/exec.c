@@ -383,6 +383,7 @@ void vk_full_barrier(VkCommandBuffer cb) {
 static void guest_copy_new_submission(void);
 static void staging_trim(void);
 static void vc_trim(void);
+static void pcache_tick(void);
 
 // Submit the pending work (if any). wait / signal: binary semaphores for presentation (may be null).
 void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
@@ -439,6 +440,7 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal) {
     vk_collect_dead();
     staging_trim();
     vc_trim();
+    pcache_tick();
 }
 
 static void renderer_submit(void) { vk_submit_extra(VK_NULL_HANDLE, VK_NULL_HANDLE); }
@@ -1231,8 +1233,10 @@ static int compile_workers(void) {
 // late at every start). A compile worker writes it once the start's queued builds are done, then at most every 2
 // minutes while builds the cache didn't have keep coming (64 or more). A driver with VK_EXT_pipeline_creation_feedback
 // tells which builds its cache had (the start's line counts them); without it every build counts as new.
+#define PC_EVERY_NS 120000000000ull  // (at most one save in this long: a Mali's file is about 20 MB)
+#define PC_MIN_NEW 64
 static _Atomic uint64_t pc_told, pc_hit, pc_new, pc_saved_ns;
-static _Atomic int pc_start_done;
+static _Atomic int pc_start_done, pc_due_queued;
 static void pcache_built(VkPipelineCreationFeedbackFlags f) {
     bool told = (f & VK_PIPELINE_CREATION_FEEDBACK_VALID_BIT) != 0;
     if (told) atomic_fetch_add(&pc_told, 1);
@@ -1245,7 +1249,7 @@ static void pcache_autosave(void) {
     uint64_t now = plat_now_ns(), last = atomic_load(&pc_saved_ns);
     if (!last) { atomic_compare_exchange_strong(&pc_saved_ns, &last, now); return; }  // (the clock starts at the first)
     bool start = atomic_load(&pc_start_done);
-    if (!start && (atomic_load(&pc_new) < 64 || now - last < 120000000000ull)) return;
+    if (!start && (atomic_load(&pc_new) < PC_MIN_NEW || now - last < PC_EVERY_NS)) return;
     if (pthread_mutex_trylock(&one)) return;
     start = atomic_exchange(&pc_start_done, 0);
     uint64_t n = atomic_exchange(&pc_new, 0);
@@ -1256,6 +1260,18 @@ static void pcache_autosave(void) {
     }
     atomic_store(&pc_saved_ns, plat_now_ns());
     pthread_mutex_unlock(&one);
+}
+// The workers look after a job only, so a burst that ended within the 2 minutes (a town's or a quest's pipelines, built
+// in the minute after the start's were kept) waited for the next build or the background: on a Moto g06 killed in a
+// quest, the next start had 178 of its 308 pipelines (16.4 s). The render thread (each submission) queues a job once
+// that save is due, and the worker's check after it writes the file (308 of 308, 0.4 s).
+static void enqueue(JobQueue *q, bool low, void (*fn)(void *), void *arg);
+static void pcache_due(void *arg) { (void)arg; atomic_store(&pc_due_queued, 0); }
+static void pcache_tick(void) {
+    if (atomic_load(&pc_new) < PC_MIN_NEW) return;
+    uint64_t last = atomic_load(&pc_saved_ns);
+    if (!last || plat_now_ns() - last < PC_EVERY_NS || atomic_exchange(&pc_due_queued, 1)) return;
+    enqueue(&compile_q, true, pcache_due, NULL);
 }
 
 // (under q->lock) the builds queued at the start all done (progcache_open): logged once, with how long they took
