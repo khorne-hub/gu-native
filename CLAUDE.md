@@ -458,8 +458,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   error, the same samplers and formats as area 4 (the depth target sampled nearest), no program with subgroup operations
   (that driver has them in compute only). Not tried: walking from 4 into 5 under the validation layer.
 - A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
-  area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
-  tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy).
+  area. None of the game's files is empty. The game's own folder is measured, before the mods (a mod's files, smaller or larger, moved
+  the merged image's size either way), and without `nativeNX/movie` (1.39 of the 12.31 GB: copies with the movies encoded again, 11.0
+  GB, play right, #171): under 10.65 GB of the other 10.92, or with empty files (mods' aside), the log warns and, a few seconds in, a
+  notice tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy). The
+  log's `[romfs] the game's own files` line gives both sizes, and a file or folder the scan can't read (`stat` or `opendir`
+  refused) is named, the first five.
 - `Config` gets its defaults by position: `CONFIG_DEFAULT_VALUES` in `config.c`. A new field in `config.h` needs its value there, in its
   place, or every later field moves (two added once turned most touch buttons off).
 - The shadow maps are one 1024x3072 depth atlas (three cascades), the first pass of a hunt's frame: 47 draws, 2.8 ms of a Moto g06's 18.6.
