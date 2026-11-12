@@ -1654,13 +1654,20 @@ void vk_shaders_init(void);
 // driver down while other threads are still inside nvnQueueSubmitCommands / vkWaitSemaphores (the exit-time
 // SIGSEGV in libnvidia-glcore). So: park the guest threads (vk_lock), drain what is in flight, let the GPU
 // finish, keep the pipeline cache - and leave with _exit, running no further teardown.
-static void exit_handler(void) {
+// vk_exit_begin: its first part, which runtime/ui.c also calls just before its own exit(): exit() destroys the C++
+// statics made after backend_init (overlay.cpp's turned copy of the menu, made at its first draw) before it comes to
+// exit_handler, while the update thread may still draw the held menu with them - a SIGSEGV in free() as Save and restart
+// left (seen in an Infinix's log). Parked first, it no longer draws.
+void vk_exit_begin(void) {
     exiting = true;
     vk_exit_thread = pthread_self();
     if (g_vk.dev && g_vk_owner != pthread_self()) {  // (inside a submission already: the holder is us, don't self-lock)
         pthread_mutex_lock(&g_vk_mutex);
         pthread_mutex_unlock(&g_vk_mutex);
     }
+}
+static void exit_handler(void) {
+    vk_exit_begin();
     if (g_vk.dev) {
         vkDeviceWaitIdle(g_vk.dev);
         pipeline_cache_save();

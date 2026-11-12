@@ -28,6 +28,13 @@ static SDL_AtomicInt requested_action, action_failed;
 // (hle/input.c) and the settings menu's requests post it. NULL: the loop as before
 static SDL_Semaphore *loop_sem;
 static bool log_orientation;  // (MHGU_PERF_NO_ACCEL set, 0 or 1: the display's orientation events are logged, ui_run)
+void vk_exit_begin(void);  // (nvn/vulkan/device.c)
+// The window loop's own exit (Quit, Save and restart, the window closed): the threads that draw are parked first, before
+// exit() destroys C++ statics they may still be drawing with (vk_exit_begin)
+static void leave(void) {
+    vk_exit_begin();
+    exit(0);
+}
 void ui_loop_wake(void) {
     SDL_Semaphore *sem = __atomic_load_n(&loop_sem, __ATOMIC_ACQUIRE);
     if (sem) SDL_SignalSemaphore(sem);
@@ -319,7 +326,7 @@ int ui_run(void) {
 #endif
             do {
                 if (e.type == SDL_EVENT_QUIT) {
-                    if (!config_confirm_exit() && !overlay_settings_dirty()) { LOG("window closed\n"); exit(0); }
+                    if (!config_confirm_exit() && !overlay_settings_dirty()) { LOG("window closed\n"); leave(); }
                     overlay_request_close();
                     continue;
                 }
@@ -331,7 +338,7 @@ int ui_run(void) {
             } while (SDL_PollEvent(&e));
         }
         int action = SDL_SetAtomicInt(&requested_action, 0);
-        if (action == 1) exit(0);
+        if (action == 1) leave();
 #ifdef __ANDROID__
         if (action == 3) activity_call("showLicenses");
         if (action == 4) activity_call("showGameFolder");
@@ -356,7 +363,7 @@ int ui_run(void) {
         if (action == 10) pc_import_mod();
 #endif
         if (action == 2) {
-            if (restart_application()) exit(0);
+            if (restart_application()) leave();
             SDL_SetAtomicInt(&action_failed, 1);
         }
         host_input_update();

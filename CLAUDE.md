@@ -768,6 +768,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   Its browser offers an SD card only when `AppHome.probe` can write at the card's root (`FolderBrowser.roots(c, true)`), and the
   intro names the card only from Android 11 (Android 9 and 10 let no app write on a removable card outside its own folder); the game
   folder's browser lists every card. RG406V (Android 13): the SD card tab shows and lists the card, the probe leaves nothing there.
+- Quit, Save and restart and the window closed park the threads that draw before `exit()` (`ui.c leave`, `device.c vk_exit_begin`):
+  `exit()` destroys the C++ statics made after `backend_init` (`overlay.cpp`'s turned copy of the menu) before it reaches
+  `exit_handler`, and the update thread, drawing the held menu with them, crashed in `free()` as Save and restart left.
 - The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,
   never with an LDN network up): the update thread stays in `overlay_frame`, drawing the menu (`frame_once`) and presenting the
   last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the
