@@ -442,7 +442,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   read while drawn into, the HUD's depth clear: `depth_copy_ok`).
   `MHGU_VK_FMT_MASK=<VkFormat>:<hex features>` takes features away to test those paths on any GPU.
 - A lost device (`VK_ERROR_DEVICE_LOST` at a submit or a wait) logs every submission not known finished: its passes (size, first colour
-  format, depth format, samples, draws), the programs drawn (vertex / fragment code address), drawn clears and copies, then the GPU
+  format, depth format, samples, draws), the programs drawn (vertex / fragment code address, a line per pass, 160 at most: the game's
+  code addresses, the same on every device, so a dump can be compared with a test phone's), drawn clears and copies, then the GPU
   driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted,
   so the last 4 known finished are listed too (`(finished)`): Adreno's KGSL retires a batch that faulted, its fence signalled, and
   refuses the next submission with EPROTO (`IOCTL_KGSL_GPU_COMMAND failed: errno 71`, "the context faulted before"; EDEADLK once it
