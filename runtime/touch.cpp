@@ -748,8 +748,13 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // while the lock-on's target button (ZL) is pressed all the time. There only Plus or Minus (the pause menu, the map) make
 // a window a menu, and a cursor running one only after them: a heavy bowgun's hunt went to the menu layout, its shot
 // taken by the menu pad, no locked shot, no item bar arrows, no crouching fire
+// A dialog of the game's - the talk window shown (a person's lines and their yes / no), the message window waiting for a
+// button - is a menu too, whatever is drawn (hle/mousemenu.c menu_dialog_age): the talk window sits where the chat's log
+// does, which is no menu window here, so a talk's yes / no in a quest (the Transpurrter's "cancel the delivery?") had no
+// menu pad and its cursor could not move (#210), nor a town's "choose a destination" (#163, #216)
 std::atomic<uint64_t> g_menu_press_ns;  // (SDL_GetTicksNS) when Plus or Minus was last pressed
 bool game_menu(uint32_t hunter) {
+    if (menu_dialog_age() <= 2) return true;
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
         bool gun = hunter && weapon_ranged(hunter) && weapon_drawn() == 1;
@@ -790,14 +795,14 @@ bool playable(void) {
     uint64_t p = g_play_ns.load(), t = plat_now_ns() - p;
     return p && (t < PLAY_NOW || (t < 2000 * 1000000ull && menu_updates() - g_play_upd.load() < 3));
 }
-// The menu pad's presses are the d-pad's - in the field a Hunter Art. A press may start only while a menu takes input: a
-// cursor of its (a list, a box, a quantity, a choice of two) ran in the game's last update (counted, not timed: a long
-// update in a menu keeps it; hle/mousemenu.c menu_cursor_age), or with the hunter not played (the title, a talk: no Art
-// can come of it). Not on the menu's windows: a hunt's menu closing still draws them for 100 ms and more, running no
-// cursor, and the hunter may be played again by then. What the pad presses lets go once no cursor has run for
-// MPAD_LET_GO updates (the hunter played): a thumb left on it as the menu closes is no d-pad held in the field
-bool press_ok(void) { return menu_cursor_age() <= 1 || !playable(); }
-const uint32_t MPAD_LET_GO = 2;  // (updates without a menu's cursor: touch_input)
+// The menu pad's presses are the d-pad's - in the field a Hunter Art. They are the menu's alone (input_stage_menu_only):
+// the game's thread gives them to the game as the d-pad only while a menu takes input - a cursor of its (a list, a box, a
+// quantity, a choice of two) ran in the game's last update (counted, not timed: a long update in a menu keeps it;
+// hle/mousemenu.c menu_cursor_age), or the hunter isn't played (the title, a talk: no Art can come of it) - and otherwise
+// writes them into the menu's half of the game's pad alone, which the hunter never reads (hle/mousemenu.c pad_update): a
+// hunt's menu closing still draws its windows for 100 ms and more, running no cursor, and the hunter may be played again
+// by then. Up to 0.1.9.2 the pad pressed nothing then, and the menus that run none of those cursors took nothing from it:
+// the Options' value being changed (its row's arrows), a talk's yes / no in a quest (#210, #215: players stuck there)
 // The pad comes in as the menu opens (MPAD_IN) and goes as its windows go: from the later of the second frame without
 // one and the last frame with one and MPAD_HOLD (a submenu's first frames without a window: measured one frame, 30 ms),
 // in MPAD_OUT; gone within 180 ms of the last window (a frame's time to draw it included), not when the menu mode ends
@@ -813,6 +818,7 @@ std::atomic<int> g_frames_since_preview{1000};
 float mpad_fade(uint64_t ticks) {  // (1 while a menu window shows, down to 0 after it is gone)
     if (!config_live_touch_show(TB_MENU_PAD)) return 0.0f;
     if (g_frames_since_front.load() <= 2 && config_live_touch_show(TB_STICK)) return 0.0f;
+    if (menu_dialog_age() <= 2) return 1.0f;  // (a dialog: game_menu)
     uint64_t m = g_menu_ns.load();
     if (!m) return 0.0f;
     if (g_frames_since_menu.load() <= 1 || menu_cursor_age() <= 1) return 1.0f;
@@ -938,14 +944,14 @@ struct Finger {
     uint64_t repeat_ns;    // an ammo arrow held: its next step then
     uint64_t btn;          // a control of the ranged layout: what it pressed when it landed (the weapon may go out under it)
     int sent;              // the menu pad's: the direction it presses now (dpad_part's; a tab, Minus: 1 pressed), which
-                           // follows part as press_ok lets a press start
+                           // follows part
     uint64_t keep;         // a thumb from Guard slid onto the attacks ([Touch] GuardSlide): R kept with them
     bool on_bar;           // ...or one on Guard slid onto the item bar: R + Y while it is there
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
     bool menu;                      // the menu's (the menu pad's, a drag's step): dropped as the menu closes...
-    bool fresh;                     // ...and dropped at its first update unless a press may start then (press_ok)
+    bool fresh;                     // ...its first update not yet come (logged)
     bool checked;
     int ctl, part;                  // a tap of the menu pad's group: which one, its direction (-1: no such tap)
 };
@@ -1090,7 +1096,7 @@ void ensure_loaded(State &s) {
     rt_logf("[touch] layout: %s\n", had ? LAYOUT_FILE : "the defaults");
 }
 
-// (menu: the menu's own, dropped as it closes; fresh: a press that starts, which press_ok must let through; ctl, part:
+// (menu: the menu's own, dropped as it closes; fresh: a press that starts (logged at its first update); ctl, part:
 // a tap of the menu pad's group, lit while it presses)
 void pulse(State &s, uint64_t buttons, uint64_t ns, uint64_t after = 0, bool menu = false, bool fresh = false, int ctl = -1,
            int part = 0) {
@@ -2020,7 +2026,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             int part = dpad_part(place(s.layout, f->ctl, s.w, s.h), x, y, f->part);
             if (part != f->part) f->part = part, recompute_held(s), tap_due();
         } else if (f->kind == F_BUTTON && f->ctl == C_MPAD) {  // the menu pad: the same (pressed by touch_input, as a
-            f->part = mpad_part(place(s.layout, C_MPAD, s.w, s.h), x, y, f->part);  // press may start: press_ok)
+            f->part = mpad_part(place(s.layout, C_MPAD, s.w, s.h), x, y, f->part);  // menu takes it: hle/input.c)
         } else if (f->kind == F_BUTTON && (f->ctl == C_ATTACK || f->ctl == C_CORNER)) {  // sliding along it: another part
             int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);
             if (c == f->ctl && part != f->part) {
@@ -2081,7 +2087,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (aim_hold && g_ranged.load() == WEAPON_BOW && f->btn) s.bow_leave = f->btn, s.bow_leave_until = now + 1500 * MS;
     if (f->kind == F_BUTTON && !f->done && !cancel && now - f->t0 < MIN_PRESS) {  // (a quick tap is held long enough for the game,
         if (of_mpad(f->ctl)) {  // which reads the buttons at its own update rate; the menu pad's the menu's, and a press
-            int want = mpad_want(*f);  // not started yet starts only as press_ok lets it)
+            int want = mpad_want(*f);  // not started yet starts with it)
             uint64_t b = mpad_buttons(f->ctl, want);
             if (b) pulse(s, b, MIN_PRESS - (now - f->t0), 0, true, f->sent != want, f->ctl, want);
         } else {
@@ -2152,7 +2158,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // there, so what the menu pad presses passes whether a cursor of the game's ran or not - the item box's sorting moves
     // none of those, and the pad pressed nothing there, #174)
     bool town_menu = s.menu && g_menu_town.load() && g_frames_since_menu.load() <= 2;
-    bool play = playable(), ok = press_ok() || town_menu;
+    bool play = playable();
     menu_set_free(!play || town_menu);  // (the game's thread lets the menu pad's buttons through then too: hle/input.c)
     {
         static int was = -1;
@@ -2215,32 +2221,32 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     {  // a model shown in a town's menu (the smithy's weapon, the item box's hunter): the game turns it with the sticks,
        // so the stick and the drags are the game's there, as a controller's, and the menu pad moves the cursor (#172)
         bool preview = s.menu && g_menu_town.load() && g_frames_since_preview.load() <= 3;
-        if (preview != s.preview && dbg) rt_logf("[touch] a model in the menu: %s\n", preview ? "the sticks turn it" : "gone");
+        // (logged always, as it changes: the model that stops turning after a moment, Low-end at 50 %, #162, #186 - the log
+        // says whether the model was seen, and whether the stick became the cursor's below)
+        if (preview != s.preview) rt_logf("[touch] a model in the menu: %s\n", preview ? "the sticks turn it" : "gone");
         s.preview = preview;
     }
-    // The menu pad's fingers: what each asks for is pressed once a press may start (press_ok), and what one presses
-    // stays down while the menu takes input and the finger is on it (a long update neither lets it go nor presses it
-    // again: no step too many, no repeat begun again); the game repeats a direction held. It lets go once no menu's
-    // cursor has run for MPAD_LET_GO updates, the hunter played: a thumb kept on it as the menu closes is no d-pad held
-    // in the field (a Hunter Art). A click of the vibrator as it presses something new, not as it is touched
+    // The menu pad's fingers: what each asks for is pressed, and stays down while the finger is on it (a long update
+    // neither lets it go nor presses it again: no step too many, no repeat begun again); the game repeats a direction
+    // held. The menu's alone: the game's thread gives it to the game as the d-pad while a menu takes input, else to the
+    // menu's half of its pad (the note after playable). A click of the vibrator as it presses something new, not as it is touched
     s.pad_held = 0;
     uint32_t age = menu_cursor_age();
-    bool gone = play && !town_menu && age >= MPAD_LET_GO;  // (the hunter not played, a town: no Art can come of it)
     static int said_want = -1, said_sent = -1, said_ctl = -1;  // (the log: once a change, not every update it waits)
     bool any = false;
     for (Finger &f : s.f) {
         if (f.kind != F_BUTTON || f.done || !of_mpad(f.ctl)) continue;
         any = true;
-        int asked = mpad_want(f), want = gone ? 0 : asked;
-        if (want != f.sent) {
+        int asked = mpad_want(f);
+        if (asked != f.sent) {
             int was = f.sent;
-            f.sent = ok ? want : 0;
+            f.sent = asked;
             if (f.sent && f.sent != was) tap_due();
         }
         if (dbg && (asked || said_want > 0) && (asked != said_want || f.sent != said_sent || f.ctl != said_ctl))
-            rt_logf("[touch] menu pad %d: asks %d, presses %d (frame %llu, a menu's cursor %u updates ago)%s\n", f.ctl, asked,
-                    f.sent, (unsigned long long)g_present_count, age,
-                    asked && !f.sent ? " (held back: no menu's cursor in the last update)" : "");
+            rt_logf("[touch] menu pad %d: presses %d (frame %llu, a menu's cursor %u updates ago%s)\n", f.ctl, f.sent,
+                    (unsigned long long)g_present_count, age,
+                    age <= 1 || !play || town_menu ? "" : ": to the menu's half of the game's pad");
         said_want = asked, said_sent = f.sent, said_ctl = f.ctl;
         s.pad_held |= mpad_buttons(f.ctl, f.sent);
     }
@@ -2326,22 +2332,11 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     for (Pulse &p : s.pulse) {
         if (p.until <= now || now < p.from) continue;
-        if (p.menu && gone) {  // (the menu takes no input any more: the rest of a tap of the pad's lets go too)
-            if (dbg && (!p.checked || p.ctl >= 0))
-                rt_logf("[touch] a menu press %llx dropped (frame %llu): no menu's cursor for %u updates\n",
-                        (unsigned long long)p.buttons, (unsigned long long)g_present_count, age);
-            p.until = 0;
-            continue;
-        }
-        if (p.fresh && !p.checked) {  // (a press that starts, the menu pad's or a drag's step: now, or never)
+        if (p.fresh && !p.checked) {  // (a press that starts, the menu pad's or a drag's step)
             p.checked = true;
-            if (!ok) {
-                if (dbg)
-                    rt_logf("[touch] a menu press %llx dropped (frame %llu): no menu's cursor in the last update\n",
-                            (unsigned long long)p.buttons, (unsigned long long)g_present_count);
-                p.until = 0;
-                continue;
-            }
+            if (dbg)
+                rt_logf("[touch] a menu press %llx (frame %llu, a menu's cursor %u updates ago)\n", (unsigned long long)p.buttons,
+                        (unsigned long long)g_present_count, age);
             tap_due();
         }
         if (p.ctl >= 0) s.lit_ctl = p.ctl, s.lit_part = p.part, s.lit_until = p.until;  // (lit while it presses)
@@ -2377,7 +2372,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
             if (!s.stuck_ns || hypotf(px - s.stuck_x, pz - s.stuck_z) > 2.0f) s.stuck_ns = now, s.stuck_x = px, s.stuck_z = pz;
             else if (now - s.stuck_ns >= STUCK_NS) {
                 s.stick_cursor = s.stick_menu_ok = true;
-                if (dbg) rt_logf("[touch] the player walks nowhere in this menu: the stick moves its cursor\n");
+                rt_logf("[touch] the player walks nowhere in this menu: the stick moves its cursor\n");  // (always: once a menu)
             }
         } else {
             s.stuck_ns = 0;

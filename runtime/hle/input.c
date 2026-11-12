@@ -14,6 +14,7 @@
 static volatile uint64_t g_buttons;
 static volatile uint64_t g_menu_only, g_menu_next;  // (input_stage_menu_only: of g_buttons, the menu pad's alone)
 static volatile int32_t g_sticks[4];  // lx, ly, rx, ry (-32767..32767, y up)
+static volatile uint64_t g_held_back;  // (input_menu_held_back: of the last read, the menu pad's not given as the d-pad)
 static int64_t sampling;
 
 volatile uint64_t g_a_pressed_ns;
@@ -31,6 +32,8 @@ void input_set(uint64_t buttons, int32_t lx, int32_t ly, int32_t rx, int32_t ry)
     g_sticks[0] = lx, g_sticks[1] = ly, g_sticks[2] = rx, g_sticks[3] = ry;
 }
 
+uint64_t input_menu_held_back(void) { return __atomic_load_n(&g_held_back, __ATOMIC_ACQUIRE); }
+
 void input_get(uint64_t *buttons, int32_t sticks[4]) {
     *buttons = g_buttons;
     for (int i = 0; i < 4; i++) sticks[i] = g_sticks[i];
@@ -42,10 +45,11 @@ uint64_t input_npad_state(int32_t sticks[4]) {
     uint64_t menu_only = __atomic_load_n(&g_menu_only, __ATOMIC_SEQ_CST);
     uint64_t b = __atomic_load_n(&g_buttons, __ATOMIC_SEQ_CST);
     uint64_t held_back = b & menu_only && !menu_takes_input() ? b & menu_only : 0;
-    b &= ~held_back;  // (the menu pad's: only while a menu takes input)
+    b &= ~held_back;  // (the menu pad's: only while a menu takes input; else into the menu's half: hle/mousemenu.c)
+    __atomic_store_n(&g_held_back, held_back, __ATOMIC_RELEASE);
     static uint64_t said;  // (MHGU_TOUCH_LOG: as it changes)
     if (held_back != said && ENV("MHGU_TOUCH_LOG")) {
-        if (held_back) LOG("[input] the menu pad's %llx held back: no menu's cursor ran in the last update\n", (unsigned long long)held_back);
+        if (held_back) LOG("[input] the menu pad's %llx to the menu's half of the game's pad: no menu's cursor ran in the last update\n", (unsigned long long)held_back);
         said = held_back;
     }
     int32_t lx = g_sticks[0], ly = g_sticks[1], rx = g_sticks[2], ry = g_sticks[3];
