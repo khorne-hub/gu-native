@@ -15,6 +15,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/api-level.h>  // (create_swapchain: Android 10's libvulkan)
+#endif
 
 #include "../../overlay.h"
 #include "fsr.h"
@@ -1003,10 +1006,26 @@ static bool swapchain_paced;  // FIFO, its presents timed to the display's vsync
 #ifdef __ANDROID__
 // Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on, the FPS limit a whole fraction
 // of the display's rate; never with MHGU_VK_PRESENT or MHGU_VSYNC given)
+static bool paced_held;  // (paced_change: the plain swapchain for the rest of the session)
 static bool paced_wanted(void) {
     static int env = -1;
     if (env < 0) env = getenv("MHGU_VK_PRESENT") || getenv("MHGU_VSYNC");
-    return !env && config_live_vsync() && vk_pacing_fifo();
+    return !env && !paced_held && config_live_vsync() && vk_pacing_fifo();
+}
+// (frame_begin) the swapchain made again because the timed one is wanted or no longer: a driver whose rate keeps changing
+// (a POCO X3 NFC said 120 Hz for one swapchain and 50 for the next, gu-native #203) made it again every 2 s. The fourth
+// change within 30 s keeps the plain one until the game closes.
+static void paced_change(void) {
+    static uint64_t at[3];
+    static int n;
+    uint64_t now = plat_now_ns();
+    if (n == 3 && now - at[0] < 30000000000ull) {
+        paced_held = true;
+        LOG("[vk] present timing: the display's rate keeps changing, presents are no longer timed this session\n");
+        return;
+    }
+    if (n == 3) memmove(at, at + 1, sizeof at[0] * 2), n = 2;
+    at[n++] = now;
 }
 #endif
 static VkPresentModeKHR present_mode(void) {
@@ -1136,6 +1155,28 @@ static void create_swapchain(void) {
     if (count > 8) count = caps.minImageCount > 8 ? caps.minImageCount : 8;
     if (getenv("MHGU_VK_IMAGES")) count = (uint32_t)atoi(getenv("MHGU_VK_IMAGES"));  // (tests)
     VkSwapchainKHR old = g_vk.swapchain;
+#ifdef __ANDROID__
+    // Android 10's vkDestroySwapchainKHR (the system's libvulkan; 11's is not known to be fixed), given a swapchain whose
+    // presents were timed (its frame timestamps turned on by VK_GOOGLE_display_timing: present_pacing.c) that is no
+    // longer the surface's own - one replaced by a swapchain made with it as oldSwapchain - turns the timestamps off on a
+    // null window: SIGSEGV in libvulkan.so at 0x98 (the window's perform). A POCO X3 NFC (Android 10) closed so at its
+    // first start at 60 FPS, when the timed swapchain was made again (gu-native #203). There the old one goes first, while
+    // it is still the surface's, and the new one is made without it (the GPU is idle: recreate_swapchain).
+    // MHGU_VK_SC_FIRST=1: the same on a newer Android (tests)
+    static int sc_first = -1;
+    if (sc_first < 0) sc_first = android_get_device_api_level() <= 30 || getenv("MHGU_VK_SC_FIRST") ? 1 : 0;
+    if (old && swapchain_paced && sc_first) {
+        for (uint32_t i = 0; i < g_vk.sc_count; i++) {
+            vkDestroyFramebuffer(g_vk.dev, sc_fb[i], NULL);
+            vkDestroyImageView(g_vk.dev, g_vk.sc_views[i], NULL);
+        }
+        g_vk.sc_count = 0;
+        vkDestroySwapchainKHR(g_vk.dev, old, NULL);
+        g_vk.swapchain = old = VK_NULL_HANDLE;
+        static int nlog;
+        if (nlog++ < 3) LOG("[vk] the timed swapchain let go before the next one is made (Android 11 or older)\n");
+    }
+#endif
     VkSwapchainCreateInfoKHR ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_vk.surface, .minImageCount = count,
         .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = phys, .imageArrayLayers = 1,
@@ -1296,7 +1337,7 @@ static bool frame_begin(void) {
     if (!g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
         config_live_vsync() != swapchain_vsync) recreate_swapchain();
 #ifdef __ANDROID__
-    else if (paced_wanted() != swapchain_paced) recreate_swapchain();  // (the FPS limit or the display's rate changed)
+    else if (paced_wanted() != swapchain_paced) paced_change(), recreate_swapchain();  // (the FPS limit or the display's rate changed)
     else if (__atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED) >= 0) {  // (a test's switch: made again when it changes)
         static int was = -1;
         int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED);

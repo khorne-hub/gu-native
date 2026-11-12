@@ -281,6 +281,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   once; on by default since the measurements above) presents FIFO at those limits, each frame timed on the display's vsync grid
   (`VK_GOOGLE_display_timing`, MH4U for Android's rule; the margin is `GameActivity.presentationDeadlineNs` and 4 ms, raised 2 ms
   for good at a second late frame within 30 s): 0.04 % of the intervals off, 1% low 27.9 to 29.3, p99 33.5 ms, game time 1.00x.
+  Android 10's libvulkan (11's too, as far as is known) crashes destroying a timed swapchain that was replaced (its frame
+  timestamps turned off on a null window: SIGSEGV at 0x98, a POCO X3 NFC at its first start at 60 FPS, #203): there the old one
+  is destroyed first and the new one made without it (`create_swapchain`; `MHGU_VK_SC_FIRST=1` does it on a newer phone). A
+  driver whose reported rate keeps changing (that phone: 120 Hz for one swapchain, 50 for the next) made the swapchain again every
+  2 s: the fourth change within 30 s keeps presents untimed for the session (`paced_change`).
   `vkGetRefreshCycleDurationGOOGLE` said 16.65 to 16.68 ms where the vsyncs come every 16.667: the period is measured from the
   presents' own times, and every slot put on the newest vsync's grid (chained on the period given, the slots drifted half a
   period in 15 s and a frame showed a vsync late each time). `MHGU_PRESENT_MARGIN=<us>` fixes the margin (tests). At the refresh
