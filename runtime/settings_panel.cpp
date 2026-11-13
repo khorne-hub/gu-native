@@ -3356,6 +3356,12 @@ MENU_ENTRY("mods/list", 10, rows_mods_list_10, reset_mods_list_10);
 // S44 (the mods group's): Forge's menu, one row on the section's page where Forge ›'s link would be (MENU.md 3.5), shown
 // while a Forge plugin runs
 MENU_ENTRY("mods", 40, forge_menu_row);
+// S26 (the gfx group's): this game's HD texture packs are romfs mods (.tex files): a note on Texture packs says so
+MENU_ENTRY("mods/textures", 10, [](std::vector<Row> &r) {
+    note(r, "textures.how",
+         en_es("This game's texture packs are mods: add one with Add a mod, in Mods, as any other. Each texture takes memory as it's drawn.",
+               "Los packs de texturas de este juego son mods: agrega uno con Agregar un mod, en Mods, como cualquier otro. Cada textura ocupa memoria al dibujarse."));
+});
 void rows_mods_cheats_10(std::vector<Row> &r) {
     note(r, "cheats.online", tr("Online: only use cheats when everyone in the lobby agrees to it."));
     r.back().warn = true;
@@ -3480,12 +3486,23 @@ MENU_ENTRY("system/game", 10, rows_system_game_10);
 
 // ---- Credits & Licenses: who made it, where the official one is, the licences and the legal notice: shown, as in the
 // MH4U port, not in a help
+// 1.0's credits (MENU.md 3.7: one note each, under who made it): tabarong's designs (the layout and chat groups), the
+// builder's idea (builder_credit_rows, Android), Alfonso's (the qol group)
+void credits_10_rows(std::vector<Row> &r) {
+    note(r, "about.tabarong",
+         en_es("The control profiles, the chat, the friends and the room keys follow the designs of tabarong (Discord; GitHub: oliveaglien).",
+               "Los perfiles de controles, el chat, los amigos y las claves de sala siguen los diseños de tabarong (Discord; GitHub: oliveaglien)."));
+    builder_credit_rows(r);
+    note(r, "about.alfonso", en_es("Sending all the rewards to the box at once: Alfonso's idea.",
+                                   "Mandar todas las recompensas a la caja de una vez: idea de Alfonso."));
+}
 void rows_about_10(std::vector<Row> &r) {
     header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);
     note(r, "about.by", tr("Made by khorne-hub. Free."));
     note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
     note(r, "about.base", tr("Based on MHGURecomp."));
     note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
+    credits_10_rows(r);
 #ifdef __ANDROID__
     note(r, "about.legal", tr("This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
 #else
