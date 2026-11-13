@@ -176,6 +176,12 @@ screen's **Build on this phone** when the game code is missing or from another v
 - **Heat and battery** (`BuilderService.watchHeat`, every 5 s): thermal status moderate, only two compilers run (the
   others SIGSTOP'd); severe or worse, the whole build waits until light; 15 % battery or less and not charging, it waits.
   Compilers at once: the free memory / 300 MB, at most the cores, half after a run that stopped while compiling.
+- **Measured** on a Galaxy S25 Ultra (Snapdragon 8 Elite, 12 GB), in a shell with the same launchers, 8 compilers: the
+  translation (sdk and main, 98,000 functions) about 70 s with Python at 1.8 GB at most; the 384 files in about 7 minutes
+  with the tests' heat rule (paused twice at thermal status 2); the link 2 s; the work folder 668 MB. Going on after a
+  failed link took 2 s (translation skipped, every object kept). The library (109.7 MB) has the NDK one's needed
+  libraries, soname, BIND_NOW and exported symbol; it lacks only crtbegin_so's three imports (`__cxa_atexit`,
+  `__cxa_finalize`, `__register_atfork`), and its read-only data has a segment of its own. Not yet run in the game.
 - **The PC route** is unchanged: without `--zig-cc` and `--work`, the NDK build is made as before (a temporary work
   folder, the same objects and link), and the library and its id are now put in the folder whole (written beside, then
   renamed).
