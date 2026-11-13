@@ -10,8 +10,8 @@
 //                      forge_onImGuiInit once, forge_onImGuiRender in Forge's window, forge_onImGuiFreeRender)
 //   cSystem ctor/dtor  the singletons (forge_singleton_*)
 // Hooks run through FN_ENTER (cpu.h, dispatch.c); hooks in a plugin's own code are guest code the interpreter reads.
-// Patches over data apply as written; a patch over code can only redirect a function entry (Forge's own hook form,
-// `ldr pc, [pc, #-4]` + address, or a `b`): others are logged.
+// Patches over data apply as written; a patch over code that redirects a function entry (Forge's own hook form,
+// `ldr pc, [pc, #-4]` + address, or a `b`) is a hook; any other makes the functions it changes run in the interpreter.
 // The plugins' ImGui calls (cimgui's ig* / Im*): runtime/forge_imgui.c.
 // forge_socket_*: the game's own nn::socket (a virtual network, runtime/net/vsock.c: local play only, no internet).
 // A plugin that requires a Forge version newer than this one (FORGE_MAJOR.FORGE_MINOR) gets no calls. One that can't be
@@ -342,6 +342,20 @@ static void code_changed(uint32_t a, uint32_t n, uint32_t orig) {
         else if (fnhook_get(x)) fnhook_set(x, 0);
     }
     if (!hook && orig && memcmp(G2H(a), G2H(orig), n)) {
+        // any other patch of the code: the functions it changes run in the interpreter from now on, which reads their code
+        // in memory, the patch's bytes included (as a cheat's or a mod's patch of the code; disabled, they stay there,
+        // with the code put back)
+        int fns = 0, failed = 0;
+        uint32_t last = 0;
+        for (uint32_t x = a & ~3u; x < a + n; x += 4) {
+            const Module *m = &g_modules[x >= SDK_BASE];
+            if (!in_code(x)) continue;
+            uint32_t next, entry = dispatch_function_at(x, &next);
+            if (!entry || entry == last) continue;
+            last = entry;
+            int r = dispatch_interpret(entry, next ? next : m->base + m->text_off + m->text_size);
+            fns += r > 0, failed += r < 0;
+        }
         static uint32_t seen[64];  // (once per site: a menu toggle repeats the patch)
         static int nseen;
         bool dup = false;
@@ -349,8 +363,12 @@ static void code_changed(uint32_t a, uint32_t n, uint32_t orig) {
         if (!dup) {
             if (nseen < 64) seen[nseen++] = a;
             const Module *pm = plugin_code(g_ip_last);
-            flog(2, "%s: code patch at main+0x%X (%u bytes) cannot apply to recompiled code: ignored",
-                 pm ? plugin_name_of(pm) : "a plugin", a - main_text, n);
+            if (failed)
+                flog(2, "%s: code patch at main+0x%X (%u bytes): a function it changes can't run in the interpreter: "
+                     "that part has no effect", pm ? plugin_name_of(pm) : "a plugin", a - main_text, n);
+            else
+                LOG("[forge] %s: code patch at main+0x%X (%u bytes): %d function(s) run in the interpreter now\n",
+                    pm ? plugin_name_of(pm) : "a plugin", a - main_text, n, fns);
         }
     }
 }
@@ -688,6 +706,8 @@ HLE_FUNC("forge_patch_destroy", f_patch_destroy) {
 // ------------------------------------------------------------------ memory
 HLE_FUNC("forge_mem_getMainTextAddr", f_text) { RET(g_modules[0].base + g_modules[0].text_off); }
 HLE_FUNC("forge_mem_getMainRodataAddr", f_rodata) { RET(g_modules[0].base + g_modules[0].ro_off); }
+// (the same under the name newer plugins import, e.g. my_weapon_tree: without it their calls returned 0)
+HLE_FUNC("forge_mem_getMainRoDataAddr", f_rodata2) { RET(g_modules[0].base + g_modules[0].ro_off); }
 HLE_FUNC("forge_mem_getMainDataAddr", f_data) { RET(g_modules[0].base + g_modules[0].data_off); }
 HLE_FUNC("forge_mem_getMainBssAddr", f_bss) {
     Module *m = &g_modules[0];

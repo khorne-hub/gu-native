@@ -485,7 +485,9 @@ public class ImportActivity extends Activity {
         if (kids == null) return false;
         for (File k : kids) {
             String n = k.getName().toLowerCase(Locale.ROOT);
-            if (n.equals("romfs") || n.equals("exefs") || n.equals("nativenx") || hasModParts(k, depth + 1)) return true;
+            // (cheats/: yuzu's and Ryujinx's layout of a mod's cheats, <mod>/cheats/<build id>.txt: runtime/cheats.c reads them)
+            if (n.equals("romfs") || n.equals("exefs") || n.equals("nativenx") || n.equals("cheats") || hasModParts(k, depth + 1))
+                return true;
         }
         return false;
     }

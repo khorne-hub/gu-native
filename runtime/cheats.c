@@ -1,8 +1,18 @@
 // Cheat codes in Atmosphere's format (the one Ryujinx and a modded Switch use): every .txt file in cheats/ (beside
 // mods/; MHGU_CHEATS_DIR overrides), in name order; a file whose name starts with '_' is skipped. A file holds any
 // number of cheats: "[Name]" starts one, "{Name}" a master code (run before the others), then its code words, 8 hex
-// digits each. Lines starting with '#' or "//" are comments. Every cheat found is on, except those listed in
-// cheats/_off.txt (the settings' Cheats tab writes it: "<file>\t<cheat name>" per line; master codes are always on).
+// digits each (written together without spaces too, as Atmosphere reads them: 16 digits are two words). Lines starting
+// with '#' or "//" are comments. Every cheat found is on, except those listed in cheats/_off.txt (the settings' Cheats
+// tab writes it: "<file>\t<cheat name>" per line; master codes are always on).
+// A file named by a build id (16 hex digits or more, as Atmosphere and the emulators name them: <build id>.txt) is
+// read only when that is the game's (1.4.0's main, FB08F1D20FD1204F): the others are for another version of the game,
+// whose addresses are not this one's, and are left out (cheats_left_out: the Cheats tab says so).
+// The enabled mods' cheats/ folders (yuzu's and Ryujinx's layout: <mod>/cheats/<build id>.txt) are read too, after
+// those, under "<mod>/<file>"; their cheats start off (a mod's list can hold dozens), and _off.txt keeps the ones
+// turned on as "+<mod>/<file>\t<cheat name>".
+// As Atmosphere's virtual machine, an end of a block (20000000) without a block open is passed over, and an else
+// (21000000) without one skips to the next end; such a cheat was left out before. EdiZon's and Breeze's folder marks
+// (empty "[--SectionStart:...--]" / "[--SectionEnd:...--]") are no cheats.
 // A cheat turned off while the game runs stops running; the words of the game's code it changed get their original
 // values back (so a code-changing cheat is undone), except those another cheat still on changed too, until that one
 // is turned off as well. Anything else it wrote stays as it is.
@@ -24,6 +34,7 @@
 
 #include "hle/input.h"
 #include "cheats.h"
+#include "modorder.h"
 #include "interp.h"
 #include "mods.h"
 #include "rt.h"
@@ -46,8 +57,8 @@ typedef struct {
 } Original;
 
 typedef struct {
-    char name[96], file[64];
-    bool master;
+    char name[96], file[192];
+    bool master, from_mod;  // from_mod: read from a mod's cheats/ (off unless turned on)
     Op *ops;
     int nops;
     int on, ran;          // on: wanted (the settings set it, any thread); ran: running (the window loop's)
@@ -55,6 +66,7 @@ typedef struct {
     bool stopping;        // (run_all: turned off this run)
     uint32_t *words;      // the code words it changed, to put back when it is turned off
     int nwords;
+    int nstray;           // ends (and elses) with no block open, passed over as Atmosphere does (logged at load)
 } Cheat;
 
 static Cheat *cheats;
@@ -141,12 +153,16 @@ static const char *decode(Cheat *ch, const uint32_t *w, int n) {
         if (!cond_ok(o)) return "an invalid condition";
         bool begin = o->type == 0x1 || o->type == 0x8 || o->type == 0xC0 || o->type == 0xC4 ||
                      (o->type == 0x3 && NIB(o->w[0], 1) == 0);
-        if (begin) {
+        bool stray_else = o->type == 0x2 && NIB(o->w[0], 1) == 1 && !depth;
+        if (begin || stray_else) {  // (an else with no block open, as Atmosphere runs it: on to the next end)
             if (depth == 64) return "blocks nested too deep";
             stack[depth++] = ch->nops;
+            ch->nstray += stray_else;
+        } else if (o->type == 0x2 && !depth) {  // an end with no block open: nothing (Atmosphere passes it over)
+            ch->nstray++;
         } else if (o->type == 0x2 || o->type == 0x3) {  // else / end / end of loop
             bool loop_end = o->type == 0x3;
-            if (!depth) return loop_end ? "an end of loop without its start" : "an end of block without its start";
+            if (!depth) return "an end of loop without its start";
             Op *b = &ch->ops[stack[depth - 1]];
             if ((b->type == 0x3) != loop_end) return "a block and a loop overlap";
             if (loop_end && NIB(b->w[0], 3) != NIB(o->w[0], 3)) return "a loop ends on another register";
@@ -168,6 +184,9 @@ static const char *decode(Cheat *ch, const uint32_t *w, int n) {
 
 // ------------------------------------------------------------------ loading
 static void add_cheat(const char *file, const char *name, bool master, const uint32_t *w, int n, const char *bad) {
+    // (EdiZon's and Breeze's lists mark folders with empty cheats, "[--SectionStart:Weapons--]" ... "[--SectionEnd:...--]":
+    // no cheat of their own)
+    if (!n && !bad && !master && (!strncmp(name, "--SectionStart", 14) || !strncmp(name, "--SectionEnd", 12))) return;
     Cheat ch = {0};
     snprintf(ch.name, sizeof ch.name, "%s", name);
     snprintf(ch.file, sizeof ch.file, "%s", file);
@@ -178,11 +197,14 @@ static void add_cheat(const char *file, const char *name, bool master, const uin
         free(ch.ops);
         return;
     }
+    if (ch.nstray)
+        LOG("[cheats] %s: [%s]: %d end(s) of a block with no block open: passed over, as Atmosphere does\n", file, name,
+            ch.nstray);
     cheats = realloc(cheats, (ncheats + 1) * sizeof(Cheat));
     cheats[ncheats++] = ch;
 }
 
-static void load_file(const char *path, const char *file) {
+static void load_file(const char *path, const char *file, bool from_mod) {
     FILE *f = fopen(path, "rb");
     if (!f) return;
     fseek(f, 0, SEEK_END);
@@ -193,6 +215,7 @@ static void load_file(const char *path, const char *file) {
     s[len] = 0;
     fclose(f);
     static uint32_t words[MAX_OPS * 4];
+    static char badword[96];
     int n = 0, before = ncheats;
     char name[96] = "";
     bool open = false, master = false, stray = false;
@@ -212,15 +235,29 @@ static void load_file(const char *path, const char *file) {
         }
         char *e = p;
         while (*e && !isspace((unsigned char)*e)) e++;
-        bool hex = e - p == 8;
+        // (8 hex digits a word; Atmosphere reads digits written together 8 at a time, so 16 are two words)
+        bool hex = e - p >= 8 && (e - p) % 8 == 0;
         for (char *q = p; hex && q < e; q++) hex = isxdigit((unsigned char)*q);
-        if (!open) stray = true;
-        else if (!hex) bad = bad ? bad : "something that is not a code word (8 hex digits)";
-        else if (n < (int)(sizeof words / 4)) words[n++] = (uint32_t)strtoul(p, NULL, 16);
-        else bad = "too many codes";
+        if (!open) {
+            stray = true;
+        } else if (!hex) {
+            if (!bad) {
+                snprintf(badword, sizeof badword, "something that is not a code word (8 hex digits): \"%.*s\"",
+                         (int)(e - p > 24 ? 24 : e - p), p);
+                bad = badword;
+            }
+        } else {
+            for (char *q = p; q < e; q += 8) {
+                if (n == (int)(sizeof words / 4)) { bad = "too many codes"; break; }
+                char word[9];
+                memcpy(word, q, 8), word[8] = 0;
+                words[n++] = (uint32_t)strtoul(word, NULL, 16);
+            }
+        }
         p = e;
     }
     if (open) add_cheat(file, name, master, words, n, bad);
+    for (int i = before; i < ncheats; i++) cheats[i].from_mod = from_mod;
     if (stray) LOG("[cheats] %s: codes before the first [name] are left out\n", file);
     LOG("[cheats] %s: %d cheat(s)", file, ncheats - before);
     for (int i = before; i < ncheats; i++) LOG("%s%s%s%s", i == before ? ": " : ", ", cheats[i].master ? "{" : "",
@@ -569,8 +606,9 @@ static void load_off(void) {
         char *tab = strchr(line, '\t');
         if (line[0] == '#' || !tab) continue;
         *tab = 0;
+        bool on = line[0] == '+';  // ("+<mod>/<file>": a mod's cheat turned on)
         for (int i = 0; i < ncheats; i++)
-            if (!strcmp(cheats[i].file, line) && !strcmp(cheats[i].name, tab + 1)) cheats[i].on = 0;
+            if (!strcmp(cheats[i].file, line + on) && !strcmp(cheats[i].name, tab + 1)) cheats[i].on = on;
     }
     fclose(f);
 }
@@ -618,8 +656,11 @@ bool cheats_set(const bool *on, int n, char *err, size_t errsz) {
     FILE *f = fopen(tmp, "wb");
     if (!f) { snprintf(err, errsz, "Could not write %s", path); return false; }
     fputs("# Cheats turned off in the settings (the Cheats tab writes this file): <file><tab><cheat name>\n", f);
-    for (int i = 0; i < ncheats && i < n; i++)
-        if (!on[i] && !cheats[i].master && !cheats_dropped(i)) fprintf(f, "%s\t%s\n", cheats[i].file, cheats[i].name);
+    for (int i = 0; i < ncheats && i < n; i++) {
+        if (cheats[i].master || cheats_dropped(i)) continue;
+        if (!on[i] && !cheats[i].from_mod) fprintf(f, "%s\t%s\n", cheats[i].file, cheats[i].name);
+        else if (on[i] && cheats[i].from_mod) fprintf(f, "+%s\t%s\n", cheats[i].file, cheats[i].name);  // (a mod's: off unless listed)
+    }
 #ifndef __ANDROID__
     char line[512];
     FILE *old = fopen(path, "rb");
@@ -644,8 +685,38 @@ bool cheats_set(const bool *on, int n, char *err, size_t errsz) {
 }
 
 // ------------------------------------------------------------------ entry points
-// The files of one folder, in name order (those of a name already loaded from the other folder are left out)
-static void load_dir(const char *dir) {
+// Files left out whole (cheats_left_out): those for another version of the game
+#define MAX_LEFT 64
+static struct { char file[192], id[17]; } left[MAX_LEFT];
+static int nleft;
+
+static int hexv(int c) { return isdigit(c) ? c - '0' : isxdigit(c) ? tolower(c) - 'a' + 10 : -1; }
+
+// A file named by a build id ("<16 or more hex digits>.txt", as Atmosphere names them) that is not the game's: true,
+// and the first 16 digits of its id in id. A file of another name (comer_rapido.txt) is no build id's: false.
+static bool other_version(const char *name, char id[17]) {
+    int n = 0;
+    while (hexv((unsigned char)name[n]) >= 0) n++;
+    if (n < 16 || n > 64 || strcasecmp(name + n, ".txt")) return false;
+    bool same = true;
+    for (int i = 0; i < 16; i++) same &= hexv((unsigned char)name[i]) == ((g_main_build_id[i / 2] >> (i & 1 ? 0 : 4)) & 15);
+    if (same) return false;
+    for (int i = 0; i < 16; i++) id[i] = (char)toupper((unsigned char)name[i]);
+    id[16] = 0;
+    return true;
+}
+
+int cheats_left_out(int i, const char **file, const char **id) {
+    if (i >= 0 && i < nleft) {
+        if (file) *file = left[i].file;
+        if (id) *id = left[i].id;
+    }
+    return nleft;
+}
+
+// The files of one folder, in name order (those of a name already loaded from the other folder are left out). prefix:
+// "<mod>/" for a mod's cheats/ (the files' names in the list and in _off.txt), else "".
+static void load_dir(const char *dir, const char *prefix) {
     DIR *d = opendir(dir);
     if (!d) return;
     char *names[256];
@@ -659,27 +730,56 @@ static void load_dir(const char *dir) {
     closedir(d);
     qsort(names, n, sizeof *names, cmp_name);
     for (int i = 0; i < n; i++) {
+        char file[192], path[1300], id[17];
+        snprintf(file, sizeof file, "%s%s", prefix, names[i]);
         bool seen = false;
-        for (int k = 0; k < ncheats && !seen; k++) seen = !strcmp(cheats[k].file, names[i]);
-        char path[1024];
+        for (int k = 0; k < ncheats && !seen; k++) seen = !strcmp(cheats[k].file, file);
+        for (int k = 0; k < nleft && !seen; k++) seen = !strcmp(left[k].file, file);
         snprintf(path, sizeof path, "%s/%s", dir, names[i]);
-        if (seen) LOG("[cheats] %s: one of that name was read already, from the other cheats folder: left out\n", path);
-        else load_file(path, names[i]);
+        if (seen) {
+            LOG("[cheats] %s: one of that name was read already, from the other cheats folder: left out\n", path);
+        } else if (other_version(names[i], id)) {
+            LOG("[cheats] %s: for the game of build id %s, not this one's 1.4.0 (FB08F1D20FD1204F): another version, "
+                "whose addresses are not these; left out\n", file, id);
+            if (nleft < MAX_LEFT) {
+                snprintf(left[nleft].file, sizeof left[nleft].file, "%s", file);
+                snprintf(left[nleft].id, sizeof left[nleft].id, "%s", id);
+                nleft++;
+            }
+        } else {
+            load_file(path, file, *prefix != 0);
+        }
         free(names[i]);
+    }
+}
+
+// The cheats/ folder of each mod that is on (found up to three levels down, as its romfs: yuzu's
+// load/<title>/<mod>/cheats, Ryujinx's mods/contents/<title>/<mod>/cheats)
+static void load_mod_dirs(void) {
+    ModEntry all[MODS_MAX];
+    int n = mods_installed(all, MODS_MAX);
+    for (int i = 0; i < n; i++) {
+        if (!all[i].on) continue;
+        char mod[1100], dir[1100], prefix[160];
+        snprintf(mod, sizeof mod, "%s/%s", mods_dir(), all[i].name);
+        if (!mods_find_dir(mod, "cheats", 3, dir, sizeof dir)) continue;
+        snprintf(prefix, sizeof prefix, "%.150s/", all[i].name);
+        load_dir(dir, prefix);
     }
 }
 
 void cheats_init(void) {
     // the app's folder (the bundled ones, and the settings' list of those off), then the game folder's cheats/: where a
     // player can put them on a phone, whose app folder (Android/data) a file manager can't open
-    load_dir(cheats_dir());
+    load_dir(cheats_dir(), "");
     extern const char *g_game_dir;  // (main.c)
     if (!getenv("MHGU_CHEATS_DIR") && g_game_dir) {
         char other[1024];
         snprintf(other, sizeof other, "%s/cheats", g_game_dir);
-        load_dir(other);
+        load_dir(other, "");
     }
-    for (int i = 0; i < ncheats; i++) cheats[i].on = 1;
+    load_mod_dirs();
+    for (int i = 0; i < ncheats; i++) cheats[i].on = !cheats[i].from_mod;
     load_off();
     for (int i = 0; i < ncheats; i++)
         if (!cheats[i].master && !cheats[i].on) LOG("[cheats] %s: off (turned off in the settings)\n", cheats[i].name);

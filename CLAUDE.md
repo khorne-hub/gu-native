@@ -512,6 +512,27 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   even with `MHGU_FAKE_NET=1`. `services/dlc.c`, the RomFS images and the importer are in place; the menu row shows with `MHGU_DLC=1`.
 - Cheats, mods and DLC are read from the game folder's `cheats/`, `mods/` and `dlc/` too (a file manager reaches it, not `Android/data`).
   `ImportActivity` copies there; imported cheats start off (`cheats/_off.txt` in the app's folder).
+- Cheats as the community's lists come (`runtime/cheats.c`, 1.0): an end of a block with none open is passed over and a stray else
+  skips to the next end, as Atmosphere's VM does (such cheats were left out: "an end of block without its start"); words written
+  together (16 or 24 digits) are split 8 by 8; a bad word is named in the log. A file named by another build id than 1.4.0's
+  (FB08F1D20FD1204F) is another version's and is left out (`cheats_left_out`, a row in the Cheats tab). A mod's `cheats/` folder
+  (yuzu's and Ryujinx's layout) is read under `<mod>/<file>`, its cheats off until turned on (`+<mod>/<file>` lines in
+  `_off.txt`); the import screens take a mod folder that has only `cheats/`.
+- Code mods beyond IPS / pchtxt patches (1.0): a mod's whole `exefs/main` (or `sdk`) laid out as the game's is compared with the
+  game's and its differences applied as patches (`loader.c replace_from_mod`; another layout is left out, the Mods tab marks the
+  mod with `!`); bytes a patch puts after the code (the room up to `.rodata`, a "code cave") are interpreted code; a jump into the
+  middle of a game function no patch touched (a cave jumping back, a patched jump table) makes that function interpreted
+  (`dispatch_interpret_inside`, in `dispatch_slow` and `interp_run`) instead of FATAL "no function at"; a Forge plugin's code
+  patch that is not an entry hook makes the functions it changes interpreted (it was ignored), and `forge_mem_getMainRoDataAddr`
+  (newer plugins' name) is provided. Test mods made from a local `main` (never committed): a call in the frame update redirected
+  through a cave into the callee's middle, and a whole `main` with one instruction swapped for an equivalent one.
+- Forge's menu without a keyboard (S44): Mods tab, "Forge menu (plugins)" (shown when a plugin started; `MHGU_FORGE_MENU=1` shows it
+  without plugins, for tests) opens it once the settings menu has closed (`overlay_open_forge`). Opened by touch it is drawn 2
+  times bigger (font and spacing, the plugins' free drawing untouched), placed in the middle each time, scrolled by a finger's
+  up or down drag from anywhere (a pressed header or button is let go, `ClearActiveID`; a slider the press already changed keeps
+  the finger; the hover test allows a blocked window, or a pressed control hid it: `frame_once`), moved only by its title bar;
+  its x or the phone's Back closes it; a field that takes text brings up the phone's keyboard (`textinput.c` state 4). Tested on
+  the PC with the control file's `finger` lines (touch layout, row, window, x).
 - Every minute the log has a `[mem]` line: memory map entries, resident memory (own, the files mapped, shared) and VMA's blocks, what
   is allocated in them and by what (images, of those the BC textures decoded on the CPU, the vertex cache, the staging ring).
   `MHGU_MEM_LOG=<seconds>` writes it more often. Games on PowerVR closed after 5 to 15 minutes out of map entries; there VMA is told

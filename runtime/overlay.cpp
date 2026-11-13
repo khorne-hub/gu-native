@@ -21,6 +21,7 @@
 #include <unistd.h>  // access
 
 #include "imgui.h"
+#include "imgui_internal.h"  // (GImGui's ActiveIdWindow: Forge's menu scrolled by a drag, frame_once)
 #ifndef MHGU_NULL_BACKEND
 #include "backends/imgui_impl_vulkan.h"
 #else  // (no renderer: no overlay)
@@ -54,6 +55,10 @@ bool romfs_incomplete(double *gb, int *empty);  // (romfs.c)
 
 static std::atomic<bool> g_enabled, g_ready, g_open;
 static std::atomic<bool> g_settings_open, g_forge_open;
+// Forge's menu opened by its row in the Mods tab (overlay_open_forge): it opens once the settings menu has closed.
+// g_forge_touch: opened by touch, it is drawn bigger for fingers and a drag scrolls it (frame_once).
+// g_forge_typing: a field of it takes text (ImGui's WantTextInput): the phone's keyboard comes up (textinput.c).
+static std::atomic<bool> g_forge_pending, g_forge_touch, g_forge_typing;
 static std::atomic<bool> g_modal_open;  // (the thank-you, settings_panel.cpp: a menu as far as input goes, until it is closed)
 static int g_menu_key;
 static float g_font_size;
@@ -212,7 +217,16 @@ bool overlay_event(const SDL_Event *e) {
         return true;
     }
     if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && (int)e->key.scancode == g_menu_key) {
-        if (!g_modal_open) set_open(!g_forge_open);
+        if (!g_modal_open) {
+            g_forge_touch = false;
+            set_open(!g_forge_open);
+        }
+        return true;
+    }
+    // (the phone's Back closes Forge's menu - unless the settings menu is over it, whose Back it is - as its x does)
+    if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && e->key.scancode == SDL_SCANCODE_AC_BACK && g_forge_open &&
+        !g_settings_open && !g_modal_open) {
+        set_open(false);
         return true;
     }
     if (!g_open) return false;
@@ -267,6 +281,8 @@ void overlay_pad(const OverlayPad *p) {
 
 bool overlay_enabled(void) { return g_enabled; }
 bool overlay_menu_open(void) { return g_open; }
+void overlay_open_forge(void) { g_forge_pending = true; }
+bool overlay_forge_typing(void) { return g_forge_typing.load(std::memory_order_relaxed); }
 
 static void apply_input(ImGuiIO &io) {
     std::vector<Ev> evs;
@@ -840,10 +856,41 @@ static void frame_once(void *cpu) {
     // controller in runtime/host_input.c, the fingers in runtime/touch.cpp), as with a menu
     bool modal = settings_panel_modal();
     if (modal != g_modal_open) { g_modal_open = modal; set_open(g_forge_open); }
+    if (!g_settings_open && !g_modal_open && g_forge_pending.exchange(false)) {  // (its row in the Mods tab: now closed)
+        g_forge_touch = overlay_last_input() == USED_TOUCH;
+        set_open(true);
+    }
+    // Opened by touch (its row tapped), Forge's menu is drawn bigger: its letters and the room around its controls
+    // FORGE_TOUCH times (a phone's 720 lines are a few centimetres, sized for the console's handheld screen they leave a
+    // control a millimetre or two across), a control takes a finger a little outside itself (TouchExtraPadding), and a
+    // drag of a finger scrolls it, as a phone's lists do (moving it is left to its title bar). The plugins' own drawing
+    // over the game (damage numbers...) keeps its size.
+    const bool touch_ui = g_forge_open && g_forge_touch;
+    constexpr float FORGE_TOUCH = 2.0f;
+    io.ConfigWindowsMoveFromTitleBarOnly = touch_ui;
+    ImGui::GetStyle().TouchExtraPadding = touch_ui ? ImVec2(4 * scale, 4 * scale) : ImVec2(0, 0);
+    if (touch_ui) {
+        const ImGuiStyle &st = ImGui::GetStyle();
+        ImGui::PushFont(nullptr, st.FontSizeBase * FORGE_TOUCH);
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(st.FramePadding.x * FORGE_TOUCH, st.FramePadding.y * FORGE_TOUCH));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(st.ItemSpacing.x * FORGE_TOUCH, st.ItemSpacing.y * FORGE_TOUCH));
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing,
+                            ImVec2(st.ItemInnerSpacing.x * FORGE_TOUCH, st.ItemInnerSpacing.y * FORGE_TOUCH));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(st.WindowPadding.x * FORGE_TOUCH, st.WindowPadding.y * FORGE_TOUCH));
+        ImGui::PushStyleVar(ImGuiStyleVar_GrabMinSize, st.GrabMinSize * FORGE_TOUCH * 1.5f);
+        ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, st.ScrollbarSize * FORGE_TOUCH * 1.5f);
+        ImGui::PushStyleVar(ImGuiStyleVar_IndentSpacing, st.IndentSpacing * FORGE_TOUCH);
+        // (placed each time it opens: a size kept from a mouse's use would be small for the bigger letters)
+        ImGui::SetNextWindowPos(ImVec2(w * 0.5f, h * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSize(ImVec2(w * 0.6f, h * 0.85f), ImGuiCond_Appearing);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(0, 0), ImVec2((float)w, (float)h));
+    }
     if (g_forge_open) {
         bool keep = true;
-        ImGui::SetNextWindowPos(ImVec2(40 * scale, 40 * scale), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(420 * scale, 360 * scale), ImGuiCond_FirstUseEver);
+        if (!touch_ui) {
+            ImGui::SetNextWindowPos(ImVec2(40 * scale, 40 * scale), ImGuiCond_FirstUseEver);
+            ImGui::SetNextWindowSize(ImVec2(420 * scale, 360 * scale), ImGuiCond_FirstUseEver);
+        }
         if (ImGui::Begin("forge", &keep)) {
             if (ImGui::CollapsingHeader("About Forge")) {
                 ImGui::Text("Version: %s", "1.5.1");
@@ -864,10 +911,35 @@ static void frame_once(void *cpu) {
                 for (int i = 0; i < n; i++) ImGui::BulletText("%s", names[i]);
             }
             if (ImGui::CollapsingHeader("Plugin UI")) forge_imgui_run(cpu, FORGE_IMGUI_RENDER);
+            // (by touch: a finger dragged up or down scrolls the window, as a phone's lists do - from its background, a
+            // header, a button or a box: the press is let go, so nothing is clicked when the finger lifts; a slider or a
+            // field the press already changed keeps the finger. A press on the window's background makes its move id the
+            // active one, which moves nothing off the title bar)
+            static bool scrolling;
+            if (!touch_ui || !io.MouseDown[ImGuiMouseButton_Left]) scrolling = false;
+            if (touch_ui && !scrolling &&
+                ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+                ImGui::IsMouseDragging(ImGuiMouseButton_Left, 10 * scale)) {
+                ImVec2 d = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0);
+                ImGuiID active = ImGui::GetActiveID();
+                bool background = !active || (GImGui->ActiveIdWindow && active == GImGui->ActiveIdWindow->MoveId);
+                if (fabsf(d.y) > fabsf(d.x) && (background || !GImGui->ActiveIdHasBeenEditedBefore)) {
+                    scrolling = true;
+                    if (active) ImGui::ClearActiveID();
+                    LOG("[overlay] forge's menu scrolled by a finger (%.0f of %.0f)\n", ImGui::GetScrollY(), ImGui::GetScrollMaxY());
+                }
+            }
+            if (scrolling) ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
         }
         ImGui::End();
         if (!keep) set_open(false);
     }
+    if (touch_ui) {
+        ImGui::PopStyleVar(7);
+        ImGui::PopFont();
+        ImGui::GetStyle().TouchExtraPadding = ImVec2(0, 0);  // (the settings menu and the plugins' free drawing: none)
+    }
+    g_forge_typing.store(g_forge_open && !g_settings_open && io.WantTextInput, std::memory_order_relaxed);
     forge_imgui_run(cpu, FORGE_IMGUI_FREE_RENDER);
     if (notice && !g_modal_open) draw_notice(now, scale);  // (not over the thank-you: it waits, notice_hold)
     if (chat && !g_modal_open) draw_chat(line, now, scale);

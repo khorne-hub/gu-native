@@ -9,6 +9,7 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include "interp.h"
 #include "rt.h"
 
 static bool is_dir(const char *p) {
@@ -87,13 +88,22 @@ typedef struct { Module *m; uint32_t off, len; uint8_t *bytes; const char *mod, 
 static Pending *pending;
 static int npending, pending_cap;
 
-// One patch: `len` bytes at offset `off` of the module's memory image.
+// One patch: `len` bytes at offset `off` of the module's memory image. Bytes after the code, in the room up to the
+// read-only data (the rest of the code's last page, where patches put new code - a "code cave" the patched code jumps
+// to), are code too: they run in the interpreter when the patched code jumps there.
 static void apply(Apply *a, uint32_t off, const uint8_t *bytes, uint32_t len) {
     Module *m = a->m;
     if (!len) return;
     if ((uint64_t)off + len > m->size) { a->bad++; return; }
     bool compiled = m == &g_modules[0] || m == &g_modules[1];  // (a subsdk's code is interpreted: it just changes)
-    if (compiled && off < m->text_off + m->text_size && off + len > m->text_off) {  // code: see mods_patch_code
+    uint32_t text_end = m->text_off + m->text_size;
+    if (compiled && off >= text_end && off < m->ro_off) {  // only in the room after the code: new code, in place now
+        memcpy(G2H(m->base + off), bytes, len);
+        interp_add_range(m->base + off, m->base + off + len);
+        a->code++;
+        return;
+    }
+    if (compiled && off < text_end && off + len > m->text_off) {  // code: see mods_patch_code
         if (npending == pending_cap) {
             pending_cap = pending_cap ? 2 * pending_cap : 256;
             pending = realloc(pending, pending_cap * sizeof *pending);
@@ -165,8 +175,12 @@ void mods_patch_code(void) {
             memcpy(p->bytes + k, &w, 4);
         }
         memcpy(G2H(a), p->bytes, p->len);
-        uint32_t last = 0;
+        uint32_t last = 0, text_end = m->base + m->text_off + m->text_size;
         for (uint32_t w = a & ~3u; w < a + p->len; w += 4, words++) {
+            if (w >= text_end) {  // (on past the code, into the room after it: new code)
+                interp_add_range(w, w + 4);
+                continue;
+            }
             uint32_t next, entry = dispatch_function_at(w, &next);
             if (!entry || entry == last) continue;
             last = entry;
@@ -186,6 +200,31 @@ void mods_patch_code(void) {
     }
     free(pending);
     pending = NULL, npending = pending_cap = 0;
+}
+
+// A mod's whole module in place of the game's (loader.c replace_from_mod): each run of bytes that differ, as a patch.
+// counts: [0] data, [1] code, [2] outside the module.
+void mods_patch_bytes(Module *m, const char *mod, const char *file, uint32_t off, const uint8_t *bytes, uint32_t len,
+                      int counts[3]) {
+    Apply a = {m, mod, file, 0, 0, 0};
+    apply(&a, off, bytes, len);
+    counts[0] += a.data, counts[1] += a.code, counts[2] += a.bad;
+}
+
+// Mods with a part the port can't use (an exefs/main of another layout): for the Mods tab
+#define MAX_REFUSED 16
+static struct { char mod[128], what[32]; } refused[MAX_REFUSED];
+static int nrefused;
+void mods_note_refused(const char *mod, const char *what) {
+    if (nrefused == MAX_REFUSED) return;
+    snprintf(refused[nrefused].mod, sizeof refused[nrefused].mod, "%s", mod);
+    snprintf(refused[nrefused].what, sizeof refused[nrefused].what, "exefs/%s", what);
+    nrefused++;
+}
+const char *mods_refused_part(const char *mod) {
+    for (int i = 0; i < nrefused; i++)
+        if (!strcmp(refused[i].mod, mod)) return refused[i].what;
+    return NULL;
 }
 
 static int hexval(int c) { return isdigit(c) ? c - '0' : isxdigit(c) ? (tolower(c) - 'a' + 10) : -1; }

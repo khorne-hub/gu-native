@@ -17,7 +17,8 @@
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool g_active;
 static int g_window_on;  // text input on: 0 no, 1 for an entry, 2 for the port's menu (no screen keyboard), 3 for the
-                         // port's menu with the phone's keyboard (its keyboard view asked for it: textinput_menu_keyboard)
+                         // port's menu with the phone's keyboard (its keyboard view asked for it: textinput_menu_keyboard),
+                         // 4 for a field of Forge's menu with the phone's keyboard (overlay_forge_typing)
 // The port's menu (its thread): wants the phone's keyboard; its key's presses, counted (and as far as the window went:
 // the main thread's); Back put the keyboard away, not told to the menu yet (meanwhile what it wants is not asked again;
 // told, the menu stops wanting it until its key is pressed again)
@@ -179,6 +180,20 @@ void textinput_update(void) {
     int want = textinput_active() ? 1 : overlay_menu_open() ? 2 : 0;  // (Forge's menu takes typed text too)
 #ifdef __ANDROID__
     int show = __atomic_load_n(&g_menu_show, __ATOMIC_RELAXED);
+    // (a field of Forge's menu takes text: the phone's keyboard, as for the port's menu - 4, its own state - until the
+    // field lets go or Back puts the keyboard away)
+    static bool forge_away;
+    bool forge_typing = want == 2 && overlay_forge_typing();
+    if (!forge_typing) forge_away = false;
+    if (forge_typing && !forge_away) want = 4;
+    if (want == 4 && g_window_on == 4) {
+        SDL_Window *w = ui_window();
+        if (w && !SDL_TextInputActive(w)) {  // (Back put it away: SDL turned text input off)
+            forge_away = true;
+            g_window_on = 0;
+            want = 2;
+        }
+    }
     // (Back's mark read before what the menu wants: the menu clears what it wants before the mark, so one taking the mark
     // meanwhile never brings the keyboard up again for a pass - textinput_menu_keyboard_closed)
     if (want == 2 && !__atomic_load_n(&g_menu_closed, __ATOMIC_ACQUIRE) && __atomic_load_n(&g_menu_keyboard, __ATOMIC_RELAXED))
@@ -218,7 +233,7 @@ void textinput_update(void) {
     // (there text input shows the screen keyboard: for the game's entries; the port's menu has its own keyboard view,
     // a physical keyboard still types into it, and the phone's keyboard only when that view's key asks for it)
     if (want) SDL_SetHint(SDL_HINT_ENABLE_SCREEN_KEYBOARD, want == 2 ? "0" : "1");
-    if (want == 3) start_menu_keyboard(w);
+    if (want == 3 || want == 4) start_menu_keyboard(w);
     else
 #endif
     if (want) SDL_StartTextInput(w);

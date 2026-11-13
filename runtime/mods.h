@@ -24,6 +24,10 @@ void mods_make_dir(void);  // creates an empty mods/ (standalone: shows players 
 int mods_romfs_layers(const char **out, int max);  // host folders to layer over the RomFS, in order
 void mods_patch_module(struct Module *m, const uint8_t build_id[32]);  // exefs patches for a loaded module
 void mods_patch_code(void);  // then the patches of main's and sdk's code: once the dispatch tables are set up
+// Bytes of a mod's whole module that differ from the game's (loader.c), applied as a patch; counts: data, code, outside
+void mods_patch_bytes(struct Module *m, const char *mod, const char *file, uint32_t off, const uint8_t *bytes, uint32_t len,
+                      int counts[3]);
+void mods_note_refused(const char *mod, const char *what);  // a part of a mod the port can't use (modorder.h mods_refused_part)
 // The mods' exefs/<name> (a subsdk): its path in path, and the mod's name (the last mod that has one); NULL: none.
 // skip: a file to pass over (and its mod's name), else NULL.
 const char *mods_exefs_file(const char *name, char *path, size_t n, bool (*skip)(const char *path, const char *mod));

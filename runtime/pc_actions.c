@@ -477,7 +477,8 @@ static SDL_EnumerationResult SDLCALL mod_part(void *ud, const char *dir, const c
     char path[1400];
     snprintf(path, sizeof path, "%s%s", dir, name);
     if (!exists(path, SDL_PATHTYPE_DIRECTORY)) return SDL_ENUM_CONTINUE;
-    if (!SDL_strcasecmp(name, "romfs") || !SDL_strcasecmp(name, "exefs") || !SDL_strcasecmp(name, "nativeNX")) {
+    if (!SDL_strcasecmp(name, "romfs") || !SDL_strcasecmp(name, "exefs") || !SDL_strcasecmp(name, "nativeNX") ||
+        !SDL_strcasecmp(name, "cheats")) {  // (cheats/: a mod's cheats in yuzu's and Ryujinx's layout, runtime/cheats.c)
         m->found = true;
         return SDL_ENUM_SUCCESS;
     }
@@ -616,7 +617,7 @@ static bool zip_mod_part(const char *path, bool dir) {
         if (!e && !dir) return false;  // (a file's last part is the file)
         size_t l = e ? (size_t)(e - path) : strlen(path);
         if ((l == 5 && (!SDL_strncasecmp(path, "romfs", 5) || !SDL_strncasecmp(path, "exefs", 5))) ||
-            (l == 8 && !SDL_strncasecmp(path, "nativeNX", 8)))
+            (l == 8 && !SDL_strncasecmp(path, "nativeNX", 8)) || (l == 6 && !SDL_strncasecmp(path, "cheats", 6)))
             return true;
         if (!e) return false;
         path = e + 1;

@@ -236,6 +236,24 @@ int dispatch_interpret(uint32_t entry, uint32_t end) {
     return ok;
 }
 
+bool dispatch_interpret_inside(uint32_t pc) {
+    const Module *m = NULL;
+    for (int i = 0; i < 2 && i < g_nmodules; i++)
+        if (pc >= g_modules[i].base + g_modules[i].text_off && pc < g_modules[i].base + g_modules[i].text_off + g_modules[i].text_size)
+            m = &g_modules[i];
+    if (!m || (pc & 3)) return false;
+    uint32_t next, entry = dispatch_function_at(pc, &next);
+    if (!entry) return false;
+    int r = dispatch_interpret(entry, next ? next : m->base + m->text_off + m->text_size);
+    if (r > 0)
+        LOG("[dispatch] a jump into %s+%x, inside the function at %s+%x (a mod's or a cheat's code): that function runs in "
+            "the interpreter now\n", m->name, pc - m->base, m->name, entry - m->base);
+    else if (r < 0)
+        LOG("[dispatch] a jump into %s+%x, inside the function at %s+%x: it can't run in the interpreter (too many)\n",
+            m->name, pc - m->base, m->name, entry - m->base);
+    return r >= 0 && interp_owns(pc);
+}
+
 // ---- the original first words of hooked entries (rt.h)
 #define MAX_KEPT 1024
 static struct { uint32_t addr, w[2]; } kept[MAX_KEPT];
@@ -435,6 +453,7 @@ static GuestFn dispatch_slow(Cpu *c, DEntry *dcache) {
     GuestFn f = dispatch_lookup(pc);
     if (!f && interp_owns(pc)) f = interp_entry;
     if (!f && pc >= FORGE_TRAMP && pc < FORGE_STUBS) f = trampoline;
+    if (!f && dispatch_interpret_inside(pc)) f = interp_entry;
     if (!f) {
         uint32_t off;
         const char *s = loader_symbol_at(c->r[14], &off);
@@ -513,6 +532,7 @@ static GuestFn dispatch_slow2(Cpu *c, DEntry *dcache) {
         f = dispatch_lookup_paged(pc);
         if (!f && interp_owns(pc)) f = interp_entry;
         if (!f && pc >= FORGE_TRAMP && pc < FORGE_STUBS) f = trampoline;
+        if (!f && dispatch_interpret_inside(pc)) f = interp_entry;
         if (!f) {
             uint32_t off;
             const char *s = loader_symbol_at(c->r[14], &off);

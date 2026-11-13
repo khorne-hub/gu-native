@@ -60,6 +60,7 @@ typedef struct Module {
 #define MAX_MODULES 128  // main + sdk + mods' subsdks + Forge plugins
 extern Module g_modules[MAX_MODULES];
 extern int g_nmodules;
+extern uint8_t g_main_build_id[32];  // main's build id, from its NSO header (loader.c)
 extern int g_nexefs;  // the code modules of exefs/: main, sdk, then the mods' subsdks (g_modules[0..g_nexefs)); then Forge's
 void loader_load(const char *exefs_dir);
 // A mod's subsdk not where the game's layout puts it: is addr within slack bytes of the range it expects (an address
@@ -89,6 +90,10 @@ uint32_t dispatch_function_at(uint32_t addr, uint32_t *next);
 // see. Calls that are already running finish in the recompiled code. 1: done, 0: it already was, -1: no function
 // there, or too many.
 int dispatch_interpret(uint32_t entry, uint32_t end);
+// A jump to pc, inside a function of the game's code but not at its entry (a mod's or a cheat's code jumping back into
+// code it did not change, a jump table it changed): that function runs in the interpreter from now on (dispatch_interpret),
+// which can start anywhere in it. true: pc is interpreted code now; false: it is in none of the game's functions.
+bool dispatch_interpret_inside(uint32_t pc);
 uint32_t hle_register(const char *name, HostFn fn);  // returns a fake guest address
 HostFn hle_lookup_impl(const char *name);
 void hle_override(uint32_t guest_addr, HostFn fn, const char *name);
