@@ -14,6 +14,7 @@ bool weapon_moving(uint32_t hunter);
 bool weapon_stance(uint32_t hunter);   // a bow or a gun out, standing or walking: no weapon move, no aim (a locked shot's)
 bool weapon_prowler(uint32_t hunter);  // a Prowler: Support Moves on the item bar (L + Y / A)
 bool player_place(float *x, float *z);  // the local player's place (x, z), a town's walker too
+int player_heading(void);               // ...its heading (the camera's units), -1 if there is none
 unsigned weapon_action(uint32_t hunter);  // st << 16 | no
 int weapon_bow_type(void);
 void mousecam_lock_shot(void);         // (each update of the hunter, hle/itembar.c)

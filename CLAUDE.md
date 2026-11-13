@@ -782,6 +782,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   pouch's comes as a long gathering ends, past `WINDOW_PRESS`; `fakewindow <ms>` in the control file shows such a window. A model
   drawn in a town's menu (a shop's or the smithy's weapon, the item box's hunter: a depth-tested draw in a viewport smaller than the picture,
   `touch_hud_preview`) turns with the sticks: the touch stick and drags are the game's sticks there, never its cursor.
+  So does the hunter in the item box (shown up close, its "Turn" hint): a stick that turns him where he stands stays the
+  game's (`[touch] the stick turns the hunter in this menu`); up to 0.1.9.3 it became the cursor 300 ms in, and he stopped
+  (#162, #186). A talk's menu (the house Felyne's, RG406V) turns nobody: its stick moves its cursor.
 - The menu pad's presses are no longer dropped (up to 0.1.9.2 they were): while no menu's cursor ran in the last update (`menu_takes_input` false)
   hle/input.c doesn't give them to the game as the d-pad (no Hunter Art) and hle/mousemenu.c `pad_update` writes them into the
   menu's half of the game's pad (sFestaPad +0x6bf4 held, +0x6bfc pressed, +0x6c34 repeated), which the hunter never reads, as the

@@ -1025,6 +1025,8 @@ struct State {
     bool stick_cursor;       // a town's menu where the hunter doesn't walk: the stick moves the cursor there too
     uint64_t stuck_ns;       // ...found by the stick tilted since then and the player's place not changed (0: not tilted)
     float stuck_x, stuck_z;
+    int stuck_heading;       // ...and its heading then (player_heading)
+    bool turns;              // a town's menu where the stick tilted turns the hunter in place: the game's stick there
     uint64_t pad_held;       // the menu pad's buttons down (its fingers' sent)
     uint64_t menu_on_ns;     // when the menu opened (the pad comes in)
     int lit_ctl, lit_part;   // a quick tap of the menu pad's group pressing now (lit until lit_until)
@@ -2254,7 +2256,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         if (dbg) rt_logf("[touch] game menu %s (last seen %.0f ms ago, limit %.0f)\n", game ? "open" : "closed",
                          (now - g_menu_ns.load()) / 1e6, stale_limit() / 1e6);
         if (game) s.menu_on_ns = now, g_menu_on_ns = now, g_menu_town = plat_now_ns() - g_town_ns < 500 * MS;
-        s.stick_cursor = false, s.stuck_ns = 0;
+        s.stick_cursor = false, s.stuck_ns = 0, s.turns = false;
         for (Finger &f : s.f)
             if (f.kind == F_BUTTON && !in_mode(f.ctl, game)) f.done = true;
         if (!game) {
@@ -2408,18 +2410,28 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // cursor as before: the d-pad's direction, one at a time, held while it is tilted; only for a thumb that landed or
     // came back to the middle since the hunter was played, or one tilted as such a menu opened would move it at once.
     // Elsewhere, menu or not, it walks (the pause menu, the pouch: the game's menus there don't read the stick)
-    // ...but for a menu opened in a town where the stick tilted moves the player nowhere for STUCK_NS (the item box, a
-    // shop, the smithy, the quest counter: the town goes on under them, the hunter only turns): from then until it
-    // closes the stick moves its cursor there too. Never in a hunt: a d-pad there is a Hunter Art
+    // ...but for a menu opened in a town where the stick tilted moves the player nowhere for STUCK_NS (a shop, the
+    // smithy, the quest counter: the town goes on under them): from then until it closes the stick moves its cursor
+    // there too, unless it turns the hunter (below). Never in a hunt: a d-pad there is a Hunter Art
     float sr = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
     int stick_dir = s.stick_on && s.h > 0 ? dpad_part({ImVec2(s.bx, s.by), sr * 1.7f}, s.kx, s.ky, s.stick_part) : 0;
-    // (with a model shown there, never: the game turns it with the stick, s.preview)
-    if (s.menu && g_menu_town.load() && !s.stick_cursor && !s.preview) {
+    // (with a model shown there, never: the game turns it with the stick, s.preview. Nor where the stick tilted turns the
+    // hunter where he stands, s.turns: the item box shows him up close and turns him with the left stick, its "Turn"
+    // hint. The stick had become its cursor 300 ms in, and he stopped turning at once: #162, #186, Discord. RG406V,
+    // the hunter's house: the game's stick held 3 s turned him from 37695 to 64499, the touch stick not at all; a talk's
+    // menu, the house Felyne's, turns nobody, and its stick stays the cursor's)
+    if (s.menu && g_menu_town.load() && !s.stick_cursor && !s.preview && !s.turns) {
         const uint64_t STUCK_NS = 300 * MS;
+        const int TURNED = 400;  // (about 2 degrees: the game's stick turns him about 50 a second there)
         float px, pz;
         if (stick_dir && player_place(&px, &pz)) {
-            if (!s.stuck_ns || hypotf(px - s.stuck_x, pz - s.stuck_z) > 2.0f) s.stuck_ns = now, s.stuck_x = px, s.stuck_z = pz;
-            else if (now - s.stuck_ns >= STUCK_NS) {
+            int hd = player_heading();
+            if (!s.stuck_ns || hypotf(px - s.stuck_x, pz - s.stuck_z) > 2.0f) {
+                s.stuck_ns = now, s.stuck_x = px, s.stuck_z = pz, s.stuck_heading = hd;
+            } else if (hd >= 0 && s.stuck_heading >= 0 && abs((int16_t)(uint16_t)(hd - s.stuck_heading)) > TURNED) {
+                s.turns = true;
+                rt_logf("[touch] the stick turns the hunter in this menu: it stays the game's stick\n");  // (always: once a menu)
+            } else if (now - s.stuck_ns >= STUCK_NS) {
                 s.stick_cursor = s.stick_menu_ok = true;
                 rt_logf("[touch] the player walks nowhere in this menu: the stick moves its cursor\n");  // (always: once a menu)
             }
