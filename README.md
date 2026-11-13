@@ -175,9 +175,10 @@ button, **System**, **Game code**, **Build the game code**.
   free software, checked before they are used, and nothing of the game is ever downloaded.
 - It needs about 2 GB free while it works; when it ends, only the tools (about 200 MB) stay, and **Delete the tools**
   removes them too.
-- It takes about 10 minutes on a recent high-end phone (measured on a Galaxy S25) and up to about 2 hours on a low-end
-  one. It goes on with the screen off or in another app, with its progress in a notification, and if it is cut (the
-  phone restarts, the app is closed) it goes on from where it stopped.
+- Inside the app it took about 17 minutes on an Anbernic RG406V (a mid-range Mali-G57) and about 30 on a Galaxy S25
+  Ultra with its pauses for heat; on a low-end phone it should take up to about 2 hours. It goes on with the screen off
+  or in another app, with its progress in a notification, and if it is cut (the phone restarts, the app is closed) it
+  goes on from where it stopped.
 - The phone gets warm: keep it charging, out of its case if you can. Warm, it goes slower; too hot, it waits until the
   phone cools down.
 
