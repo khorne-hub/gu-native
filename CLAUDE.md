@@ -526,7 +526,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   (MHGU_HOME with the program cache but no driver cache, quest 101, killed each time): the start's 152 pipelines 15.6 s, then 0.2 s
   from the 1663 KB kept; the quest's pipelines lost without `pcache_tick` (next start 178 of 308 from the cache, 16.4 s), kept
   with it (3313 KB 2 minutes in, next start 308 of 308, 0.4 s). A save asks the driver again with a quarter more and 1 MB of room
-  (64 KB before) and logs what it wrote.
+  (64 KB before) and logs what it wrote. The creation feedback always gives the stages their array too
+  (`pipelineStageCreationFeedbackCount` = `stageCount`): with a count of 0 and no array, the RG406V's Mali-G57 driver (Vulkan
+  1.3.225) wrote the stages' feedback through the null pointer, a SIGSEGV at 0 in libGLES_mali.so on every compile worker at
+  every start (found when the 0.1.9.3 builds were installed; the Moto's driver took it).
   A crash inside the compiler itself (#100: a GE8322's SIGSEGV in `libufwriter.so`, on the worker in `build_pipeline`, while
   the game waited in the settings) adds to the crash report the program of the build under way (`building_note` through
   `rt_fault_note`: "this thread was building a pipeline in the GPU driver: the program of code <vertex> and <fragment>"),
