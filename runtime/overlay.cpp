@@ -73,10 +73,11 @@ static uint32_t g_reuse_w, g_reuse_h;
 static uint64_t g_reuse_built_ns, g_reuse_log_ns, g_reuse_n[2];
 static int g_reuse_bad;
 #ifdef __ANDROID__
-// MHGU_PERF_MENU_PRESENT=1: while the settings menu holds the game, the held picture is presented again only when the
-// menu's frame changed (snap_same), when the window needs one (back from the background, a new size: vk_present_needed)
-// and once a second; the menu is still built 60 times a second, so it moves as before. 0 (the default): every pass
-static bool g_perf_menu_present, g_perf_menu_log;  // (log: the variable set, 0 or 1: the hold's presents counted)
+// While the settings menu holds the game, the held picture is presented again only when the menu's frame changed
+// (snap_same), when the window needs one (back from the background, a new size: vk_present_needed) and once a second;
+// the menu is still built 60 times a second, so it moves as before (the default since 1.0: on the Anbernic, the app's
+// CPU with the menu open 29% lower, the same picture). MHGU_PERF_MENU_PRESENT=0: every pass, as before
+static bool g_perf_menu_present = true, g_perf_menu_log;  // (log: the hold's presents counted, at each close)
 #endif
 
 // ------------------------------------------------------------------ input (main thread -> game thread)
@@ -487,7 +488,7 @@ void overlay_init(const char *font_path, float font_size, int menu_key) {
 #ifdef __ANDROID__
     {
         const char *e = getenv("MHGU_PERF_MENU_PRESENT");  // (read once: the menu hold's presents, menu_holds_game)
-        g_perf_menu_present = e && atoi(e) == 1, g_perf_menu_log = e != nullptr;
+        g_perf_menu_present = !(e && atoi(e) == 0), g_perf_menu_log = true;
         if (e) LOG("[perf] MHGU_PERF_MENU_PRESENT=%d\n", (int)g_perf_menu_present);
     }
 #endif
