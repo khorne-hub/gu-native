@@ -35,6 +35,7 @@
 #include "config.h"
 #include "logwriter.h"
 #include "perfstats.h"
+#include "touch.h"  // (touch_fps_place: the plate where the layout editor put it)
 #ifdef _WIN32
 #include "platform/win_stats.h"
 #include "settings_locale.h"
@@ -232,11 +233,21 @@ extern "C" void perfstats_poll(void) {
 
 extern "C" bool perfstats_visible(void) { return config_live_show_stats() != 0; }
 
-// The plate's lower edge as last drawn (display pixels) and when: the port's notices go under it (runtime/overlay.cpp)
+// The plate's lower edge as last drawn (display pixels) and when: the port's notices go under it (runtime/overlay.cpp),
+// while it is at the top (the layout editor moves it: touch_fps_place); and its whole rectangle, for the editor's frame
 static float g_plate_bottom;
 static uint64_t g_plate_ns;
+static bool g_plate_top;
+static std::atomic<float> g_plate[4];
+static std::atomic<uint64_t> g_plate_at;
 extern "C" float perfstats_bottom(void) {
-    return g_plate_ns && SDL_GetTicksNS() - g_plate_ns < 200000000ull ? g_plate_bottom : 0.0f;
+    return g_plate_ns && g_plate_top && SDL_GetTicksNS() - g_plate_ns < 200000000ull ? g_plate_bottom : 0.0f;
+}
+extern "C" bool perfstats_rect(float r[4]) {
+    uint64_t at = g_plate_at.load();
+    if (!at || SDL_GetTicksNS() - at > 500000000ull) return false;
+    for (int i = 0; i < 4; i++) r[i] = g_plate[i].load();
+    return true;
 }
 
 extern "C" void perfstats_draw(float w, float h) {
@@ -361,9 +372,11 @@ extern "C" void perfstats_draw(float w, float h) {
 #endif
     fs *= k, padx *= k, pady *= k, tw *= k, lead *= k;
     float pw = tw + 2 * padx, ph = nl * fs + (nl - 1) * lead + 2 * pady + 2 * line * 1.7f;
-    float x0 = pw <= hi - lo ? std::clamp(.62f * w - pw * .5f, lo, hi - pw) : (lo + hi - pw) * .5f;
-    ImVec2 p0(x0, .01f * h), p1(x0 + pw, .01f * h + ph);
-    g_plate_bottom = p1.y, g_plate_ns = now;  // (perfstats_bottom: the port's notices go under it)
+    float x0 = pw <= hi - lo ? std::clamp(.62f * w - pw * .5f, lo, hi - pw) : (lo + hi - pw) * .5f, y0 = .01f * h;
+    touch_fps_place(w, h, pw, ph, &x0, &y0);  // (moved in the layout editor: where the player put it)
+    ImVec2 p0(x0, y0), p1(x0 + pw, y0 + ph);
+    g_plate_bottom = p1.y, g_plate_ns = now, g_plate_top = y0 < .1f * h;  // (perfstats_bottom: the port's notices go under it)
+    g_plate[0] = p0.x, g_plate[1] = p0.y, g_plate[2] = p1.x, g_plate[3] = p1.y, g_plate_at = now;
     ImDrawList *dl = ImGui::GetBackgroundDrawList();  // (under the port's menus and notices, as the touch controls)
     dl->AddRectFilled(p0, p1, WINE);
     dl->AddRect(p0, p1, IM_COL32(0, 0, 0, 255), 0, 0, line);

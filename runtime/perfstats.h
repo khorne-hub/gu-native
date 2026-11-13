@@ -12,6 +12,10 @@ void perfstats_poll(void);              // host main thread, each loop pass (run
 bool perfstats_visible(void);           // game thread (runtime/overlay.cpp): it is to be drawn this frame
 void perfstats_draw(float w, float h);  // game thread, inside the overlay's ImGui frame (display size in pixels)
 float perfstats_bottom(void);           // game thread: the plate's lower edge just drawn, in display pixels; 0: none shown
+                                        // (or it is not at the top: moved in the layout editor)
+// (any thread) the plate as last drawn, in display pixels: x0, y0, x1, y1; false while it isn't shown (the layout
+// editor frames it to move it: runtime/touch.cpp)
+bool perfstats_rect(float r[4]);
 
 #ifdef __cplusplus
 }

@@ -112,6 +112,12 @@
             android:screenOrientation="sensorLandscape"
             android:exported="false" />
 
+        <!-- El editor de diseño: Imagen -> Agregar imágenes (las imágenes propias de los botones, PicturesActivity) -->
+        <activity android:name=".PicturesActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:exported="false" />
+
         <activity android:name=".SaveExportActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:screenOrientation="sensorLandscape"

@@ -14,6 +14,9 @@ void ui_request_save_export(void);
 void ui_request_save_folder(void);  // Settings -> Save folder (Android's SaveFolderActivity; a PC's: not yet)
 void ui_request_share_log(void);
 void ui_request_import(int kind);  // the import screen (Android's ImportActivity): 0 cheats, 1 a mod, 2 DLC
+// The layout editor's Add pictures (runtime/touch.cpp): Android's PicturesActivity, a desktop's file dialog
+// (pc_import_pictures), which copy the player's pictures into the layout profiles' images folder
+void ui_request_pictures(void);
 #ifdef __ANDROID__
 void ui_request_gpu_driver(void);
 bool vk_gpu_adreno(void);          // (nvn/vulkan/device.c)
@@ -27,6 +30,7 @@ void pc_export_save(void);
 void pc_open_log_folder(void);
 void pc_import_cheats(void);
 void pc_import_mod(void);
+void pc_import_pictures(void);  // (the layout profiles' images folder: touch_pictures_dir)
 void pc_mod_dialog(bool zip);  // (any thread) the dialog the next pc_import_mod opens: the mod's .zip, else its folder
 // The Cheats and Mods tabs (the menu's thread): the cheat files (UTF-8 names, each up to 256 bytes, at most max) in the
 // cheats folders the game reads, one added since the start too, sorted

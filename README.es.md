@@ -60,6 +60,12 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 
 - Mantén apretado el engranaje para abrir el editor (o **Controles**, **Personalizar controles y HUD**): mueve y cambia el tamaño de cada botón, y mueve, cambia el tamaño u oculta cada parte del HUD del juego: el reloj, la vida y la resistencia, el filo y los indicadores, el grupo, el mapa, la cámara de objetivo, la barra de objetos y las Artes de caza. Fuera de una cacería, unos marcos muestran dónde va cada parte, cada uno con su nombre. Una parte que pongas sobre un botón se marca en rojo, y el botón también; el diseño por defecto no muestra nada en rojo. La barra de objetos no se puede ocultar ahí: es la forma de elegir y usar objetos con los dedos
 - El panel del editor se aparta de lo que estás colocando: arrástralo por su título (las agarraderas de sus extremos). Toca su título y - / + o un pellizco lo achican, hasta un 60 %. Queda donde lo dejes, y del mismo tamaño
+- **Perfiles de controles:** 10 espacios, cada uno con un diseño entero: los botones, el HUD en sus dos versiones, el lugar del contador de FPS, y los botones de abajo. En el editor, **Perfil** los abre: **Cargar** uno, **Guardar aquí** el diseño que estás editando, empezar uno **Nuevo** de cualquiera de los dos tipos, o **Borrar** uno; reemplazar o vaciar uno pide un segundo toque. **Guardar** en el editor juega con el perfil que estás editando. Se guardan en la carpeta `layout profiles` de tu carpeta de partidas (o en la de la app si no elegiste una), así que van con tus partidas a tus otros dispositivos y quedan si desinstalas la app. Tu diseño de antes es el perfil 1, sin cambios. Diseñado por tabarong
+- **Diseño de emulador:** cualquier perfil puede serlo: **A**, **B**, **X** e **Y** en rombo, la cruceta, los gatillos, **+** y **-**, y los clics de las palancas, cada uno aprieta solo su botón del juego, como el pad en pantalla de un emulador, con el estilo de botones del port. Mueve, cambia el tamaño y oculta cada uno en el editor (**Ocultar** / **Mostrar**); arrastrar la pantalla sigue girando la cámara
+- **Botones que quedan apretados:** toca un botón en el editor y activa **Mantener**: en el juego, un toque lo deja apretado y el siguiente lo suelta. Un botón mantenido se ve encendido, con un candado chico
+- **Tus propias imágenes:** toca un botón en el editor y elige **Imagen** para ponerle una imagen tuya (**Agregar imágenes** copia archivos PNG, JPG o WebP de tu teléfono). El botón conserva su letra. Lo que agregues es tu responsabilidad
+- **El contador de FPS** se puede arrastrar a cualquier lugar en el editor; **Restablecer** lo devuelve arriba
+- **Palanca flotante:** en el engranaje, **Controles**, **Botones en la pantalla**, activa **Palanca flotante** y la palanca de movimiento aparece donde apoyas el pulgar cerca de ella, y vuelve al levantarlo. Desactivada por defecto
 - Una parte que moviste queda donde la pusiste: una línea de chat, el apuntado de un arco o de una ballesta y el sello de Quest Complete ya no la devuelven al lugar del juego, y no salta cuando se abre un menú del juego. Una parte que quedaría sobre la ventana de ese menú se oculta hasta que el menú se cierra
 - La interfaz del juego se reacomoda para no quedar bajo los pulgares (**Acomodar el HUD para el táctil**). Desactivado, el HUD es el mismo que con un mando. El botón **HUD: mando** del editor acomoda el HUD que se ve con un mando, sin conectar uno, y la B de un mando cierra el editor sin guardar
 - Opacidad de los controles y velocidad de la cámara ajustables
@@ -759,6 +765,8 @@ Titulares de derechos: abran un issue para ponerse en contacto.
 
 Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliotecas listadas en
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias, con el aviso legal, también están en la app: engranaje, **Créditos y licencias**, **Licencias**. En PC: **F1**, **Créditos y licencias**, **Licencias**, y la carpeta `licenses` junto a `MHGU.exe`.
+
+Los perfiles de controles siguen un diseño de tabarong (en Discord; [oliveaglien](https://github.com/oliveaglien) en GitHub).
 
 Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
 Android de la misma forma.

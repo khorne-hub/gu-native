@@ -43,7 +43,7 @@ extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
 namespace {
 // (Page: a page one level down from a section's, State::at; MENU.md)
 enum class View { Main, Page, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons,
-                  ComboEdit, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord };
+                  ComboEdit, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord, Profiles, ProfileSlot };
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -196,6 +196,12 @@ bool touch_screen() {
 // The touch controls' rows: with a touch screen, or with the controls shown anyway ([Touch] Controls On, as saved:
 // their rows stay, to turn them off)
 bool touch_rows() { return touch_screen() || s.saved.touch_controls == TOUCH_ON; }
+// The touch settings of the TB_ list with a row of their own elsewhere (MENU.md: the floating stick on Touch controls),
+// not in Buttons on the screen nor in its count
+bool tb_elsewhere(int i) { return i == TB_FLOAT_STICK; }
+struct Row;
+void control_profile_row(std::vector<Row> &r);  // (the Controls page's link to the control profiles: further down)
+void button_images_row(std::vector<Row> &r);    // (...and to the buttons' pictures)
 // View::TouchButtons opened from the controller's rows: its combined buttons alone (a phone with a controller connected;
 // the MH4U port's the same)
 bool s_combos_alone = false;
@@ -2116,10 +2122,10 @@ void rows_controls_40(std::vector<Row> &r) {
         push(View::TouchButtons, "tb.0");
     });
     r.back().help = tr("Choose which of the game's buttons show on the screen, and add buttons of your own that press several at once.");
-    int shown = 0;
+    int shown = 0, all = 0;
     for (int i = 0; i < TB_COUNT; i++)
-        shown += s.draft.touch_show[i] != 0;
-    r.back().value = std::to_string(shown) + " / " + std::to_string(TB_COUNT);
+        if (!tb_elsewhere(i)) shown += s.draft.touch_show[i] != 0, all++;
+    r.back().value = std::to_string(shown) + " / " + std::to_string(all);
 }
 void reset_controls_40() {  // (and the combined buttons, which its view edits too)
     Config f = config_defaults();
@@ -3137,17 +3143,17 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
-                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button"};
+                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
-                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn"};
+                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick"};
 // (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick -, the menu pad before
 // the tabs that go with it)
 const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L,
-                                TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
+                                TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
                                 TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_ZL, TB_MENU_ZR};
-static_assert(TB_COUNT == 26, "TB_ORDER: a place for each of the touch settings");
+static_assert(TB_COUNT == 27, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -3156,6 +3162,7 @@ void touch_button_rows(std::vector<Row> &r) {
         header(r, "tb.head", tr("Buttons on the screen"));
         for (int n = 0; n < TB_COUNT; n++) {
             int i = TB_ORDER[n];
+            if (tb_elsewhere(i)) continue;  // (a row of its own elsewhere in the menu)
             add_bool(r, ("tb." + std::to_string(i)).c_str(), TB_TITLES[i], &c.touch_show[i], nullptr);
             r.back().key = TB_KEYS[i];
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
@@ -3188,6 +3195,109 @@ void touch_button_rows(std::vector<Row> &r) {
         r.back().help = tr("A button of your own presses several of the game's together. Place it with Customize controls and HUD.");
     action(r, "tb.back", tr("Back"), []() { pop(); });
 }
+// ---- the control profiles (S12, after tabarong's design; the 1.0 layout group's): the Controls page's link to them
+// (control_profile_row), their page (View::Profiles: the ten slots) and a slot's (View::ProfileSlot: Use, Save the current
+// layout here, New of either kind, Edit, Clear). Each acts at once on the layout in use (runtime/touch.cpp
+// touch_profile_*), not on the menu's settings; replacing or emptying a slot asks for a second tap. The layout editor's
+// Profile window does the same. The MH4U port's the same rows and texts
+int s_profile = 1;        // the slot View::ProfileSlot shows
+std::string s_prof_arm;   // the row tapped once that a second tap confirms ("" none)
+std::string s_prof_said;  // what the last action did (a note under the rows)
+std::string profile_what(int n) {
+    int kind = touch_profile_kind(n);
+    std::string t = tr(kind < 0 ? "Empty" : kind == 1 ? "Emulator layout" : "Port layout");
+    if (n == touch_profile_active()) t += std::string("  \xC2\xB7  ") + tr("In use");
+    return t;
+}
+// The players' own pictures for the touch buttons (S06, the 1.0 layout group's): the screen that copies them in
+// (Android's PicturesActivity, a desktop's file dialog: runtime/pc_actions.c); the layout editor's Picture puts one on
+// a button. The MH4U port's the same row
+void button_images_row(std::vector<Row> &r) {
+    action(r, "touch.images", tr("Button images"), []() { ui_request_pictures(); });
+    r.back().help = tr("Copy pictures of your own (PNG, JPG or WebP) to put on the touch buttons, then pick one in the layout editor with Picture. What you add is your own responsibility.");
+}
+void control_profile_row(std::vector<Row> &r) {
+    action(r, "touch.profiles", tr("Control profiles"), []() {
+        s_prof_said.clear();
+        push(View::Profiles, "pf.1");
+    });
+    int n = touch_profile_active(), kind = touch_profile_kind(n);
+    r.back().value = fmt(kind == 1 ? "Profile %d: emulator" : "Profile %d: port", n);
+    r.back().help = tr("Ten slots, each a whole layout of the touch controls and the HUD: the port's own or an emulator-style one. Use one, save the one you play with in another, or edit it. A design by tabarong.");
+}
+void profile_rows(std::vector<Row> &r) {
+    for (int n = 1; n <= 10; n++) {
+        action(r, "pf." + std::to_string(n), fmt("Profile %d", n), [n]() {
+            s_profile = n, s_prof_arm.clear(), s_prof_said.clear();
+            push(View::ProfileSlot, "ps.use");
+        });
+        r.back().value = profile_what(n);
+    }
+    note(r, "pf.where", tr("Kept in the \"layout profiles\" folder of your save folder (or of the app's), with your saves."));
+    action(r, "pf.back", tr("Back"), []() { pop(); });
+}
+void profile_slot_rows(std::vector<Row> &r) {
+    int n = s_profile, active = touch_profile_active(), kind = touch_profile_kind(n);
+    bool used = kind >= 0, in_use = n == active;
+    note(r, "ps.what", profile_what(n));
+    // (an action that replaces or empties a slot: a first tap arms it, its title says to tap again)
+    auto armed = [&r](const char *id, const char *title, const char *again, bool ask, std::function<bool()> fn,
+                      const char *done) {
+        bool on = s_prof_arm == id;
+        action(r, id, tr(on ? again : title), [id = std::string(id), ask, fn, done]() {
+            if (ask && s_prof_arm != id) {
+                s_prof_arm = id;
+                return;
+            }
+            s_prof_arm.clear();
+            s_prof_said = tr(fn() ? done : "It couldn't be done. Is the save folder there?");
+        });
+    };
+    action(r, "ps.use", tr("Use"), [n]() {
+        s_prof_arm.clear();
+        s_prof_said = tr(touch_profile_use(n) ? "In use" : "It couldn't be done. Is the save folder there?");
+    }, used && !in_use);
+    r.back().help = tr("Play with this profile's layout from now on.");
+    armed("ps.save", "Save the current layout here", "Tap again to replace it", used && !in_use, [n]() { return touch_profile_store(n); },
+          "Saved");
+    r.back().help = tr("The layout you play with now goes into this profile, which is the one in use from then on.");
+    armed("ps.new", "New: port layout", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 0); }, "In use");
+    armed("ps.emu", "New: emulator layout", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 1); }, "In use");
+    r.back().help = tr("Each button presses only its own button of the game's, as an emulator's pad on the screen, laid out the same way. Move, resize and hide each one in the editor.");
+    action(r, "ps.edit", tr("Edit"), [n, in_use]() {
+        if (!in_use && !touch_profile_use(n)) {
+            s_prof_said = tr("It couldn't be done. Is the save folder there?");
+            return;
+        }
+#ifndef __ANDROID__
+        if (!touch_screen()) touch_hud_edit_begin();  // (no touch screen: the HUD editor, worked with the mouse)
+        else
+#endif
+            touch_edit_begin();  // (it starts once the menu is closed)
+        request_back.store(true);
+    }, used);
+    r.back().help = tr("Opens the layout editor on this profile: it is the one in use from then on.");
+    armed("ps.clear", "Clear", "Tap again to empty it", true, [n]() { return touch_profile_clear(n); }, "Emptied");
+    r.back().enabled = used && !in_use;
+    if (!s_prof_said.empty()) note(r, "ps.said", s_prof_said);
+    action(r, "ps.back", tr("Back"), []() { s_prof_arm.clear(), pop(); });
+}
+// The layout group's places on the menu (MENU.md 3.1): the profiles' link on Controls (a desktop with no touch screen too:
+// its profiles hold the HUD, which Move the HUD edits), the pictures and the floating stick on Touch controls
+bool profiles_shown() {
+#ifdef __ANDROID__
+    return touch_rows();
+#else
+    return true;
+#endif
+}
+MENU_ENTRY("controls", 20, control_profile_row, {}, profiles_shown);
+void rows_controls_touch_60(std::vector<Row> &r) {
+    add_bool(r, "touch.float", "Floating stick", &s.draft.touch_show[TB_FLOAT_STICK], ini("FloatingStick"));
+}
+void reset_controls_touch_60() { s.draft.touch_show[TB_FLOAT_STICK] = config_defaults().touch_show[TB_FLOAT_STICK]; }
+MENU_ENTRY("controls/touch", 60, rows_controls_touch_60, reset_controls_touch_60);
+MENU_ENTRY("controls/touch", 70, button_images_row);
 void combo_rows(std::vector<Row> &r) {
     static const char *const NAMES[16] = {"A", "B", "X", "Y", "L3", "R3", "L", "R", "ZL", "ZR", "Plus", "Minus", "Left", "Up", "Right", "Down"};
     static const int ORDER[16] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 13, 15, 12, 14, 4, 5};  // (the face buttons first)
@@ -3276,6 +3386,8 @@ std::vector<Row> rows_for_view(bool *open) {
     std::vector<Row> r;
     if (s.view == View::TouchButtons) { touch_button_rows(r); return r; }
     if (s.view == View::ComboEdit) { combo_rows(r); return r; }
+    if (s.view == View::Profiles) { profile_rows(r); return r; }
+    if (s.view == View::ProfileSlot) { profile_slot_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
     if (s.view == View::Keyboard) {
@@ -3485,6 +3597,8 @@ const PhoneHelp PHONE_HELP[] = {
     {"ShowRangedSpecial", "A bowgun's crouching fire. A bow applies its coating.", "El fuego agachado de la ballesta. El arco aplica su capa."},
     {"ShowAmmo", "Change the ammo or the coating. A swipe up or down on the item bar does it too.", "Cambian la munición o la capa. También se puede deslizar hacia arriba o abajo sobre la barra de ítems."},
     {"ShowItemArrows", "Arrows beside the item bar. A swipe on the bar turns it too.", "Flechas a los lados de la barra de ítems. Deslizar sobre la barra también la gira."},
+    {"FloatingStick", "On: the movement stick comes to where your thumb lands near it, and goes back to its place when you lift it. Off: it stays where it is.",
+     "Activado: la palanca de movimiento aparece donde apoyas el pulgar cerca de ella, y vuelve a su lugar al levantarlo. Desactivado: se queda donde está."},
     {"StickRun", "On: push the movement stick past its edge to run, as before. Slide it up onto the small circle with a padlock that shows above it, which lights up, and lift your thumb there: the run locks and the hunter keeps running forward (steer with the camera), until you touch the stick or the circle again, draw the weapon or open a menu. Off: the stick only walks, and a Run button shows above the attacks instead: it runs while held.",
      "Activado: empuja la palanca de movimiento más allá de su borde para correr, como siempre. Deslízala hacia arriba hasta el círculo chico con un candado que aparece encima, que se ilumina, y levanta el pulgar ahí: la carrera se fija y el cazador sigue corriendo hacia adelante (giras con la cámara), hasta que vuelvas a tocar la palanca o el círculo, desenvaines o abras un menú. Desactivado: la palanca solo camina, y aparece un botón Correr sobre los ataques: corre mientras lo mantienes."},
     {"GuardSlide", "On: with the weapon out, a thumb that lands on Guard and slides onto the attacks keeps guarding (R held), for the moves that need R and an attack together, like a lance's counter or a shield's thrust; slid onto the item bar, it presses R and Y together. Off: the slide lets go of R.",
@@ -4437,6 +4551,8 @@ std::string view_title() {
                     : s.view == View::Keybinds   ? "Keybinds"
                     : s.view == View::TouchButtons ? (touch_rows() && !s_combos_alone ? "Buttons on the screen" : "Combined buttons")
                     : s.view == View::ComboEdit  ? "Combined button"
+                    : s.view == View::Profiles   ? "Control profiles"
+                    : s.view == View::ProfileSlot ? "Control profile"
                     : s.view == View::PadList    ? "Map a controller"
                     : s.view == View::PadMap     ? "Map a controller"
                     : s.view == View::KeyCapture ? "Press the key for chat (Esc: cancel)"
@@ -4820,7 +4936,7 @@ void touch_panel(bool *open, const Config &before) {
         float lx = left + tw + pad * 1.4f;
         float y = top + error_text(top, lx, end - lx);
         list_rect = ImRect(lx, y, end, bottom);
-    } else if (s.view == View::TouchButtons) {
+    } else if (s.view == View::TouchButtons || s.view == View::Profiles || s.view == View::ProfileSlot) {
         float y = top + error_text(top, left, end - left);
         list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)

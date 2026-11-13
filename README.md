@@ -60,6 +60,12 @@ Talk with other players and ask for help in the community's [Discord](https://di
 
 - Press and hold the gear to open the editor (or **Controls**, **Customize controls and HUD**): move and resize each button, and move, resize or hide each part of the game's HUD: the clock, health and stamina, the sharpness and gauges, the party, the map, the target camera, the item bar and the Hunter Arts. Outside a hunt, frames show where each part goes, each with its name. A part you put over a button turns red, and so does the button; the default layout shows no red. The item bar can't be hidden there: it is how you pick and use items with your fingers
 - The editor's panel moves out of the way of what you are placing: drag it by its title (the grips at its ends). Tap its title and - / + or a pinch make it smaller, down to 60 %. It stays where you leave it, and as big
+- **Control profiles:** 10 slots, each with a whole layout: the buttons, the HUD in both arrangements, the FPS counter's place, and the buttons below. In the editor, **Profile** opens them: **Load** one, **Save here** the layout you are editing, start a **New** one of either kind, or **Delete** one; replacing or emptying one asks for a second tap. The editor's **Save** plays with the profile you are editing. They are kept in the `layout profiles` folder of your save folder (or the app's folder if you didn't choose one), so they go with your saves to your other devices and stay if the app is uninstalled. Your layout from before is profile 1, unchanged. Designed by tabarong
+- **Emulator-style layout:** any profile can be one: **A**, **B**, **X** and **Y** in a diamond, the D-pad, the shoulders, **+** and **-**, and the sticks' clicks, each pressing only its own button of the game's, as an emulator's on-screen pad, in the port's own button style. Move, resize and hide each one in the editor (**Hide** / **Show**); dragging the screen still turns the camera
+- **Buttons that stay pressed:** tap a button in the editor and turn on **Hold**: in the game, a tap holds it down and the next tap lets it go. A held button is lit, with a small padlock
+- **Your own pictures:** tap a button in the editor and choose **Picture** to put a picture of your own on it (**Add pictures** copies PNG, JPG or WebP files from your phone). The button keeps its letter. What you add is your own responsibility
+- **The FPS counter** can be dragged anywhere in the editor; **Reset** puts it back at the top
+- **Floating stick:** under the gear, **Controls**, **Buttons on the screen**, turn on **Floating stick** and the movement stick comes to where your thumb lands near it, and goes back when you lift it. Off by default
 - A part you moved stays where you put it: a chat line, a bow's or a bowgun's aim and the Quest Complete stamp no longer send it back to the game's place, and it doesn't jump when a menu of the game's opens. A part that would sit over that menu's window hides until the menu closes
 - The game's HUD is rearranged to stay clear of your thumbs (**Move the HUD for touch**). Turned off, the HUD is the same as with a controller. The editor's **HUD: controller** button arranges the HUD you get with a controller, without connecting one, and a controller's B closes the editor without saving
 - Adjustable control opacity and camera speed
@@ -742,6 +748,8 @@ Rights holders: please open an issue to get in touch.
 
 Based on the open-source MHGURecomp project (MIT license) and the libraries listed in
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Their licenses, with the legal notice, are also in the app: gear button, **Credits & Licenses**, **Licenses**. On PC: **F1**, **Credits & Licenses**, **Licenses**, and the `licenses` folder beside `MHGU.exe`.
+
+The control profiles follow a design by tabarong (on Discord; [oliveaglien](https://github.com/oliveaglien) on GitHub).
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
 Android the same way.
