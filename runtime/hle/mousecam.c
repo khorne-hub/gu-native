@@ -419,7 +419,18 @@ void mousecam_lock_shot(void) {
     if ((others & ~others_was) || !active) armed = false;
     others_was = others;
     if (armed && !fire && now - fired >= SHOT_NS && !weapon_moving(h)) armed = false;  // (the shot over)
-    if (armed && (fire || now - fired < SHOT_NS) && weapon_moving(h)) aim_at_monster(h);
+    static bool said;  // (MHGU_TOUCH_LOG: each locked shot of a bow's, once, with the heading it had and the one given)
+    static int dbg = -1;
+    if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != NULL;
+    if (!armed) said = false;  // (the next shot logs again)
+    if (armed && (fire || now - fired < SHOT_NS) && weapon_moving(h)) {
+        uint32_t before = LD32(h + PL_HEADING) & 0xffffu;
+        aim_at_monster(h);
+        if (dbg && !said)
+            LOG("[lock] a bow's locked shot: heading %04x -> %04x (action %04x:%03u)\n", before, LD32(h + PL_HEADING) & 0xffffu,
+                weapon_action(h) >> 16, weapon_action(h) & 0xffffu);
+        said = true;
+    }
 }
 
 // (debug) MHGU_CAMLOG=1: twice a second, the hunt camera (eye, target, its angles) and the large monsters' places
