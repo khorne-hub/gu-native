@@ -142,7 +142,7 @@ struct State {
     bool hub_was = false;
     std::string hub_label;
 };
-State g;
+State &g = *new State;  // (never destroyed: the relays' thread may still run as the process ends, and a joinable thread's destructor aborts)
 
 void note(const char *fmt, ...) {
     char b[512];
