@@ -40,7 +40,7 @@ import java.util.Locale;
  */
 public class GameFolderActivity extends Activity {
     static final String EXTRA_CHANGE = "change";
-    private static final int PICK = 1, READ = 2;
+    private static final int PICK = 1, READ = 2, BUILD = 3;
     private static final int WINE = Color.rgb(38, 18, 14), PANEL = Color.rgb(26, 12, 9), CREAM = Color.rgb(240, 228, 200);
     private static final int GOLD = Color.rgb(226, 182, 92), BRONZE = Color.rgb(62, 38, 22), EDGE = Color.rgb(196, 150, 70);
     private static final int ALERT = Color.rgb(255, 150, 120);
@@ -49,7 +49,10 @@ public class GameFolderActivity extends Activity {
 
     private boolean es, change, waitingAccess;
     private TextView status;
-    private Button pick;
+    private Button pick, buildHere;
+    private File buildFolder;  // (a folder with exefs and romfs but no usable game code: BuilderActivity can make it)
+    private long builtSeen;  // (the build whose game code was looked at already: BuilderService.Job.started)
+    private volatile boolean codeProblem;  // (problem() said the game code is missing or from another version)
 
     private File home() { return AppHome.home(this); }
     private File savedFile() { return new File(home(), "game_folder.txt"); }
@@ -62,8 +65,10 @@ public class GameFolderActivity extends Activity {
     }
 
     /** Which game code this version of the app runs with (native/build_native.sh). */
-    private String wantedId() {
-        try (java.io.InputStream in = getAssets().open("gamelib_id.txt")) {
+    private String wantedId() { return wantedId(this); }
+
+    static String wantedId(android.content.Context c) {
+        try (java.io.InputStream in = c.getAssets().open("gamelib_id.txt")) {
             byte[] b = new byte[64];
             int n = in.read(b);
             return n > 0 ? new String(b, 0, n, "UTF-8").trim() : "";
@@ -105,6 +110,10 @@ public class GameFolderActivity extends Activity {
         if (rejected) {  // (runtime/main.c turned them down: say what is wrong with them)
             File bad = chosen != null ? chosen : own;
             verify(bad);
+        } else if (chosen != null && !change && hasAccess() && looksRight(chosen)) {
+            // (exefs and romfs are still there: what is missing is the game code; verify says so, and offers to make it
+            // on the phone)
+            verify(chosen);
         } else if (chosen != null && !change) {
             status.setTextColor(ALERT);
             status.setText(hasAccess()
@@ -259,11 +268,11 @@ public class GameFolderActivity extends Activity {
         TextView notes = text(es
                 ? "• exefs: el de la actualización 1.4.0.\n"
                   + "• romfs: el del juego base, con la actualización 1.4.0 ya aplicada encima.\n"
-                  + "• libmhgugame.so: se crea una sola vez en una PC con la herramienta de la guía.\n"
+                  + "• libmhgugame.so: se crea una sola vez, en este teléfono (Crear en este teléfono) o en una PC con la herramienta de la guía.\n"
                   + "• Todo junto en la misma carpeta, unos 12 GB. Elige esa carpeta."
                 : "• exefs: the one from the 1.4.0 update.\n"
                   + "• romfs: the base game's, with the 1.4.0 update already applied over it.\n"
-                  + "• libmhgugame.so: made once on a PC with the guide's tool.\n"
+                  + "• libmhgugame.so: made once, on this phone (Build on this phone) or on a PC with the guide's tool.\n"
                   + "• All in the same folder, about 12 GB. Choose that folder.", 14, CREAM, false);
         notes.setPadding(0, dp(6), 0, 0);
         notes.setLineSpacing(dp(2), 1);
@@ -291,6 +300,14 @@ public class GameFolderActivity extends Activity {
         LinearLayout.LayoutParams size = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(46));
         size.setMargins(dp(8), 0, dp(8), 0);
         row.addView(pick, size);
+        buildHere = button(es ? "Crear en este teléfono" : "Build on this phone", true);
+        buildHere.setOnClickListener(v -> {
+            if (buildFolder != null)
+                startActivityForResult(new Intent(this, BuilderActivity.class).putExtra(BuilderActivity.EXTRA_FOLDER,
+                        buildFolder.getAbsolutePath()), BUILD);
+        });
+        buildHere.setVisibility(android.view.View.GONE);
+        row.addView(buildHere, new LinearLayout.LayoutParams(size));
         Button leave = button(change ? (es ? "Cancelar" : "Cancel") : (es ? "Salir" : "Exit"), false);
         leave.setOnClickListener(v -> finish());
         LinearLayout.LayoutParams size2 = new LinearLayout.LayoutParams(dp(120), dp(46));
@@ -340,6 +357,12 @@ public class GameFolderActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refreshButton();
+        // (the game code was made while this screen waited, the builder reached from its notification: look again)
+        BuilderService.Job j = BuilderService.job;
+        if (buildFolder != null && j.status.equals("done") && j.started != builtSeen && buildFolder.getAbsolutePath().equals(j.folder)) {
+            builtSeen = j.started;
+            verify(buildFolder);
+        }
         if (waitingAccess && hasAccess()) {
             waitingAccess = false;
             status.setText("");
@@ -378,6 +401,11 @@ public class GameFolderActivity extends Activity {
     @Override
     protected void onActivityResult(int code, int result, Intent data) {
         super.onActivityResult(code, result, data);
+        if (code == BUILD) {  // (back from BuilderActivity: the game code made, or not; the folder is looked at again)
+            builtSeen = BuilderService.job.started;
+            if (buildFolder != null) verify(buildFolder);
+            return;
+        }
         if (code != PICK || result != RESULT_OK || data == null || data.getData() == null) return;
         File dir = FolderBrowser.pathOf(data.getData());
         if (dir == null) {
@@ -401,7 +429,9 @@ public class GameFolderActivity extends Activity {
             for (File w : ways)
                 if (w != null && new File(w, "exefs").isDirectory() && new File(w, "romfs").isDirectory()) { dir = w; break; }
             final File found = dir;
+            codeProblem = false;
             String wrong = problem(found);
+            final File buildable = wrong != null && codeProblem ? found : null;
             if (wrong == null) {
                 try {
                     keepLib(found);
@@ -412,6 +442,9 @@ public class GameFolderActivity extends Activity {
             final String problem = wrong;
             runOnUiThread(() -> {
                 pick.setEnabled(true);
+                buildFolder = buildable;
+                buildHere.setVisibility(buildable != null ? android.view.View.VISIBLE : android.view.View.GONE);
+                if (buildable != null) buildHere.requestFocus();
                 if (problem != null) {
                     status.setTextColor(ALERT);
                     status.setText(problem);
@@ -446,12 +479,14 @@ public class GameFolderActivity extends Activity {
                       : "romfs is incomplete: it has " + files + " files where there should be 35,531. Use the base game with the 1.4.0 update applied.";
         boolean bundled = new File(getApplicationInfo().nativeLibraryDir, "libmhgugame.so").exists();
         File lib = new File(dir, "libmhgugame.so");
+        codeProblem = true;  // (from here the game's own files are right: what follows can be made on the phone)
         if (!lib.canRead() && !bundled)
-            return es ? "Falta libmhgugame.so en esa carpeta. Créalo en una PC con la herramienta de la guía."
-                      : "libmhgugame.so is missing from that folder. Make it on a PC with the guide's tool.";
+            return es ? "Falta libmhgugame.so en esa carpeta. Créalo en este teléfono (Crear en este teléfono) o en una PC con la herramienta de la guía."
+                      : "libmhgugame.so is missing from that folder. Make it on this phone (Build on this phone) or on a PC with the guide's tool.";
         if (!bundled && !wantedId().equals(idBeside(dir)))
-            return es ? "Este libmhgugame.so es de otra versión. Créalo de nuevo con la herramienta de esta versión."
-                      : "This libmhgugame.so is from another version. Make it again with this version's tool.";
+            return es ? "Este libmhgugame.so es de otra versión. Créalo de nuevo en este teléfono o con la herramienta de esta versión."
+                      : "This libmhgugame.so is from another version. Make it again on this phone or with this version's tool.";
+        codeProblem = false;
         if (!new File(romfs, "nativeNX/system/app_shader/AppShaderPackage.mfx").exists())
             return es ? "En romfs falta nativeNX/system/app_shader/AppShaderPackage.mfx. Usa el juego base con la actualización 1.4.0 ya aplicada."
                       : "nativeNX/system/app_shader/AppShaderPackage.mfx is missing from romfs. Use the base game with the 1.4.0 update applied.";

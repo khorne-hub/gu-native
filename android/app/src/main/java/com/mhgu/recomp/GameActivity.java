@@ -356,6 +356,13 @@ public class GameActivity extends SDLActivity {
     private static android.net.wifi.WifiManager.MulticastLock lanLock;
 
     /** Ajustes -> Carpeta del juego. */
+    /** Settings -> Build the game code (runtime/ui.c): the on-phone builder, over the game (which starts again to load it). */
+    public static void showBuilder() {
+        SDLActivity activity = mSingleton;
+        if (activity != null)
+            activity.startActivity(new Intent(activity, BuilderActivity.class).putExtra(BuilderActivity.EXTRA_FROM_GAME, true));
+    }
+
     public static void showGameFolder() {
         SDLActivity activity = mSingleton;
         if (activity != null) {

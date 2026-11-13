@@ -44,5 +44,11 @@ cp "$NDK/toolchains/llvm/prebuilt/windows-x86_64/sysroot/usr/lib/$( [ $ABI = arm
 # (a driver of the player's own: runtime/platform/android_gpu.c; these are found in the app's nativeLibraryDir)
 [ "$ABI" = arm64-v8a ] && cp "$OUT"/adrenotools/src/hook/lib*_hook.so "$OUT/adrenotools/src/hook/libhook_impl.so" "$J/"
 [ -f "$OUT/libmhgugame.so" ] && cp "$OUT/libmhgugame.so" "$J/"
+# the on-phone builder: its two launchers (native/builder/toolrun.c) and its tools (tools/ and the runtime's headers the
+# game code is compiled with), checked to make game code with this same GAMELIB_ID
+if [ "$ABI" = arm64-v8a ]; then
+  for T in pyrun zigcc; do "$NDK/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-strip.exe" --strip-unneeded -o "$J/lib$T.so" "$OUT/lib$T.so"; done
+  python "$ROOT/tools/pack_builder_tools.py" "$GAMELIB_ID" || exit 1
+fi
 echo "native $ABI: ok (GAMELIB_ID $GAMELIB_ID)"
 ls -la "$J"
