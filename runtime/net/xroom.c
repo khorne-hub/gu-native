@@ -615,7 +615,10 @@ static void on_message(const uint8_t *b, size_t n) {
         pthread_mutex_lock(&X.mu);
         fail_locked(why);
         X.run = false;
+        bool joined = X.role == R_STATION;
+        X.role = 0;
         pthread_mutex_unlock(&X.mu);
+        if (joined) ldn_x_lost(DR_SIGNAL_LOST);
         break;
     }
     default: break;  // status, moderation
@@ -726,7 +729,10 @@ static void *xr_thread(void *arg) {
             pthread_mutex_lock(&X.mu);
             fail_locked(xt("Lost the connection to the room.", "Se perdió la conexión con la sala."));
             X.run = false;
+            bool joined = X.role == R_STATION;
+            X.role = 0;
             pthread_mutex_unlock(&X.mu);
+            if (joined) ldn_x_lost(DR_SIGNAL_LOST);  // (the hub joined through it is gone too)
             break;
         }
         if (n) on_message(buf, n);
