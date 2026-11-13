@@ -70,12 +70,14 @@ Talk with other players and ask for help in the community's [Discord](https://di
 
 - Up to 120 fps on powerful phones, with a configurable frame rate limit
 - Fills the whole screen, from ultra-wide phones to 4:3 handhelds
-- Adjustable 3D resolution, down to 25%, to gain performance on modest devices
+- Adjustable 3D resolution, any percentage from 10% to 100% (left and right change it one at a time; a tap offers the usual ones and an **Exact size**), to gain performance on modest devices. The HUD and the text are drawn at that size too, so they soften with it, unless **Low-end mode** or FSR is on: drawing them at the screen's full size over a smaller picture costs a weak phone's GPU more than it gains
 - **Shadows:** turn them off for more speed, under the gear, **Graphics & Audio**, **Shadows**. On a Moto g06 it cut the GPU's work per frame by about 15% in a hunt
 - **Low-end mode:** for weak phones. It turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture
 - **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb or grass, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
 - **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**): switches of their own. Off, the GPU or the processor does less
 - **Grass** (gear, **Graphics & Audio**): off, the tall grass and foliage of the maps are left out, faster where there is a lot of it (the Marshland's area 8)
+- **Effects** (gear, **Graphics & Audio**): off, the game's particle effects are left out (hits, sparks, fire, breath, dust, rain), faster where there are many. The effects that warn of a monster's attack go too: that's your call
+- **Clear shader cache** (gear, **Graphics & Audio**): the next start deletes the shaders the game built and kept and builds them again, for a picture that shows something wrong after a GPU driver update or a crash. While the shaders are built, a small plate says how far they are
 - Optional FPS and temperature counter
 - Uses less memory on devices with Mali GPUs and on phones with little RAM
 - The screen follows your FPS limit: at 60 fps it runs at 60 Hz even if it can do 120
@@ -251,6 +253,7 @@ can't be reached at a save, that save stays on the device, and the next start as
 - **Mods:** a mod's folder with `romfs` or `exefs` in it, or a `.zip` of that folder. Under the gear, **Mods**, **Add a mod**. Then order them and turn them on in that page.
 - You can also copy them yourself into your game folder, into `cheats` and `mods` folders beside `exefs` and `romfs`. The game reads them at start.
 - Cheats and mods that change the game's code work, but that part of the game runs slower. Use cheats online only if everyone in the hub agrees.
+- **HD texture packs** are mods too: the ones made for the Switch emulators, which replace the game's own `.tex` files in a `romfs` folder, load as they are. Their textures take the phone's memory as they are drawn: on a phone with little RAM a big pack can close the game. The log says how many textures each mod has and how big they are. No pack comes with this app.
 
 ### Multiplayer
 
@@ -605,7 +608,14 @@ The zip holds one folder with the program's files and nothing of the game:
 On a laptop with integrated graphics, or on a 4K screen, lower **3D resolution** under **F1**, **Display** (the HUD and the
 text stay sharp), or turn on **Low-end mode** under **Graphics & Audio**: the 3D picture goes to about 720 lines (66% at 1080p,
 50% at 1440p, 33% at 4K), and bloom, depth of field, MSAA and FSR turn off. Its third choice, **Toaster**, goes to about 540
-lines, 30 fps and no shadows or FXAA. Both take effect when the game restarts.
+lines, 30 fps and no shadows or FXAA. Both take effect when the game restarts. The 3D resolution takes any percentage from
+10% to 100% (left and right change it one at a time, a click offers the usual ones); **Render resolution**, **Custom**, sets an
+exact size instead.
+
+**Effects**, under **Graphics & Audio**, leaves out the game's particle effects (hits, sparks, fire, breath, dust, rain): faster
+where there are many, but the effects that warn of a monster's attack go too. **Clear shader cache**, there too, makes the next
+start build every shader again, for a picture that shows something wrong after a GPU driver update; while the shaders are
+built, a small plate says how far they are.
 
 **Frame rate limit**, under **Graphics & Audio**, goes from 30 to 240, or **Unlimited** (60 by default). Unlimited needs
 **VSync** off: with VSync on, the monitor's refresh rate is the most. On a PC that can't hold 60, 30 is steadier. There too,

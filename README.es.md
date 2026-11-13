@@ -70,12 +70,14 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 
 - Hasta 120 fps en teléfonos potentes, con límite de FPS configurable
 - Llena toda la pantalla, desde teléfonos ultra anchos hasta consolas portátiles 4:3
-- Resolución 3D ajustable, hasta el 25 %, para ganar rendimiento en equipos modestos
+- Resolución 3D ajustable, cualquier porcentaje del 10 % al 100 % (izquierda y derecha la cambian de a uno; un toque ofrece los habituales y un **Tamaño exacto**), para ganar rendimiento en equipos modestos. El HUD y los textos se dibujan a ese tamaño también, así que se suavizan con ella, salvo con el **modo gama baja** o FSR: dibujarlos al tamaño completo de la pantalla sobre una imagen más chica le cuesta a la GPU de un teléfono débil más de lo que gana
 - **Sombras:** apágalas para ganar velocidad, en el engranaje, **Gráficos y audio**, **Sombras**. En un Moto g06 bajó cerca de un 15 % el trabajo de la GPU por cuadro en una cacería
 - **Modo gama baja:** para teléfonos débiles. Apaga el bloom, el desenfoque de profundidad y las sombras, usa texturas más livianas y mantiene el HUD nítido sobre una imagen 3D más chica
 - **Modo tostadora:** la tercera opción del modo gama baja, para los teléfonos más débiles y para la batería: resolución 3D al 25 %, 30 fps, sin reverberación ni pasto, y el HUD y las texturas todavía más livianos. En un Moto g06 se mantuvo en 30 fps y gastó cerca de un tercio menos de energía que el modo gama baja a 60 fps
 - **Bloom y desenfoque de profundidad** y **Reverberación** (engranaje, **Gráficos y audio**): interruptores propios. Apagados, la GPU o el procesador trabajan menos
 - **Pasto** (engranaje, **Gráficos y audio**): apagado, se omiten el pasto alto y el follaje de los mapas; más rápido donde hay mucho (la zona 8 del Pantano)
+- **Efectos** (engranaje, **Gráficos y audio**): apagados, se omiten los efectos de partículas del juego (golpes, chispas, fuego, alientos, polvo, lluvia); más rápido donde hay muchos. También desaparecen los efectos que avisan del ataque de un monstruo: eso queda en tus manos
+- **Borrar la caché de shaders** (engranaje, **Gráficos y audio**): el próximo inicio borra los shaders que el juego armó y guardó y los vuelve a armar, para una imagen que muestra algo mal después de actualizar el driver de la GPU o de un cierre. Mientras se arman, un cartel chico dice cuánto falta
 - Contador opcional de FPS y temperatura
 - Usa menos memoria en dispositivos con GPU Mali y en teléfonos con poca RAM
 - La pantalla sigue tu límite de FPS: a 60 FPS corre a 60 Hz aunque admita 120
@@ -255,6 +257,7 @@ pregunta cuál conservar.
 - **Mods:** la carpeta de un mod con `romfs` o `exefs` adentro, o un `.zip` de esa carpeta. En el engranaje, **Mods**, **Agregar un mod**. Después se ordenan y se activan en esa página.
 - También puedes copiarlos tú a la carpeta del juego, en carpetas `cheats` y `mods` junto a `exefs` y `romfs`. El juego los lee al arrancar.
 - Los trucos y mods que cambian el código del juego funcionan, pero esa parte del juego corre más lenta. En línea, usa trucos solo si todos en la sala están de acuerdo.
+- **Los packs de texturas HD** también son mods: los hechos para los emuladores de Switch, que reemplazan los archivos `.tex` del juego en una carpeta `romfs`, cargan tal como vienen. Sus texturas ocupan memoria del teléfono a medida que se dibujan: en un teléfono con poca RAM un pack grande puede cerrar el juego. El registro dice cuántas texturas tiene cada mod y cuánto pesan. Esta app no trae ningún pack.
 
 ### Multijugador
 
@@ -618,7 +621,14 @@ El zip tiene una carpeta con los archivos del programa y nada del juego:
 En una portátil con gráficos integrados, o en una pantalla 4K, baja la **Resolución 3D** en **F1**, **Pantalla** (el HUD y el
 texto siguen nítidos), o activa el **Modo gama baja** en **Gráficos y audio**: la imagen 3D queda en unas 720 líneas (66 % en
 1080p, 50 % en 1440p, 33 % en 4K) y se apagan el bloom, el desenfoque de profundidad, el MSAA y el FSR. Su tercera opción,
-**Tostadora**, baja a unas 540 líneas, 30 fps y sin sombras ni FXAA. Los dos cambios se aplican al reiniciar el juego.
+**Tostadora**, baja a unas 540 líneas, 30 fps y sin sombras ni FXAA. Los dos cambios se aplican al reiniciar el juego. La
+resolución 3D acepta cualquier porcentaje del 10 % al 100 % (izquierda y derecha la cambian de a uno, un clic ofrece los
+habituales); **Resolución de renderizado**, **Personalizada**, fija un tamaño exacto.
+
+**Efectos**, en **Gráficos y audio**, omite los efectos de partículas del juego (golpes, chispas, fuego, alientos, polvo,
+lluvia): más rápido donde hay muchos, pero también desaparecen los efectos que avisan del ataque de un monstruo. **Borrar la
+caché de shaders**, ahí mismo, hace que el próximo inicio vuelva a armar todos los shaders, para una imagen que muestra algo
+mal después de actualizar el driver de la GPU; mientras se arman, un cartel chico dice cuánto falta.
 
 **Límite de FPS**, en **Gráficos y audio**, va de 30 a 240, o **Sin límite** (60 por defecto). Sin límite necesita la
 **Sincronización vertical** apagada: con ella encendida, el máximo es la frecuencia del monitor. En una PC que no sostiene 60,
