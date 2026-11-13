@@ -750,6 +750,34 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   before the one-time notice about playing online was closed (`settings_panel_online_ok`, the thank-you's card;
   `[Multiplayer] OnlineNoticeShown`): the game's search waits under the card (up to 60 s: it runs on a thread of its own, and
   a search that finds nothing ends there) and a created hub waits to be listed. `MHGU_ONLINE_NOTICE=0|1` in a test run. MH4U for Android shows the same card and text.
+- Crossplay with emulators (S36, 1.0; `[Multiplayer] Crossplay` = Off | Rooms | Ryujinx, the Multiplayer page's first
+  section, `settings_panel.cpp crossplay_rows`): ldn.c's nn::ldn drives an `XBackend` (net.h) instead of the port's link:
+  create, scan, connect, the game's datagrams (`ldn_send`), and the backend calls back `ldn_x_info` / `ldn_x_lost` /
+  `ldn_x_packet`. Off, nothing of it runs (`X_be` NULL). While it is on (`ldn_crossplay_vanilla`) emsync, hpscale and
+  Village quests in the Hub stay out (the others' games lack them; HP would differ). The game opens its UDP sockets with
+  protocol 17 (`[net] the game's datagram sockets: protocol 17`) on port 12345; its local play version is 1.
+  - `xroom.c`: a yuzu-family room member (ENet over UDP 24872, network_version 1; big-endian packets, strings and vectors
+    with a u32 length). LDN over the room: scan (broadcast) / scan reply (NetworkInfo) / connect (NodeInfo) / sync / disconnect
+    / destroy, raw SDK structs (Citron drops shorter ones). Addresses are the room's 192.168.x.y (host-order u32 in the
+    structs), MAC 02:00:ip, mask /24 (x.255 is a broadcast). Datagrams: one zstd frame each (ours: raw blocks with the
+    content size, which the emulators' decoder needs; theirs decoded with third_party/zstd). The protocol byte is the socket's
+    `Network::Protocol`: 0 if the game gave none, else UDP = 3, but 4 in Eden 0.2.1+ (and the Suyu built on it): sent per
+    member as learned (`peer_udp`), both when unknown; a port reads both, the second copy dropped (`seen_twice`). Room members'
+    game info carries the game's version: another than 1.4.0 (or another local play version) is refused both ways
+    (`wrong_version_notice`, and a line in the room's chat for the emulator's player). A hub's player missing from the
+    room's member list counts as gone (the emulators don't say so).
+  - `xroomhost.c`: RoomHost = On hosts such a room in the app (any address, RoomHostPort or 24872; `MHGU_ROOM_BIND=127.0.0.1`
+    in tests, so Windows' firewall asks nothing) and joins it at 127.0.0.1. `xlobby.c`: Public rooms, `GET /lobby` of
+    api.ynet-fun.xyz over plain HTTP, no account (the lobby Eden, Citron and Torzu use); rooms of netVersion 1 where 1.4.0 is
+    played or preferred.
+  - `ryuldn.c`: a Ryujinx LDN client (TCP 30456; 12-byte little-endian header 'RLDN', version 1; ConnectRequest is 0x500,
+    the server's view of the network authoritative; addresses 10.114.x.y, mask /16; ProxyData with protocol 17; the
+    server's pings echoed; a Ryujinx host's own proxy (P2P) followed when the server sends one). No server by default: the
+    owner decided the player types one, and the help states the official server's rule (Ryujinx-to-Ryujinx only, IP bans
+    for others) and that the choice is the player's.
+  - Tested on the PC (hidden instances, the control file): two MHGU.exe met in a hub through E:\Yuzu\yuzu-room.exe and
+    through a Python stand-in of the Ryujinx server (scratch, not shipped). yuzu-cmd never initializes its room network
+    (its `-m` does nothing): a real emulator needs the Qt frontend, driven by hand.
 - The servers and keys typed and saved are remembered: `[Multiplayer] RecentServer1..` / `RecentKey1..` (`LDN_RECENT`, 24, the
   last first, none of the short list's; Config's `ldn_recent_*`, at its end), written only when there are some. Save adds a
   typed value when the row changes, never the one it replaces: one taken out with its × stays out, even while in use. A file
