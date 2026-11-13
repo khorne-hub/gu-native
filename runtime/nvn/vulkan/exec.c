@@ -145,7 +145,8 @@ static void perf_init(void) {
     perf.getenv = perf_switch("GETENV", all), perf.drvtab = perf_switch("DRVTAB", all);
     perf.texscan = perf_switch("TEXSCAN", all), perf.textime = perf_switch("TEXTIME", all);
     perf.pipememo = perf_switch("PIPEMEMO", all), perf.lazyidx = perf_switch("LAZYIDX", all);
-    perf.idxcopy = perf_switch("IDXCOPY", all), perf.dynubo = perf_switch("DYNUBO", g_vk.api12);  // (a Vulkan 1.1 driver: off unless set, device.c)
+    perf.idxcopy = perf_switch("IDXCOPY", all);
+    perf.dynubo = perf_switch("DYNUBO", vk_v11_switches() == V11_ALL);  // (a Vulkan 1.1 driver: by its GPU, device.c)
     perf_check = perf_switch("CHECK", false);
     perf_dump_verbose = getenv("MHGU_DUMP_VERBOSE") != NULL, perf_tex_log = getenv("MHGU_TEX_LOG") != NULL;
     vk_perf_textime = perf.textime;
@@ -184,9 +185,12 @@ static void ss_forget(void);
 
 // ---- device lost: what each submission held, for the log when the driver loses the device (a GPU fault or hang
 // in work submitted earlier shows at a later call: every submission not known finished is listed). Per slot of the
-// ring, a few bytes per pass and per program: render thread only, read once at the error.
+// ring, a few bytes per pass and per program: render thread only, read once at the error. A program is listed once per pass
+// it draws in, with that pass's number: a scene's whole frame (a hunt's, some 120 programs) fits, and the passes a place
+// adds can be told by their programs (the Adreno 618's fault entering Verdant Hills' area 5, #160, #191: 48 programs,
+// the first ones drawn, left its late passes unnamed).
 #define LOST_PASSES 32
-#define LOST_PROGS 48
+#define LOST_PROGS 160
 typedef struct { uint16_t w, h; int16_t color, depth; uint8_t ncolor, samples; uint32_t draws; } LostPass;
 typedef struct {
     uint64_t seq;
@@ -194,6 +198,7 @@ typedef struct {
     uint32_t passes, draws, drawn_clears, copies, depth_copies;  // (all of them, also past the arrays)
     LostPass pass[LOST_PASSES];
     uint32_t prog[LOST_PROGS][2];  // (vertex and fragment code addresses)
+    uint8_t prog_pass[LOST_PROGS];  // (the pass it drew in, 255 past LOST_PASSES)
 } LostRec;
 static LostRec lost_rec[SUBS];
 static void lost_reset(int slot, uint64_t seq) { memset(&lost_rec[slot], 0, sizeof lost_rec[slot]); lost_rec[slot].seq = seq; }
@@ -210,9 +215,11 @@ static void lost_draw(void) {
 }
 static void lost_prog(uint64_t vs, uint64_t fs) {
     LostRec *r = &lost_rec[cur_sub];
-    for (int i = r->nprog - 1; i >= 0; i--)
+    uint8_t pass = r->passes && r->passes <= LOST_PASSES ? (uint8_t)(r->passes - 1) : 255;
+    for (int i = r->nprog - 1; i >= 0 && r->prog_pass[i] == pass; i--)
         if (r->prog[i][0] == (uint32_t)vs && r->prog[i][1] == (uint32_t)fs) return;
-    if (r->nprog < LOST_PROGS) r->prog[r->nprog][0] = (uint32_t)vs, r->prog[r->nprog][1] = (uint32_t)fs, r->nprog++;
+    if (r->nprog < LOST_PROGS)
+        r->prog[r->nprog][0] = (uint32_t)vs, r->prog[r->nprog][1] = (uint32_t)fs, r->prog_pass[r->nprog++] = pass;
 }
 static void lost_report(const char *where);
 volatile int g_fake_lost;  // (test) MHGU_CONTROL "devicelost": the next submission with a pass says the device was lost
@@ -493,12 +500,14 @@ static void lost_report(const char *where) {
             LOG("[vk]   pass %d: %ux%u, colour %d x%u, depth %d, %ux, %u draws\n", i, p->w, p->h, p->color, p->ncolor, p->depth,
                 p->samples, p->draws);
         }
-        for (int i0 = 0; i0 < r->nprog; i0 += 12) {  // (12 a line)
+        for (int i0 = 0; i0 < r->nprog;) {  // (a line a pass, 12 at most)
             char progs[12 * 20 + 1];
-            int k = 0;
-            for (int i = i0; i < r->nprog && i < i0 + 12; i++)
+            int k = 0, i = i0;
+            for (; i < r->nprog && i < i0 + 12 && r->prog_pass[i] == r->prog_pass[i0]; i++)
                 k += snprintf(progs + k, sizeof progs - k, " %x/%x", r->prog[i][0], r->prog[i][1]);
-            LOG("[vk]   programs (vertex/fragment code):%s\n", progs);
+            if (r->prog_pass[i0] == 255) LOG("[vk]   programs (vertex/fragment code), a later pass:%s\n", progs);
+            else LOG("[vk]   programs (vertex/fragment code), pass %d:%s\n", r->prog_pass[i0], progs);
+            i0 = i;
         }
     }
 #ifdef __ANDROID__
@@ -1578,11 +1587,11 @@ static void st_defaults(void) {
 void vk_exec_init(void) {
     perf_init();
     st_defaults();
-    // (a Vulkan 1.1 driver: off unless set, as the translator's VSTRIM, device.c)
-    perf.rodepth = perf_env("MHGU_PERF_RODEPTH", g_vk.api12 ? 1 : 0);
-    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR", g_vk.api12 ? 2 : 0);
-    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW", g_vk.api12 ? 1 : 0);
-    if (!g_vk.api12) LOG("[perf] a Vulkan 1.1 driver: VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set\n");
+    // (a Vulkan 1.1 driver: by its GPU, as the translator's VSTRIM, device.c vk_v11_switches)
+    bool on = vk_v11_switches() == V11_ALL;
+    perf.rodepth = perf_env("MHGU_PERF_RODEPTH", on ? 1 : 0);
+    perf.shadow_clear = perf_env("MHGU_PERF_SHADOW_CLEAR", on ? 2 : 0);
+    perf.fxaa_copydraw = perf_env("MHGU_PERF_FXAA_COPYDRAW", on ? 1 : 0);
     if (!g_vk.has_timeline) fence_init();
 #ifdef _WIN32
     ready_event = plat_event_new();  // (NULL: the draws wait on winpthreads' condition variable)

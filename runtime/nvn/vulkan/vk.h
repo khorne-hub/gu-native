@@ -197,6 +197,12 @@ void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h);
 int vk_gpu_list(const char **names, int max, int *in_use);
 // A PowerVR (or MHGU_VK_POWERVR=1): one driver compile at a time, on one worker (device.c one_compiler_install)
 bool vk_gpu_powervr(void);
+// An Arm Mali (MHGU_VK_MALI=1 / 0 for tests)
+bool vk_gpu_mali(void);
+// Which of 0.1.9's render switches are on by default (each MHGU_PERF_<NAME> still overrides its own): all of them with a
+// Vulkan 1.2 driver or an Adreno's 1.1, none with a Mali's 1.1, IPA alone with another 1.1 driver (device.c)
+enum { V11_ALL, V11_NONE, V11_IPA };
+int vk_v11_switches(void);
 // What an SDK that looks the device's functions up itself gets as its getDeviceProcAddr (FSR 3.1, FSR 4):
 // vkGetDeviceProcAddr, or on a PowerVR one whose compiler functions take the one-compile-at-a-time lock
 PFN_vkGetDeviceProcAddr vk_device_proc_addr(void);

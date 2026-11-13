@@ -15,6 +15,9 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/api-level.h>  // (create_swapchain: Android 10's libvulkan)
+#endif
 
 #include "../../overlay.h"
 #include "fsr.h"
@@ -652,14 +655,14 @@ static void create_device(void) {
         // (unset: on, measured in 0.1.9's perf pass; 0 the old way)
         bool nmm = (e = getenv("MHGU_PERF_NMINMAX")) ? atoi(e) > 0 : true;
         maxwell_nminmax = nmm && g_vk.api12 && !vk_gpu_powervr();
-        // (VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c: off by default on a Vulkan 1.1 driver,
-        // where none was ever checked; a Mali-G57 on 1.1.177 drew the 3D picture almost black with 0.1.9's defaults.)
-        // IPA stays on there: without it a varying the shader multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w),
-        // a round trip through position w that an Adreno 618 on 1.1.128 doesn't survive far away - with 0.1.9.1 the
-        // Volcano's distant plants and trees were black bars and white noise, with 0.1.9 (IPA on) they were right. The
-        // varying read as it is is also the exact value
-        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : true;
-        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : g_vk.api12;
+        // (IPA and VSTRIM, and the render pass and descriptor switches in exec.c and fsr.c, on a Vulkan 1.1 driver: by the
+        // family of its GPU, vk_v11_switches. Without IPA a varying the shader multiplies by 1 / w is read as
+        // v * gl_FragCoord.w * (1 / w), a round trip through position w that an Adreno 618 on 1.1.128 doesn't survive far
+        // away - with 0.1.9.1 the Volcano's distant plants and trees were black bars and white noise, with 0.1.9 (IPA on)
+        // they were right; the varying read as it is is also the exact value)
+        int fam = vk_v11_switches();
+        maxwell_ipa_fold = (e = getenv("MHGU_PERF_IPA")) ? atoi(e) > 0 : fam != V11_NONE;
+        maxwell_vs_trim = (e = getenv("MHGU_PERF_VSTRIM")) ? atoi(e) > 0 : fam == V11_ALL;
         if (nmm || maxwell_ipa_fold || maxwell_vs_trim)
             LOG("[shader] translator switches: NMINMAX %d%s, IPA %d, VSTRIM %d\n", maxwell_nminmax,
                 nmm && !maxwell_nminmax ? " (asked: not on this driver)" : "", maxwell_ipa_fold, maxwell_vs_trim);
@@ -902,6 +905,41 @@ bool vk_gpu_adreno(void) {
 }
 bool vk_gpu_adreno_fix_applies(void) { return vk_gpu_adreno() && !g_vk.api12; }  // ([Performance] AdrenoFix: its menu row)
 
+// An Arm Mali (MHGU_VK_MALI=1 or 0 says so for a test, as MHGU_VK_ADRENO does)
+bool vk_gpu_mali(void) {
+    static int v = -1;
+    if (v < 0) {
+        if (!g_vk.props.deviceName[0]) return false;  // (no device chosen yet)
+        const char *e = getenv("MHGU_VK_MALI");
+        v = e ? atoi(e) != 0 : strstr(g_vk.props.deviceName, "Mali") != NULL;
+    }
+    return v;
+}
+
+// 0.1.9's switches that change what the GPU is given - the translator's IPA and VSTRIM (create_device), DYNUBO, RODEPTH,
+// SHADOW_CLEAR and FXAA_COPYDRAW (exec.c), HUDSTART_FUSE (fsr.c) - by default, each read once as it is set up.
+// A Vulkan 1.2 driver: all of them (V11_ALL). A Vulkan 1.1 driver, by its GPU's family, from the players' logs:
+// - an Adreno: all of them, as in 0.1.9. With them off (0.1.9.1, and 0.1.9.2 but IPA) Adreno 610 and 618 phones on
+//   1.1.128 lost the device every few minutes (KGSL errno 71: at a town's load, an area change, in hunts), where a
+//   Galaxy A52 on that driver had played 0.1.9 without it, and a Redmi Note 8 went from 35 to 17 FPS.
+// - a Mali: none of them, IPA neither (V11_NONE), as in 0.1.9.1. Mali-G57 MC2 phones on 1.1.177 drew the stage black
+//   (its ground, buildings and sky, some monsters; the hunters and the effects right) with 0.1.9's set, right with
+//   0.1.9.1's, and black again with 0.1.9.2's IPA (a player saw it go and come back).
+// - any other (a PowerVR's): IPA alone (V11_IPA), as in 0.1.9.2.
+// MHGU_VK11=1 with MHGU_VK_ADRENO=1 or MHGU_VK_MALI=1 takes a family's choice on another GPU.
+int vk_v11_switches(void) {
+    if (g_vk.api12) return V11_ALL;
+    static int fam = -1;
+    if (fam < 0) {
+        fam = vk_gpu_adreno() ? V11_ALL : vk_gpu_mali() ? V11_NONE : V11_IPA;
+        LOG("[perf] a Vulkan 1.1 driver%s: %s\n", fam == V11_ALL ? " on an Adreno" : fam == V11_NONE ? " on a Mali" : "",
+            fam == V11_ALL    ? "0.1.9's render switches on, as with a newer driver"
+            : fam == V11_NONE ? "IPA, VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set"
+                              : "VSTRIM, DYNUBO, RODEPTH, SHADOW_CLEAR, FXAA_COPYDRAW and HUDSTART_FUSE off unless set");
+    }
+    return fam;
+}
+
 // (platform/android_perf.c, the minute's [mem] line) VMA's VkDeviceMemory blocks, its allocations and their bytes, and
 // what uses them: images (textures, render targets), the vertex cache and the staging ring (exec.c)
 void vk_mem_summary(char *out, size_t size) {
@@ -968,10 +1006,26 @@ static bool swapchain_paced;  // FIFO, its presents timed to the display's vsync
 #ifdef __ANDROID__
 // Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on, the FPS limit a whole fraction
 // of the display's rate; never with MHGU_VK_PRESENT or MHGU_VSYNC given)
+static bool paced_held;  // (paced_change: the plain swapchain for the rest of the session)
 static bool paced_wanted(void) {
     static int env = -1;
     if (env < 0) env = getenv("MHGU_VK_PRESENT") || getenv("MHGU_VSYNC");
-    return !env && config_live_vsync() && vk_pacing_fifo();
+    return !env && !paced_held && config_live_vsync() && vk_pacing_fifo();
+}
+// (frame_begin) the swapchain made again because the timed one is wanted or no longer: a driver whose rate keeps changing
+// (a POCO X3 NFC said 120 Hz for one swapchain and 50 for the next, gu-native #203) made it again every 2 s. The fourth
+// change within 30 s keeps the plain one until the game closes.
+static void paced_change(void) {
+    static uint64_t at[3];
+    static int n;
+    uint64_t now = plat_now_ns();
+    if (n == 3 && now - at[0] < 30000000000ull) {
+        paced_held = true;
+        LOG("[vk] present timing: the display's rate keeps changing, presents are no longer timed this session\n");
+        return;
+    }
+    if (n == 3) memmove(at, at + 1, sizeof at[0] * 2), n = 2;
+    at[n++] = now;
 }
 #endif
 static VkPresentModeKHR present_mode(void) {
@@ -1101,6 +1155,28 @@ static void create_swapchain(void) {
     if (count > 8) count = caps.minImageCount > 8 ? caps.minImageCount : 8;
     if (getenv("MHGU_VK_IMAGES")) count = (uint32_t)atoi(getenv("MHGU_VK_IMAGES"));  // (tests)
     VkSwapchainKHR old = g_vk.swapchain;
+#ifdef __ANDROID__
+    // Android 10's vkDestroySwapchainKHR (the system's libvulkan; 11's is not known to be fixed), given a swapchain whose
+    // presents were timed (its frame timestamps turned on by VK_GOOGLE_display_timing: present_pacing.c) that is no
+    // longer the surface's own - one replaced by a swapchain made with it as oldSwapchain - turns the timestamps off on a
+    // null window: SIGSEGV in libvulkan.so at 0x98 (the window's perform). A POCO X3 NFC (Android 10) closed so at its
+    // first start at 60 FPS, when the timed swapchain was made again (gu-native #203). There the old one goes first, while
+    // it is still the surface's, and the new one is made without it (the GPU is idle: recreate_swapchain).
+    // MHGU_VK_SC_FIRST=1: the same on a newer Android (tests)
+    static int sc_first = -1;
+    if (sc_first < 0) sc_first = android_get_device_api_level() <= 30 || getenv("MHGU_VK_SC_FIRST") ? 1 : 0;
+    if (old && swapchain_paced && sc_first) {
+        for (uint32_t i = 0; i < g_vk.sc_count; i++) {
+            vkDestroyFramebuffer(g_vk.dev, sc_fb[i], NULL);
+            vkDestroyImageView(g_vk.dev, g_vk.sc_views[i], NULL);
+        }
+        g_vk.sc_count = 0;
+        vkDestroySwapchainKHR(g_vk.dev, old, NULL);
+        g_vk.swapchain = old = VK_NULL_HANDLE;
+        static int nlog;
+        if (nlog++ < 3) LOG("[vk] the timed swapchain let go before the next one is made (Android 11 or older)\n");
+    }
+#endif
     VkSwapchainCreateInfoKHR ci = {
         .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR, .surface = g_vk.surface, .minImageCount = count,
         .imageFormat = sf.format, .imageColorSpace = sf.colorSpace, .imageExtent = phys, .imageArrayLayers = 1,
@@ -1261,7 +1337,7 @@ static bool frame_begin(void) {
     if (!g_vk.swapchain || (uint32_t)w != g_vk.sc_extent.width || (uint32_t)h != g_vk.sc_extent.height ||
         config_live_vsync() != swapchain_vsync) recreate_swapchain();
 #ifdef __ANDROID__
-    else if (paced_wanted() != swapchain_paced) recreate_swapchain();  // (the FPS limit or the display's rate changed)
+    else if (paced_wanted() != swapchain_paced) paced_change(), recreate_swapchain();  // (the FPS limit or the display's rate changed)
     else if (__atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED) >= 0) {  // (a test's switch: made again when it changes)
         static int was = -1;
         int t = __atomic_load_n(&g_prerotate_test, __ATOMIC_RELAXED);
@@ -1578,13 +1654,20 @@ void vk_shaders_init(void);
 // driver down while other threads are still inside nvnQueueSubmitCommands / vkWaitSemaphores (the exit-time
 // SIGSEGV in libnvidia-glcore). So: park the guest threads (vk_lock), drain what is in flight, let the GPU
 // finish, keep the pipeline cache - and leave with _exit, running no further teardown.
-static void exit_handler(void) {
+// vk_exit_begin: its first part, which runtime/ui.c also calls just before its own exit(): exit() destroys the C++
+// statics made after backend_init (overlay.cpp's turned copy of the menu, made at its first draw) before it comes to
+// exit_handler, while the update thread may still draw the held menu with them - a SIGSEGV in free() as Save and restart
+// left (seen in an Infinix's log). Parked first, it no longer draws.
+void vk_exit_begin(void) {
     exiting = true;
     vk_exit_thread = pthread_self();
     if (g_vk.dev && g_vk_owner != pthread_self()) {  // (inside a submission already: the holder is us, don't self-lock)
         pthread_mutex_lock(&g_vk_mutex);
         pthread_mutex_unlock(&g_vk_mutex);
     }
+}
+static void exit_handler(void) {
+    vk_exit_begin();
     if (g_vk.dev) {
         vkDeviceWaitIdle(g_vk.dev);
         pipeline_cache_save();

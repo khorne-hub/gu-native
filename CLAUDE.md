@@ -161,14 +161,24 @@ A test build (`MHGU_DEV=1`) reads two files in `Android/data/com.mhgu.recomp/fil
 - Performance switches (`MHGU_PERF_<NAME>=0|1`, read once at the start). Unset, each has its default: on where 0.1.9's
   performance pass measured a win (the list below), off (the old way) for the others; `=0` or `=1` in `env.txt` or the
   environment overrides it for a test, and the log's `[perf]` lines say which are set. On a Vulkan 1.1 driver (`g_vk.api12`
-  false, `MHGU_VK11=1` too) the ones that change what the GPU is given are off unless set: `VSTRIM`, `DYNUBO`, `RODEPTH`,
-  `SHADOW_CLEAR`, `FXAA_COPYDRAW` and `HUDSTART_FUSE` (0.1.9.1: a Mali-G57 MC2 on 1.1.177 drew the 3D picture almost black with
-  0.1.9's defaults; none had been checked on a real 1.1 driver, and forcing the path on a newer one looked right). `IPA` was
-  off there in 0.1.9.1 too and is on again since 0.1.9.2: an Adreno 618 on 1.1.128 (Toaster, 33 %) drew the Volcano's distant
-  plants and dead trees as black bars and white noise without it, and right with it in 0.1.9 (the player's two videos). Without
-  it a varying the shader multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w), and far away that round trip through
-  position w is all a driver's precision has to spoil: a test build reading gl_FragCoord.w at half precision there turned the
-  Galaxy S25's distant cliffs flat and its sky black; the varying read as it is doesn't use w at all:
+  false, `MHGU_VK11=1` too) the ones that change what the GPU is given (`IPA`, `VSTRIM`, `DYNUBO`, `RODEPTH`, `SHADOW_CLEAR`,
+  `FXAA_COPYDRAW`, `HUDSTART_FUSE`) go by the GPU's family (`device.c vk_v11_switches`, the log's `[perf] a Vulkan 1.1 driver`
+  line): an Adreno's all on, as on a newer driver and as in 0.1.9; a Mali's all off, `IPA` too, as in 0.1.9.1; any other's
+  (a PowerVR's) `IPA` alone, as in 0.1.9.2. The players' logs behind it: 0.1.9.1 turned them all off on every 1.1 driver
+  (a Mali-G57 MC2 on 1.1.177 drew the 3D picture almost black with 0.1.9's defaults), and then Adreno 610 and 618 phones on
+  1.1.128 lost the device every few minutes (KGSL errno 71, at a town's load, an area change, in hunts; a Galaxy A52 on that
+  driver had played 0.1.9 without it) and a Redmi Note 8 went from 35 to 17 FPS. 0.1.9.2 turned `IPA` on again for every 1.1
+  driver: an Adreno 618 on 1.1.128 (Toaster, 33 %) drew the Volcano's distant plants and dead trees as black bars and white
+  noise without it, and right with it in 0.1.9 (the player's two videos); and Mali-G57 MC2 phones (Helio G99, Dimensity 6080)
+  drew the stage black again with it (ground, buildings, sky, Shagaru Magala; the hunters and the effects right: one player
+  saw it go with 0.1.9.1 and come back with 0.1.9.2). An Infinix with that Mali and driver showed 0.1.9's whole set right at
+  Toaster 66 %, so the Mali's culprit isn't proven to be `IPA` alone: they stay off together there. `MHGU_VK_ADRENO=1` or
+  `MHGU_VK_MALI=1` (or `=0`) with `MHGU_VK11=1` takes a family's choice on another GPU. On the Moto g06 (Mali-G52, a 1.3
+  driver) `MHGU_VK11=1` alone names the Mali and draws quest 101's camp right with them all off, and `MHGU_VK_ADRENO=1` with
+  them all on: neither shows the 1.1.177 driver's black. Without `IPA` a varying the shader
+  multiplies by 1 / w is read as v * gl_FragCoord.w * (1 / w), and far away that round trip through position w is all a
+  driver's precision has to spoil: a test build reading gl_FragCoord.w at half precision there turned the Galaxy S25's distant
+  cliffs flat and its sky black; the varying read as it is doesn't use w at all:
   - `MHGU_PERF_INPUT_WAKE=1` (Android): the window loop (`ui.c ui_run`) sleeps its 3 ms between polls only while something
     runs by the clock (`host_input_busy`: a button or a stick given to the game, a finger down or a touch timer, `touch_busy`,
     the lock-on, a controller SDL reads by polling (HIDAPI's: Android's own come as events), the game's rumble, the settings
@@ -273,6 +283,13 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   once; on by default since the measurements above) presents FIFO at those limits, each frame timed on the display's vsync grid
   (`VK_GOOGLE_display_timing`, MH4U for Android's rule; the margin is `GameActivity.presentationDeadlineNs` and 4 ms, raised 2 ms
   for good at a second late frame within 30 s): 0.04 % of the intervals off, 1% low 27.9 to 29.3, p99 33.5 ms, game time 1.00x.
+  Android 10's libvulkan (11's too, as far as is known) crashes destroying a timed swapchain that was replaced (its frame
+  timestamps turned off on a null window: SIGSEGV at 0x98, a POCO X3 NFC at its first start at 60 FPS, #203): there the old one
+  is destroyed first and the new one made without it (`create_swapchain`; `MHGU_VK_SC_FIRST=1` does it on a newer phone). A
+  driver whose reported rate keeps changing (that phone: 120 Hz for one swapchain, 50 for the next) made the swapchain again every
+  2 s: the fourth change within 30 s keeps presents untimed for the session (`paced_change`). On the Moto g06 (Android 14,
+  `MHGU_VK_SC_FIRST=1`, 30 FPS, `prerotate 0` and `1` in the control file) the timed swapchain was made again four times so,
+  the picture right both ways round.
   `vkGetRefreshCycleDurationGOOGLE` said 16.65 to 16.68 ms where the vsyncs come every 16.667: the period is measured from the
   presents' own times, and every slot put on the newest vsync's grid (chained on the period given, the slots drifted half a
   period in 15 s and a frame showed a vsync late each time). `MHGU_PRESENT_MARGIN=<us>` fixes the margin (tests). At the refresh
@@ -429,7 +446,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   read while drawn into, the HUD's depth clear: `depth_copy_ok`).
   `MHGU_VK_FMT_MASK=<VkFormat>:<hex features>` takes features away to test those paths on any GPU.
 - A lost device (`VK_ERROR_DEVICE_LOST` at a submit or a wait) logs every submission not known finished: its passes (size, first colour
-  format, depth format, samples, draws), the programs drawn (vertex / fragment code address), drawn clears and copies, then the GPU
+  format, depth format, samples, draws), the programs drawn (vertex / fragment code address, a line per pass, 160 at most: the game's
+  code addresses, the same on every device, so a dump can be compared with a test phone's), drawn clears and copies, then the GPU
   driver's own lines from the app's logcat (`lost_report`, `exec.c`). The submit that reports it is often not the one that faulted,
   so the last 4 known finished are listed too (`(finished)`): Adreno's KGSL retires a batch that faulted, its fence signalled, and
   refuses the next submission with EPROTO (`IOCTL_KGSL_GPU_COMMAND failed: errno 71`, "the context faulted before"; EDEADLK once it
@@ -445,8 +463,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   error, the same samplers and formats as area 4 (the depth target sampled nearest), no program with subgroup operations
   (that driver has them in compute only). Not tried: walking from 4 into 5 under the validation layer.
 - A romfs under 12.3 GB with all 35,531 files is an incomplete copy: a black picture, then `no function at 0`, or a game that closes in one
-  area. None of the game's files is empty. Under 12.0 GB or with empty files (mods' aside) the log warns and, a few seconds in, a notice
-  tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy).
+  area. None of the game's files is empty. The game's own folder is measured, before the mods (a mod's files, smaller or larger, moved
+  the merged image's size either way), and without `nativeNX/movie` (1.39 of the 12.31 GB: copies with the movies encoded again, 11.0
+  GB, play right, #171): under 10.65 GB of the other 10.92, or with empty files (mods' aside), the log warns and, a few seconds in, a
+  notice tells the player (`romfs_incomplete`, `overlay.cpp romfs_notice`; `MHGU_ROMFS_SHORT=11.5` shows it on a complete copy). The
+  log's `[romfs] the game's own files` line gives both sizes, and a file or folder the scan can't read (`stat` or `opendir`
+  refused) is named, the first five.
 - `Config` gets its defaults by position: `CONFIG_DEFAULT_VALUES` in `config.c`. A new field in `config.h` needs its value there, in its
   place, or every later field moves (two added once turned most touch buttons off).
 - The shadow maps are one 1024x3072 depth atlas (three cascades), the first pass of a hunt's frame: 47 draws, 2.8 ms of a Moto g06's 18.6.
@@ -666,6 +688,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   0xb13490), live; its +0x24 only sorts its clusters, and skipping that changed nothing. The game draws no alpha to coverage there at
   1x or 4x MSAA, so the first Grass, which skipped those draws, did nothing. Galaxy S25 Ultra, area 8, standing: 83 fps on, about 100
   off. The weeds, reeds and lotus of an area's ground are part of the area's own model (uStage, with its terrain and trees) and stay.
+  The tall grass an Adreno 640 on 1.1.128 doesn't draw (#171, #93: Jurassic Frontier's area 1, the Marshland's 8) isn't the
+  port's Adreno path: on the PC, `MHGU_VK11=1 MHGU_VK_ADRENO=1 MHGU_VK_NO_BORDER=1 MHGU_VK_NO_BC=1 MHGU_VK_NO_INT64=1` draws
+  Jurassic Frontier's area 1 grass as a plain run does (quest 101, `MHGU_QUICKHUNT_AREA=1`).
 - Finding what draws something: the classes are the DTI names in the executable (each `MtDTI` constructor call, 0x9aedcc: r0 the
   DTI, r1 its name, r2 the parent, r3 the size; a class's vtable has its getDti at +0x14). In a running game `fnnew <lo> <hi> 1`
   lists the functions of a range that run, and `poke` of a vtable slot with the base class's empty one (cUnit's +0x30 is 0x21f858)
@@ -755,6 +780,9 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   Its browser offers an SD card only when `AppHome.probe` can write at the card's root (`FolderBrowser.roots(c, true)`), and the
   intro names the card only from Android 11 (Android 9 and 10 let no app write on a removable card outside its own folder); the game
   folder's browser lists every card. RG406V (Android 13): the SD card tab shows and lists the card, the probe leaves nothing there.
+- Quit, Save and restart and the window closed park the threads that draw before `exit()` (`ui.c leave`, `device.c vk_exit_begin`):
+  `exit()` destroys the C++ statics made after `backend_init` (`overlay.cpp`'s turned copy of the menu) before it reaches
+  `exit_handler`, and the update thread, drawing the held menu with them, crashed in `free()` as Save and restart left.
 - The settings menu holds the game when the player is alone (`[Application] PauseInMenu`, Android: `overlay.cpp` `menu_holds_game`,
   never with an LDN network up): the update thread stays in `overlay_frame`, drawing the menu (`frame_once`) and presenting the
   last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the

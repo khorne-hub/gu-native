@@ -4,6 +4,7 @@
 #include "romfs.h"
 
 #include <dirent.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -50,10 +51,19 @@ static void add_file(Dir *d, File *f) {
     f->parent = d;
 }
 
+// Entries a scan couldn't read (stat or opendir refused: the game then misses those files), the first few logged
+static int g_unread;
+static void unread(const char *p) {
+    if (g_unread++ < 5) LOG("[romfs] WARNING: can't read %s: %s\n", p, strerror(errno));
+}
+
 static Dir *scan(const char *path, const char *name, int depth) {
     if (depth > 32) return NULL;
     DIR *dd = opendir(path);
-    if (!dd) return NULL;
+    if (!dd) {
+        if (depth) unread(path);  // (a top folder that isn't there is told where it is opened)
+        return NULL;
+    }
     Dir *dir = calloc(1, sizeof *dir);
     dir->name = strdup(name);
     struct dirent *e;
@@ -63,7 +73,7 @@ static Dir *scan(const char *path, const char *name, int depth) {
         char *p = malloc(n);
         snprintf(p, n, "%s/%s", path, e->d_name);
         struct stat st;
-        if (stat(p, &st) != 0) { free(p); continue; }
+        if (stat(p, &st) != 0) { unread(p), free(p); continue; }
         if (S_ISDIR(st.st_mode)) {
             Dir *c = scan(p, e->d_name, depth + 1);
             free(p);
@@ -188,12 +198,27 @@ static char *rel_path(File *f) {
     return s;
 }
 
-static double g_short_gb;  // (the game's image, when it looks cut short: its size, and its empty files)
+static double g_short_gb;  // (the game's own files, when they look cut short: their size, and the empty ones)
 static int g_short_empty;
+static bool g_short_size;  // (short by their size, its movies left out)
+
+// (build) the game's own files, before a mod is merged: their bytes, and those of its movies (nativeNX/movie) apart
+static void own_bytes(const Dir *d, int depth, bool movie, uint64_t *all, uint64_t *movies) {
+    for (int i = 0; i < d->nfiles; i++) {
+        *all += d->files[i]->size;
+        if (movie) *movies += d->files[i]->size;
+    }
+    for (int i = 0; i < d->ndirs; i++)
+        own_bytes(d->dirs[i], depth + 1, movie || (depth == 1 && !strcasecmp(d->dirs[i]->name, "movie")), all, movies);
+}
 
 static bool build(RomfsImage *im, const char *base_dir, const char *const *overlays, int noverlays, bool game) {
+    int unread0 = g_unread;
     Dir *root = scan(base_dir, "", 0);
     if (!root) { LOG("[romfs] cannot read %s\n", base_dir); return false; }
+    uint64_t own = 0, movies = 0;
+    if (game) own_bytes(root, 0, false, &own, &movies);
+    int unread_own = g_unread - unread0;
     for (int i = 0; i < noverlays; i++) {
         Dir *o = scan(overlays[i], "", 0);
         if (!o) continue;
@@ -267,24 +292,33 @@ static bool build(RomfsImage *im, const char *base_dir, const char *const *overl
     free(l.dirs);
     LOG("[romfs] %d files, %d folders, image %.1f GB\n", l.nf, l.nd, im->size / 1e9);
     if (!game) return true;
-    // (version 1.4.0's is 12.3 GB, and none of its files is empty. A copy cut short, with every file there but some of
-    // them empty or short, starts and then fails in ways that look like the port's: a black picture, a call to nothing,
-    // the game closing in one place (#106). The player is told once the game shows: romfs_incomplete, overlay.cpp)
+    // (version 1.4.0's is 12.3 GB, 1.4 of them its movies, and none of its files is empty. A copy cut short, with every
+    // file there but some of them empty or short, starts and then fails in ways that look like the port's: a black
+    // picture, a call to nothing, the game closing in one place (#106). The player is told once the game shows:
+    // romfs_incomplete, overlay.cpp. Measured on the game's own folder, before the mods (a mod's files, smaller or larger,
+    // moved the image's size either way), and without its movies: copies with them encoded again, smaller, play right
+    // (a romfs of 11.0 GB, #171).)
     int empty = 0;
+    size_t bl = strlen(base_dir);
     for (int i = 0; i < l.nf; i++)
-        if (!l.files[i]->size && !strncmp(l.files[i]->path, base_dir, strlen(base_dir)) && empty++ < 3)  // (a mod's may be empty)
+        if (!l.files[i]->size && !strncmp(l.files[i]->path, base_dir, bl) && l.files[i]->path[bl] == '/' &&
+            empty++ < 3)  // (a mod's may be empty)
             LOG("[romfs] WARNING: empty file %s\n", l.files[i]->rpath);
-    if (im->size < 12000000000ull) LOG("[romfs] WARNING: smaller than the game's 12.3 GB: some files are probably incomplete\n");
+    bool short_own = own - movies < 10650000000ull;  // (the game's 10.92 GB but its movies, 2.5 % short)
+    LOG("[romfs] the game's own files: %.2f GB, %.2f of them its movies%s\n", own / 1e9, movies / 1e9,
+        movies < 1350000000ull && !short_own ? " (smaller than the game's 1.39: encoded again, they play)" : "");
+    if (short_own) LOG("[romfs] WARNING: smaller than the game's 12.3 GB: some files are probably incomplete\n");
     if (empty) LOG("[romfs] WARNING: %d empty file(s): the copy is incomplete\n", empty);
-    if (im->size < 12000000000ull || empty) g_short_gb = im->size / 1e9, g_short_empty = empty;
+    if (unread_own) LOG("[romfs] WARNING: %d file(s) or folder(s) of the game's could not be read\n", unread_own);
+    if (short_own || empty) g_short_gb = own / 1e9, g_short_empty = empty, g_short_size = short_own;
     const char *t = getenv("MHGU_ROMFS_SHORT");  // (test: the notice as if the copy were that many GB, e.g. 11.5)
-    if (t && atof(t) > 0) g_short_gb = atof(t);
+    if (t && atof(t) > 0) g_short_gb = atof(t), g_short_size = true;
     return true;
 }
 
 bool romfs_incomplete(double *gb, int *empty) {
     if (gb) *gb = g_short_gb;
-    if (empty) *empty = g_short_empty;
+    if (empty) *empty = g_short_size ? 0 : g_short_empty;  // (short by size: the size is what the notice tells)
     return g_short_gb > 0;
 }
 

@@ -534,8 +534,9 @@ static void menu_hint(uint64_t now) {
 }
 #endif
 
-// A copy of the game's files cut short (romfs.c romfs_incomplete: under 12.0 GB, or empty files) starts, then closes or
-// draws black somewhere later (#106): a few seconds into each start, once nothing else is shown, the player is told.
+// A copy of the game's files cut short (romfs.c romfs_incomplete: short of the game's size but its movies, or empty files)
+// starts, then closes or draws black somewhere later (#106): a few seconds into each start, once nothing else is shown,
+// the player is told. Short by size, empty comes as 0 and the size is told; else the empty files.
 static const uint64_t ROMFS_NOTICE_NS = 8000000000ull;  // (after the first frame the overlay drew)
 static void romfs_notice(uint64_t now) {
     static uint64_t first;
@@ -556,7 +557,7 @@ static void romfs_notice(uint64_t now) {
     if (lang == 1)
         for (char *c = size; *c; c++)
             if (*c == '.') *c = ',';  // (Spanish: 11,5)
-    if (gb < 12.0)
+    if (!empty)
         snprintf(text, sizeof text,
                  settings_text(lang, "The romfs folder holds %s GB of the game's 12.3 GB: some files were cut short when they were "
                                      "copied. If the game closes or shows black, copy the romfs folder to the device again."),
