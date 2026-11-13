@@ -279,7 +279,9 @@ public class SDLControllerManager
             int s = d.getSources();
             if ((s & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
                     d.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) bits |= 1;
-            if ((s & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) bits |= 2;
+            // (a mouse the app has captured is a relative one meanwhile: Android changes its source to SOURCE_MOUSE_RELATIVE)
+            if ((s & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE ||
+                    (s & InputDevice.SOURCE_MOUSE_RELATIVE) == InputDevice.SOURCE_MOUSE_RELATIVE) bits |= 2;
         }
         return bits;
     }
