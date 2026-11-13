@@ -761,15 +761,15 @@ static void joystick_seen(SDL_JoystickID id) {
         if (told[i] == id) return;
     if (ntold < 16) told[ntold++] = id;
     const char *name = SDL_GetJoystickNameForID(id);
-    LOG("[input] joystick %s (%04x:%04x) has no gamepad mapping: not read until it is mapped (Controls, Map a controller)\n",
+    LOG("[input] joystick %s (%04x:%04x) has no gamepad mapping: not read until it is mapped (Controls, Controller, Map a controller)\n",
         name ? name : "?", SDL_GetJoystickVendorForID(id), SDL_GetJoystickProductForID(id));
     if (name && (SDL_strcasestr(name, "consumer control") || SDL_strcasestr(name, "virtual") || SDL_strcasestr(name, "uinput")))
         return;  // (not a controller in the player's hands: pad_is_real)
     bool es = config_language() == 1;
     char text[200];
     snprintf(text, sizeof text,
-             es ? "%s: para usarlo, configúralo en el engranaje, Controles, Mapear un mando."
-                : "%s: to use it, set it up under the gear, Controls, Map a controller.",
+             es ? "%s: para usarlo, configúralo en el engranaje, Controles, Mando, Mapear un mando."
+                : "%s: to use it, set it up under the gear, Controls, Controller, Map a controller.",
              name ? name : (es ? "Un mando" : "A controller"));
     overlay_notice(es ? "Mando sin configurar" : "Controller not set up", text);
 }

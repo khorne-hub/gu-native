@@ -728,7 +728,7 @@ constexpr const char *THANKS_TEXT =
 // The notice about playing online (the card's, below; the same text in MH4U for Android): %s the server
 constexpr const char *ONLINE_TEXT =
     "Playing online connects this device to %s. As with any server on the internet, the servers it connects to can see "
-    "your IP address. You can choose another server, or none, in the menu's Multiplayer tab.";
+    "your IP address. You can choose another server, or none, in the menu's Multiplayer section.";
 void thanks_show();
 void online_then(const char *server, std::function<void()> fn);  // (the notice about playing online: the card's, below)
 const char *thanks_signature();
@@ -1848,9 +1848,9 @@ Row bind_row(int i, const char *what = nullptr) {
 #endif
     if (i >= BIND_COMBO1) {  // (host_input.c: the buttons of [Touch] Combo<n>)
         const char *combo = s.draft.touch_combo[i - BIND_COMBO1];
-        row.help = *combo ? fmt("Presses %s together while held: the buttons of combined button %d, chosen in Controls.",
+        row.help = *combo ? fmt("Presses %s together while held: the buttons of combined button %d, chosen in Combined buttons.",
                                 combo, i - BIND_COMBO1 + 1)
-                          : fmt("Combined button %d has no buttons yet: choose them in Controls.", i - BIND_COMBO1 + 1);
+                          : fmt("Combined button %d has no buttons yet: choose them in Combined buttons.", i - BIND_COMBO1 + 1);
     }
     if (what)
         row.help = what;

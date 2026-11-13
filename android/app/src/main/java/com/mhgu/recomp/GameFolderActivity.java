@@ -159,11 +159,11 @@ public class GameFolderActivity extends Activity {
                     es ? "Otra app (un administrador de archivos, por ejemplo con Shizuku) creó la carpeta del juego, " + moved
                          + ", y Android no deja que el juego escriba en ella. Así que el juego guarda sus ajustes, su registro y "
                          + "tu partida en su carpeta privada, y copió ahí lo que pudo leer. Para llevar tu partida a otro lado usa "
-                         + "Ajustes, Exportar partida o Carpeta de partidas."
+                         + "Ajustes, Sistema, Tu partida: Exportar partida o Carpeta de partidas."
                        : "Another app (a file manager, for example through Shizuku) made the game's folder, " + moved + ", and "
                          + "Android won't let the game write in it. So the game keeps its settings, its log and your save in its "
                          + "private folder, and copied there what it could read. To take your save elsewhere, use Settings, "
-                         + "Export save or Save folder.",
+                         + "System, Your game: Export save or Save folder.",
                     new Look.Choice(es ? "Continuar" : "Continue", true, this::proceed));
             return;
         }

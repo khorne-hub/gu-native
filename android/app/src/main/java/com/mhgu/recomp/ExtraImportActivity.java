@@ -276,8 +276,8 @@ public class ExtraImportActivity extends Activity {
             return es ? "Tu partida ya tiene descargas propias: el juego las conserva y no toma otras."
                       : "Your save already has downloads of its own: the game keeps them and doesn't take others.";
         if (bonusOff())
-            return es ? "Primero activa Contenido extra (Opciones del menú) y guarda: sin eso el juego no las toma."
-                      : "First turn on Bonus content (Menu Options) and save: without it the game doesn't take them.";
+            return es ? "Primero activa Contenido extra (Juego) y guarda: sin eso el juego no las toma."
+                      : "First turn on Bonus content (Gameplay) and save: without it the game doesn't take them.";
         return null;
     }
 

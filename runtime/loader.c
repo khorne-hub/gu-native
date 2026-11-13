@@ -445,7 +445,7 @@ void loader_load(const char *exefs) {
             continue;
         }
         uint32_t size = nso_size(path), base = size ? place_subsdk(expected, size, lo) : 0;
-        if (!size) FATAL("mod %s: exefs/%s is not an NSO (remove the mod, or turn it off in the Mods tab)\n", mod, name);
+        if (!size) FATAL("mod %s: exefs/%s is not an NSO (remove the mod, or turn it off in Mods & Cheats, Mods)\n", mod, name);
         if (!base || g_nmodules == MAX_MODULES)
             FATAL("mod %s: no room for exefs/%s (%#x bytes) in the code region\n", mod, name, size);
         Module *m = &g_modules[g_nmodules++];
