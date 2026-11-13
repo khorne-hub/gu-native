@@ -19,7 +19,9 @@
  *     such a run passes its arguments on unchanged. Zig finds its lib folder through ZIG_LIB_DIR.
  *
  * Both die with the process that started them (PR_SET_PDEATHSIG): a build that is cancelled, or whose app is closed,
- * leaves no compiler running.
+ * leaves no compiler running. And both tell Android's low-memory killer to take them before the app (a higher
+ * oom_score_adj, which a process may always raise for itself): on a phone short of memory the build stops with an
+ * error the app can show, instead of the whole app closing.
  */
 #include <alloca.h>
 #include <dirent.h>
@@ -41,6 +43,25 @@
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
 #endif
+
+/* Android's low-memory killer takes processes with a higher oom_score_adj first: the build's go before the app's own
+ * (a foreground app is 0, a perceptible one 200). Raising one's own needs no permission; a failure changes nothing. */
+static void kill_me_first(void) {
+    int fd = open("/proc/self/oom_score_adj", O_WRONLY | O_CLOEXEC);
+    if (fd < 0) return;
+    char now[16] = {0};
+    int keep = 0;
+    int rd = open("/proc/self/oom_score_adj", O_RDONLY | O_CLOEXEC);
+    if (rd >= 0) {
+        if (read(rd, now, sizeof now - 1) > 0 && atoi(now) >= 700) keep = 1;  /* (already that low: a zig run of a zig run) */
+        close(rd);
+    }
+    if (!keep) {
+        ssize_t w = write(fd, "700", 3);
+        (void)w;
+    }
+    close(fd);
+}
 
 static void die(const char *what, const char *detail) {
     dprintf(2, "toolrun: %s%s%s%s%s\n", what, detail ? ": " : "", detail ? detail : "", errno ? ": " : "",
@@ -73,6 +94,7 @@ static int find_libpython(const char *home, char *out, size_t size) {
 
 int main(int argc, char **argv) {
     prctl(PR_SET_PDEATHSIG, SIGKILL);
+    kill_me_first();
     const char *home = getenv("PYTHONHOME");
     if (!home || !*home) die("PYTHONHOME is not set", NULL);
     char lib[4096];
@@ -165,6 +187,7 @@ extern char **environ;
 
 int main(int argc, char **argv) {
     prctl(PR_SET_PDEATHSIG, SIGKILL);
+    kill_me_first();
     const char *zig = getenv("BUILDER_ZIG");
     if (!zig || !*zig) die("BUILDER_ZIG is not set", NULL);
     /* the first run is the C compiler the build tools call: `zig cc` with the PC wrapper's flags; Zig's own runs of
