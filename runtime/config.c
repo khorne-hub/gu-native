@@ -62,12 +62,13 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f, 0
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
 // thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
 // menus, the grass, the lock-on's buttons shown, the notice about playing online not shown yet, the pause in the menu, and
-// no hub server or matchmaking key remembered yet; the gyro's aim off, at its usual sensitivity)
+// no hub server or matchmaking key remembered yet; the gyro's aim off, at its usual sensitivity; the rewards sent one at a
+// time, as the game does)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -555,6 +556,13 @@ static const char DEFAULT_INI[] =
     "; Default: 2.0\n"
     "HubHP = 2.0\n"
     "\n"
+    "[Quest Rewards]\n"
+    "; At the end of a quest, choosing Send to the Item Box in the Quest Rewards menu sends every reward at once, through\n"
+    "; the game's own steps for each one (what doesn't fit in the box stays in the list, to take or sell). Off: one at a\n"
+    "; time, with A on each, as the game does. Alfonso's idea\n"
+    "; Default: Off\n"
+    "SendAllRewards = Off\n"
+    "\n"
     "[Discord]\n"
     "; Show what you're doing in the game on your Discord profile (Discord must be running on this computer):\n"
     "; where you are, the quest's monsters and how many hunters are with you\n"
@@ -873,6 +881,7 @@ const ConfigSetting g_settings[] = {
     {"Monster HP", "4Players|4Player", SET_FACTOR, F(hp.scale[3]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
     ON_OFF("Village Quests", "VillageQuestsInHub", village_in_hub, true),
     {"Village Quests", "HubHP", SET_FACTOR, F(hp.village), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_VILLAGE},
+    ON_OFF("Quest Rewards", "SendAllRewards", send_all_rewards, false),  // (runtime/hle/rewards.c reads it as it acts)
     ON_OFF("Discord", "RichPresence", discord, false),
     ON_OFF("Discord", "ShowHunter", discord_hunter, false),
     ON_OFF("Bonus Content", "BonusContent", bonus_content, true),

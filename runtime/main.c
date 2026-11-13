@@ -74,6 +74,7 @@ static void boot(const char *root) {
     forge_init();  // (Forge plugins in the mods: runtime/forge.c)
     hpscale_init();  // (large monster HP by the number of hunters: runtime/hle/hpscale.c)
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
+    rewards_init();  // ([Quest Rewards] SendAllRewards: every reward to the item box at once: runtime/hle/rewards.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     grass_init();  // ([Performance] Grass: the game's grass unit left out while Off: runtime/hle/grass.c)
     guimark_init();  // (the HUD's markers over the world shown below 1280x720 too: runtime/hle/guimark.c)

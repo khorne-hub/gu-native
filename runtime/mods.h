@@ -30,6 +30,7 @@ const char *mods_exefs_file(const char *name, char *path, size_t n, bool (*skip)
 void forge_init(void);  // Forge plugins from the mods' RomFS (runtime/forge.c): before the game starts
 void hpscale_init(void);  // large monster HP by the number of hunters (runtime/hle/hpscale.c)
 void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime/hle/villagehub.c)
+void rewards_init(void);  // [Quest Rewards] SendAllRewards: every quest reward to the item box at once (runtime/hle/rewards.c)
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void grass_init(void);  // [Performance] Grass: the game's grass unit (uGrass2) not drawn while Off (runtime/hle/grass.c)
 void guimark_init(void);  // the HUD's markers over the world (bubbles, quest icons) tested against the canvas (runtime/hle/guimark.c)

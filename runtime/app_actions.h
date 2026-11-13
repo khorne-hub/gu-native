@@ -14,6 +14,9 @@ void ui_request_save_export(void);
 void ui_request_save_folder(void);  // Settings -> Save folder (Android's SaveFolderActivity; a PC's: not yet)
 void ui_request_share_log(void);
 void ui_request_import(int kind);  // the import screen (Android's ImportActivity): 0 cheats, 1 a mod, 2 DLC
+// Android: a static void method of GameActivity, by name ("showExtraImport", "showShortcut"), called on the host thread
+// as the requests above; a desktop: nothing
+void ui_request_activity(const char *method);
 #ifdef __ANDROID__
 void ui_request_gpu_driver(void);
 bool vk_gpu_adreno(void);          // (nvn/vulkan/device.c)
