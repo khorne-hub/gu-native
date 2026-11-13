@@ -275,9 +275,23 @@ def main(argv=None):
         progress = CompileProgress(tap, os.path.join(args.work, 'obj_android'))
         progress.start()
         sys.stdout = tap
+        cmd = [args.game, '--android', '--force', '--zig-cc', args.cc, '--work', args.work, '--jobs', str(args.jobs),
+               '--no-pip']
         try:
-            build_game.main([args.game, '--android', '--force', '--zig-cc', args.cc, '--work', args.work,
-                             '--jobs', str(args.jobs), '--no-pip'])
+            try:
+                build_game.main(cmd)
+            except SystemExit as e:
+                # Zig's cache with an object gone that its record still names: a compile of the same C again fails with
+                # "cannot open .../zig-cache/o/.../X.o" (MH4U's builder on a Galaxy S25 Ultra, after some seventy cuts of
+                # one build by the heat rule). The cache only saves compiling the same C twice: emptied, once more
+                zig_cache = os.path.join(args.work, 'zig-cache')
+                if e.code in (0, None) or tap.stage != 'compile' or 'zig-cache' not in tap.error or \
+                        not os.path.isdir(zig_cache):
+                    raise
+                print("Zig's cache names a file it no longer has: emptied, the compile goes on")
+                shutil.rmtree(zig_cache, ignore_errors=True)
+                tap.error, tap.in_error = '', False
+                build_game.main(cmd)
         finally:
             progress.stop.set()
             sys.stdout = sys.__stdout__
