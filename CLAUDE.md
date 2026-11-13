@@ -45,6 +45,14 @@ intent). The log's `[vk] limits` line says what the GPU allows (vertex streams, 
   (below), `SaveFolder` / `SaveFolderActivity` the save folder, `Notices` the unofficial-build and update notices, `FolderBrowser`
   the game-styled folder browser every screen uses, `Look` the shared colours and the game-styled notice. MH4U for Android has
   the same classes with the same texts: change both.
+  `ExtraImportActivity` (Menu Options, Import DLC and event quests) takes a save the player chooses whose Download menu
+  content (event and challenge quests, item packs, Palicos) becomes the bonus content's donor, `MHGURecomp/bonus/system`
+  (`runtime/services/bonus.c` fills a save that has none at the next start); MH4U's copies its quest files into the extra
+  data. `ShortcutActivity` (Menu Options, Shortcut with your image) pins a home-screen shortcut with the player's picture.
+  New screens are opened by name from the menu (`ui_request_activity("showX")`: a static method of GameActivity).
+- `runtime/hle/rewards.c`: Gameplay, Send all rewards to the box (`[Quest Rewards] SendAllRewards`, off; Alfonso's idea): the
+  Quest Rewards menu's Send to the Item Box runs the game's own per-item step for every reward at once. Test only on a
+  test save; the log's `[rewards]` line says what was sent and what stayed.
 - `native/`: CMake and `build_native.sh`. `deps/`: scripts for SDL3, shaderc and FFmpeg.
 
 ## Building
