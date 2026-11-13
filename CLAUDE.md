@@ -180,7 +180,15 @@ screen's **Build on this phone** when the game code is missing or from another v
 - **Resuming.** `--work` keeps the work folder: a translation of the same input by the same translator is skipped
   (`gen/<part>.done`), gen.py writes only the C that changed, and an object of the same compiler and flags newer than its C
   is kept (`obj_android/flags.txt`; one a cut left half written is made again). A run cut by Android, a reboot, Cancel or
-  the heat goes on from there; `--clean` deletes the folder once the library is in place.
+  the heat goes on from there; `--clean` deletes the folder once the library is in place. phone_build.py decides whether
+  the translation stands, the same way as MH4U's (mh4n `tools/android/phone_build.py`): once it is through, `inputs.txt`
+  in the work folder keeps a hash of its inputs (exefs/main and exefs/sdk, every file of the packed tools, the Python) and
+  of the C it wrote (names and sizes); a run whose inputs and C give the same goes straight to the compile, any other
+  drops the stamp and the `.done` notes first and translates again. The library is the same byte for byte as a clean
+  run's (1.0, checked on the PC: a clean run, and one killed while compiling then resumed). `libzigcc.so` runs with its
+  memory at fixed places (`fixed_layout` in toolrun.c: personality ADDR_NO_RANDOMIZE, then itself again; left as it was
+  if the system refuses): Zig 0.13's clang compiled one very large MH4U function into a different object depending on
+  where its memory was, so two builds of the same C could give two libraries.
 - **Heat and battery** (`BuilderService.watchHeat`, every 5 s): thermal status moderate, only two compilers run (the
   others SIGSTOP'd); severe or worse, the whole build waits until light; 15 % battery or less and not charging, it waits.
   Compilers at once: the free memory / 300 MB, at most the cores, half after a run that stopped while compiling.

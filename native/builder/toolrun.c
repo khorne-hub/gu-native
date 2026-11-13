@@ -18,6 +18,11 @@
  *     again for clang and lld (/proc/self/exe, which is this program): with BUILDER_ZIG_INNER set (by the first one)
  *     such a run passes its arguments on unchanged. Zig finds its lib folder through ZIG_LIB_DIR.
  *
+ *     It runs with its memory at fixed places (fixed_layout): Zig 0.13's clang makes a slightly different object of a
+ *     very large function from one run to the next when its memory is at other places, and Android places a program's
+ *     memory at random ones at every run, so a build that went on after a cut gave a library different from one made
+ *     from the start.
+ *
  * Both die with the process that started them (PR_SET_PDEATHSIG): a build that is cancelled, or whose app is closed,
  * leaves no compiler running. And both tell Android's low-memory killer to take them before the app (a higher
  * oom_score_adj, which a process may always raise for itself): on a phone short of memory the build stops with an
@@ -36,6 +41,7 @@
 #include <string.h>
 #include <sys/auxv.h>
 #include <sys/mman.h>
+#include <sys/personality.h>
 #include <sys/prctl.h>
 #include <sys/syscall.h>
 #include <unistd.h>
@@ -185,7 +191,35 @@ static char *push(char **top, const void *data, size_t size) {
 
 extern char **environ;
 
+/* Zig 0.13's clang compiles one very large function of MH4U's game code (f_00ce7920 with the single-screen mod: 300 KB
+ * of machine code) into a slightly different object depending on where its memory is: on an RG406V four compiles of
+ * the same C gave two objects, with the address space layout randomized; with it off (personality ADDR_NO_RANDOMIZE),
+ * the same object every time, as on a PC with a Zig without ASLR. So this program asks for it and runs itself again
+ * (/proc/self/exe; Zig's own runs of itself keep it): the same C, the same arguments and the same environment give
+ * the same object, and a build that goes on after a cut gives the library a build from the start gives, byte for byte.
+ * A system that refuses the call (an error, or a seccomp filter's SIGSYS, which is caught here) leaves it as it was. */
+static volatile sig_atomic_t g_sigsys;
+static void on_sigsys(int sig) {
+    (void)sig;
+    g_sigsys = 1;
+}
+static void fixed_layout(char **argv) {
+    struct sigaction sa, old;
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = on_sigsys;
+    sigemptyset(&sa.sa_mask);
+    if (sigaction(SIGSYS, &sa, &old) != 0) return;
+    int now = personality(0xffffffff);
+    int set = !g_sigsys && now != -1 && !(now & ADDR_NO_RANDOMIZE) &&
+              personality((unsigned long)now | ADDR_NO_RANDOMIZE) != -1 && !g_sigsys;
+    sigaction(SIGSYS, &old, NULL);
+    if (!set) return;
+    execv("/proc/self/exe", argv);
+    personality((unsigned long)now);  /* (not run again: as it was) */
+}
+
 int main(int argc, char **argv) {
+    fixed_layout(argv);
     prctl(PR_SET_PDEATHSIG, SIGKILL);
     kill_me_first();
     const char *zig = getenv("BUILDER_ZIG");

@@ -17,10 +17,18 @@ builder, mh4n tools/android/phone_build.py):
     @@error NAME MESSAGE        the stage that failed and why (the last line of a failed run)
     @@done PATH                 the library is in place, with its .id beside it
 
+Resuming: the translation (the analysis of the game's exefs and the C and function lists it writes: minutes of every
+core on a phone) is done again only when what it is made from changed: once it is through, the work folder's inputs.txt
+keeps a hash of its inputs (the game's exefs/main and exefs/sdk, these tools and the Python that runs them) and a list of
+the C it wrote; a run whose inputs give the same hash, with that C still there, goes straight to compiling the files
+whose objects are missing (build_game.py keeps an object made from the same C with the same compiler). The library is
+the same, byte for byte, as a run from an empty work folder makes. (The same as MH4U's, mh4n tools/android/phone_build.py.)
+
 Everything this writes is made from the player's own game and stays on the phone.
 """
 import argparse
 import errno
+import hashlib
 import io
 import os
 import re
@@ -44,6 +52,89 @@ def emit(line):
     sys.__stdout__.flush()
 
 
+# ---- the translation, kept between runs (the module's docstring; MH4U's phone_build.py the same)
+STAMP = 'inputs.txt'
+WHOLE = 128 << 20  # a file up to this size is hashed whole (exefs/main: tens of MB, under a second on a phone)...
+END = 1 << 20      # ...a larger one by its size, its date and its two ends
+
+
+def file_digest(path):
+    st = os.stat(path)
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        if st.st_size <= WHOLE:
+            for block in iter(lambda: f.read(1 << 20), b''):
+                h.update(block)
+            return f'{st.st_size} {h.hexdigest()}'
+        h.update(f.read(END))
+        f.seek(-END, os.SEEK_END)
+        h.update(f.read(END))
+    return f'{st.st_size} {st.st_mtime_ns} {h.hexdigest()}'
+
+
+def any_digest(path):
+    return file_digest(path) if path and os.path.isfile(path) else 'none'
+
+
+def tools_digest():
+    """The tools as the app packs them (pack_builder_tools.py's list: the tools, the runtime headers, the HLE list)."""
+    import pack_builder_tools
+    h = hashlib.sha256()
+    for name in pack_builder_tools.files():
+        h.update(f'{name} {any_digest(os.path.join(build_game.ROOT, name))}\n'.encode('utf-8', 'surrogateescape'))
+    return h.hexdigest()
+
+
+def game_exefs(game):
+    """The game folder's exefs as build_game.check_game finds it (the folder, or its data/), or None."""
+    for d in (game, os.path.join(game, 'data')):
+        if os.path.isfile(os.path.join(d, 'exefs', 'main')):
+            return os.path.join(d, 'exefs')
+    return None
+
+
+def stamp_hash(lines):
+    return hashlib.sha256('\n'.join(lines).encode('utf-8', 'surrogateescape')).hexdigest()
+
+
+def written(work):
+    """What the translation left for the compile: the files of gen/main and gen/sdk (names and sizes)."""
+    h = hashlib.sha256()
+    for part in ('main', 'sdk'):
+        d = os.path.join(work, 'gen', part)
+        names = sorted(os.listdir(d)) if os.path.isdir(d) else []
+        if not any(n.endswith('.c') for n in names):
+            return 'none'
+        for n in names:
+            h.update(f'{part}/{n} {os.path.getsize(os.path.join(d, n))}\n'.encode('utf-8', 'surrogateescape'))
+    return h.hexdigest()
+
+
+def read_stamp(work):
+    try:
+        with open(os.path.join(work, STAMP), encoding='utf-8', errors='replace') as f:
+            first = f.readline().split()
+        return (first[0], first[1]) if len(first) >= 2 else ('', '')
+    except OSError:
+        return '', ''
+
+
+def write_stamp(work, inputs, made, lines):
+    path = os.path.join(work, STAMP)
+    with open(path + '.part', 'w', encoding='utf-8', errors='replace') as f:
+        f.write(f'{inputs} {made}\n' + '\n'.join(lines) + '\n')
+    os.replace(path + '.part', path)
+
+
+def forget_translation(work):
+    """The stamp and build_game.py's own notes of a finished translation (gen/<part>.done): the next run translates."""
+    for path in [os.path.join(work, STAMP)] + [os.path.join(work, 'gen', p + '.done') for p in ('main', 'sdk')]:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
 class Stages(io.TextIOBase):
     """build_game.py's output, passed on as it is, with the app's @@ lines for the stages it goes through."""
 
@@ -55,6 +146,7 @@ class Stages(io.TextIOBase):
         self.parts = {}  # (the translator's parts, sdk and main: their functions add up)
         self.files = 0
         self.in_error = False
+        self.on_stage = None
 
     def writable(self):
         return True
@@ -74,6 +166,8 @@ class Stages(io.TextIOBase):
         if stage != self.stage:
             self.stage = stage
             emit(f'@@stage {stage}')
+            if self.on_stage:
+                self.on_stage(stage)
 
     def line(self, text):
         if text.startswith('ERROR: '):
@@ -136,6 +230,7 @@ def main(argv=None):
     ap.add_argument('--clean', action='store_true', help='once the library is in place, delete the work folder')
     args = ap.parse_args(argv)
 
+    t0 = time.time()
     emit(f'@@pid {os.getpid()}')
     lib_id = build_game.gamelib_id(build_game.ID_FLAGS)
     emit(f'@@id {lib_id}')
@@ -154,6 +249,29 @@ def main(argv=None):
             emit(f'@@error dest can\'t write in {args.game}')
             return 1
         emit('@@stage extract')
+
+        # the translation: kept from the last run if it was made from the same exefs and tools
+        exefs = game_exefs(os.path.abspath(args.game))
+        lines = [f'tools {lib_id} {tools_digest()}', 'python ' + ' '.join(sys.version.split()), f'game {args.game}',
+                 f'main {any_digest(exefs and os.path.join(exefs, "main"))}',
+                 f'sdk {any_digest(exefs and os.path.join(exefs, "sdk"))}']
+        inputs = stamp_hash(lines)
+        kept_inputs, kept_made = read_stamp(args.work)
+        reuse = kept_inputs == inputs and kept_made != 'none' and kept_made == written(args.work)
+        if reuse:
+            print(f'inputs as the last run\'s ({time.time() - t0:.1f} s to check): its translation is kept, on to the compile')
+        else:
+            if kept_inputs:
+                print('the last run\'s translation isn\'t for these inputs (or its C is gone): translating again')
+            forget_translation(args.work)
+
+        def on_stage(stage):
+            if stage != 'compile':
+                return
+            if not reuse:  # (the translation is through: what it was made from, and the C it wrote)
+                write_stamp(args.work, inputs, written(args.work), lines)
+            print(f'compiling from {time.time() - t0:.1f} s after the start')
+        tap.on_stage = on_stage
         progress = CompileProgress(tap, os.path.join(args.work, 'obj_android'))
         progress.start()
         sys.stdout = tap
