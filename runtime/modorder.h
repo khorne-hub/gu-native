@@ -25,6 +25,9 @@ typedef struct {
 int mods_installed(ModEntry *out, int max);
 // Did the game load the mod `name` at its start (mods.c)? It reads that mod's files while it runs.
 bool mods_loaded(const char *name);
+// The part of mod `name` the port could not use at this start (an exefs/main not laid out as the game's: "exefs/main"), or
+// NULL (mods.c)
+const char *mods_refused_part(const char *name);
 // Writes mods/load_order.txt for the list, in this order (mods that are off as "# off: name"); false with `err`
 // set when it can't
 bool mods_save_order(const ModEntry *e, int n, char *err, size_t errsz);

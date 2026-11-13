@@ -1599,6 +1599,11 @@ static void interp_run_inner(Cpu *c) {
             continue;
         }
         if (next == ret) break;
+        // (a jump into the middle of a function of the game's: it runs in the interpreter now, and this run goes on in it)
+        if (!dispatch_lookup(next) && dispatch_interpret_inside(next)) {
+            pc = next;
+            continue;
+        }
         uint32_t lr = c->r[14];
         c->pc = next;
         g_ip_pc = 0;

@@ -18,6 +18,9 @@ bool cheats_set(const bool *on, int n, char *err, size_t errsz);
 // changes to the game's code undone as when turned off, and from then on they are off and left out of cheats/_off.txt
 void cheats_drop_file(const char *file);
 bool cheats_dropped(int i);
+// Files left out whole: those named by another build id than the game's (made for another version). The count; i in
+// range: *file (as cheats_file spells names) and *id (its first 16 hex digits) too
+int cheats_left_out(int i, const char **file, const char **id);
 #ifdef __cplusplus
 }
 #endif

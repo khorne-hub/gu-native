@@ -8,6 +8,7 @@
 
 Module g_modules[MAX_MODULES];
 int g_nmodules, g_nexefs;
+uint8_t g_main_build_id[32];  // (main's NSO header: the build id cheats files are named by, runtime/cheats.c)
 
 enum { DT_NULL = 0, DT_PLTRELSZ = 2, DT_HASH = 4, DT_STRTAB = 5, DT_SYMTAB = 6, DT_RELA = 7, DT_RELASZ = 8,
        DT_INIT = 12, DT_FINI = 13, DT_REL = 17, DT_RELSZ = 18, DT_PLTREL = 20, DT_JMPREL = 23,
@@ -142,6 +143,70 @@ static bool forge_module(const char *path, const char *mod) {
     return forge;
 }
 
+// A mod's whole exefs/main (or sdk): the game's module with changes of the mod's own, as mods made for the console and
+// the emulators can bring it (Atmosphere and the emulators load it in place of the game's). The port runs the game's
+// own 1.4.0 code compiled ahead of time, so another module can't be loaded: what the mod's differs from the game's is
+// applied as patches instead (mods_patch_bytes: changed code runs in the interpreter, as an IPS patch's; data as
+// written), before the mods' IPS patches, as Atmosphere applies those to the module it loaded. Only a module laid out
+// as the game's (its segments where the game's are, of the same sizes) can be compared so: another one (one built
+// again from sources, or another version's) is left out, and the log says why.
+static void replace_from_mod(Module *m, const uint32_t seg[3][3], uint32_t bss) {
+    char path[1100];
+    const char *mod = mods_exefs_file(m->name, path, sizeof path, NULL);
+    if (!mod) return;
+    size_t len;
+    uint8_t *raw = read_file(path, &len);
+    uint32_t mseg[3][3], mbss = 0, flags = 0;
+    bool ok = raw && len >= 0x100 && !memcmp(raw, "NSO0", 4);
+    if (ok) {
+        memcpy(&flags, raw + 0xC, 4), memcpy(&mbss, raw + 0x3C, 4);
+        for (int i = 0; i < 3; i++) memcpy(mseg[i], raw + 0x10 + i * 0x10, 12);
+    }
+    bool same = ok && mbss == bss;
+    for (int i = 0; i < 3 && same; i++) same = mseg[i][1] == seg[i][1] && mseg[i][2] == seg[i][2];
+    if (!same) {
+        LOG("[mods] %s: exefs/%s is %s: it can't stand in for the game's in the port (its code is the game's 1.4.0, "
+            "compiled ahead of time), left out; a patch of the mod's (.pchtxt, .ips) would work\n", mod, m->name,
+            ok ? "not laid out as the game's (another version, or a module built again)" : "not an NSO");
+        mods_note_refused(mod, m->name);
+        free(raw);
+        return;
+    }
+    char *file = malloc(32);  // (one name for all its patches: mods.c groups their log lines by it)
+    snprintf(file, 32, "exefs/%s", m->name);
+    int runs = 0, bytes = 0, counts[3] = {0, 0, 0};
+    for (int i = 0; i < 3 && ok; i++) {
+        uint32_t csize;
+        memcpy(&csize, raw + 0x60 + i * 4, 4);
+        uint8_t *buf = malloc(mseg[i][2] ? mseg[i][2] : 1);
+        if ((uint64_t)mseg[i][0] + csize > len) ok = false;
+        else if (flags & (1 << i)) ok = lz4_decompress(raw + mseg[i][0], csize, buf, mseg[i][2]) == mseg[i][2];
+        else if (csize >= mseg[i][2]) memcpy(buf, raw + mseg[i][0], mseg[i][2]);
+        else ok = false;
+        const uint8_t *game = G2H(m->base + seg[i][1]);
+        for (uint32_t k = 0; ok && k < mseg[i][2];) {
+            if (buf[k] == game[k]) { k++; continue; }
+            uint32_t end = k + 1;  // (a run: its changed bytes and up to 8 the same between them)
+            for (uint32_t same_run = 0; end < mseg[i][2] && same_run < 8; end++)
+                same_run = buf[end] == game[end] ? same_run + 1 : 0;
+            while (buf[end - 1] == game[end - 1]) end--;
+            mods_patch_bytes(m, mod, file, seg[i][1] + k, buf + k, end - k, counts);
+            runs++, bytes += end - k;
+            k = end;
+        }
+        free(buf);
+    }
+    free(raw);
+    if (!ok) {
+        LOG("[mods] %s: exefs/%s is damaged (a segment can't be read): left out\n", mod, m->name);
+        return;
+    }
+    if (!runs) LOG("[mods] %s: exefs/%s is the game's own, unchanged\n", mod, m->name);
+    else
+        LOG("[mods] %s: exefs/%s differs from the game's in %d place(s), %d byte(s): applied as patches, %d of data, %d of "
+            "code (applied once the game's code is set up)\n", mod, m->name, runs, bytes, counts[0], counts[1]);
+}
+
 static void load_nso(Module *m, const char *path, uint32_t base) {
     size_t len;
     uint8_t *raw = read_file(path, &len);
@@ -177,6 +242,8 @@ static void load_nso(Module *m, const char *path, uint32_t base) {
 
     if (!parse_dynamic(m, LD32(base + 4))) FATAL("%s: MOD0 or the dynamic section is outside the image\n", path);
     LOG("loaded %-5s at %08x size %08x syms %u\n", m->name, base, size, m->nsyms);
+    if (m == &g_modules[0]) memcpy(g_main_build_id, build_id, sizeof g_main_build_id);
+    if (m == &g_modules[0] || m == &g_modules[1]) replace_from_mod(m, seg, bss);  // (a mod's whole main or sdk)
     mods_patch_module(m, build_id);  // (before relocation, as on the console)
 }
 

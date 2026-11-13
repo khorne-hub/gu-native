@@ -16,6 +16,10 @@ extern "C" {
 void overlay_init(const char *font_path, float font_size, int menu_key);
 bool overlay_enabled(void);
 bool overlay_menu_open(void);
+// Forge's menu from the settings' Mods tab (any thread): it opens once the settings menu closes; opened by touch, it is
+// bigger and scrolls by dragging. overlay_forge_typing: one of its fields takes text now (the phone's keyboard).
+void overlay_open_forge(void);
+bool overlay_forge_typing(void);
 bool overlay_settings_dirty(void);
 void overlay_request_close(void); // Close / Alt+F4 routes to controller confirmation inside settings.
 void overlay_face_positions(const int positions[4]);

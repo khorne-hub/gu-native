@@ -5,6 +5,7 @@
 #include "settings_icons.h"
 #include "app_actions.h"
 #include "cheats.h"
+#include "forge.h"
 #include "overlay.h"
 #include "padmap.h"
 #include "keymap.h"
@@ -1773,6 +1774,36 @@ void remove_confirmed() {
     focus("cheats.add");
 }
 #endif
+// Cheat files the game left out whole (runtime/cheats.c): those made for another version of the game, by their build id
+bool cheat_file_left_out(const std::string &file) {
+    const char *f = nullptr;
+    for (int i = 0, n = cheats_left_out(0, nullptr, nullptr); i < n; ++i)
+        if (cheats_left_out(i, &f, nullptr) && file == f)
+            return true;
+    return false;
+}
+void cheat_left_rows_one(std::vector<Row> &r, const std::string &file) {
+    const char *f = "", *id = "";
+    for (int i = 0, n = cheats_left_out(0, nullptr, nullptr); i < n; ++i)
+        if (cheats_left_out(i, &f, &id) && file == f) {
+            action(r, "cheatleft." + file, tr("For another version of the game: not loaded"),
+                   []() {}, false);
+            r.back().value = "!";
+            r.back().help = fmt("These cheats are for another version of the game (build id %s). The port plays version 1.4.0, build id FB08F1D20FD1204F: their addresses would change other things there, so they are left out. Use the file named FB08F1D20FD1204F.txt of the same list.",
+                                id);
+            return;
+        }
+}
+void cheat_left_rows(std::vector<Row> &r) {
+    for (int i = 0, n = cheats_left_out(0, nullptr, nullptr); i < n; ++i) {
+        const char *file = "", *id = "";
+        cheats_left_out(i, &file, &id);
+        action(r, std::string("cheatleft.") + file, fmt("%s: not loaded", file), []() {}, false);
+        r.back().value = "!";
+        r.back().help = fmt("These cheats are for another version of the game (build id %s). The port plays version 1.4.0, build id FB08F1D20FD1204F: their addresses would change other things there, so they are left out. Use the file named FB08F1D20FD1204F.txt of the same list.",
+                            id);
+    }
+}
 // A cheat's row: On / Off, or Always on (a master code)
 Row cheat_row(int i) {
     Row row;
@@ -1802,6 +1833,7 @@ void cheat_rows(std::vector<Row> &r) {
     r.back().help = tr("Copies cheat .txt files (Atmosphere's format, for 1.4.0) from your phone's storage. You can also put them yourself in the cheats folder inside your game folder. The game restarts to read them.");
     for (int i = 0; i < (int)cheat_tab.draft.size(); ++i)
         r.push_back(cheat_row(i));
+    cheat_left_rows(r);
 #else  // (a desktop: the system's file dialog, runtime/pc_actions.c; each file under its name, with its Remove)
     action(r, "cheats.add", tr("Add cheats"), []() { ui_request_import(0); });
     r.back().help = tr("Copies cheat .txt files (Atmosphere's format, for 1.4.0) into the cheats folder inside your game folder, where you can also put them yourself. They start off: turn them on here. The game restarts to read them.");
@@ -1813,13 +1845,30 @@ void cheat_rows(std::vector<Row> &r) {
         for (int i = 0; i < (int)cheat_tab.draft.size(); ++i)
             if (!f.loaded.empty() && f.loaded == cheats_file(i) && !cheats_dropped(i))
                 r.push_back(cheat_row(i));
-        if (f.loaded.empty())
+        if (f.loaded.empty() && cheat_file_left_out(f.name))
+            cheat_left_rows_one(r, f.name);
+        else if (f.loaded.empty())
             action(r, "cheatnew." + shown, tr("Its cheats show up after a restart"), []() {}, false);
+        if (f.loaded.find('/') != std::string::npos)  // (a mod's cheats/ file: it goes with its mod)
+            continue;
         action(r, "cheatrm." + shown, fmt("Remove %s", shown.c_str()), [f, shown]() { ask_remove(false, f.name, f.loaded, shown); });
         r.back().help = tr(f.loaded.empty() ? "Deletes this file from the cheats folder."
                                             : "Deletes this file from the cheats folder. Its cheats stop at once, no restart needed.");
     }
 #endif
+}
+// Forge's menu: the settings of the Forge plugins the mods bring (Damage Numbers' size...), which a PC opens with the
+// Insert key. Shown when a plugin started; it opens once this menu has closed (overlay.cpp overlay_open_forge), bigger
+// and scrolled by dragging when opened by touch
+void forge_menu_row(std::vector<Row> &r) {
+    const char *names[16];
+    if (forge_plugin_titles(names, 16) <= 0 && !getenv("MHGU_FORGE_MENU"))  // (MHGU_FORGE_MENU=1: without plugins, a test)
+        return;
+    action(r, "mods.forge", tr("Forge menu (plugins)"), []() {
+        overlay_open_forge();
+        request_back.store(true);
+    });
+    r.back().help = tr("Opens Forge's menu, where the Forge plugins of your mods keep their settings (under Plugin UI). Drag a finger to scroll it; its x or the Back key closes it. On a PC the Insert key opens it too. Plugins are other people's work: you use them at your own risk.");
 }
 void mods_rows(std::vector<Row> &r) {
     if (!mods.scan)
@@ -1852,6 +1901,7 @@ void mods_rows(std::vector<Row> &r) {
     if (mods.draft.empty())
         action(r, "mods.none", tr("No mods found in the mods folder"), []() {});
 #endif
+    forge_menu_row(r);
     for (int i = 0; i < (int)mods.draft.size(); ++i) {
         std::string name = mods.draft[i].name;
         bool on = mods.draft[i].on, clash = false;
@@ -1868,6 +1918,11 @@ void mods_rows(std::vector<Row> &r) {
         row.title = name;
         row.value = std::string(tr(on ? "On" : "Off")) + (clash ? " !" : "");
         row.cold = true;
+        if (const char *part = mods_refused_part(name.c_str())) {  // (runtime/loader.c replace_from_mod)
+            row.value += clash ? "" : " !";
+            row.help = fmt("Its %s is not laid out as the game's 1.4.0 (another version, or rebuilt), so the port can't use it: the rest of the mod loads. The log says more.",
+                           part);
+        }
         auto set_on = [name](bool v) {
             int at = mod_index(name);
             if (at >= 0 && mods.draft[at].on != v) {
