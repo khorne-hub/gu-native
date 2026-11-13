@@ -157,6 +157,8 @@ MHGU
 Revísala: `romfs` tiene 35.531 archivos y ocupa unos 12,3 GB. Los archivos del juego sacados de otros lados suelen venir
 incompletos o dañados: entonces partes del juego se ven negras, se cierra, o la app dice que faltan archivos. Usa los de tu
 propia copia.
+Cuando el juego abra, engranaje → **Sistema** → **Tu partida** → **Verificar archivos del juego** lee todos los archivos
+(unos minutos) y te dice qué falta, qué está cortado, qué cambió o es de otra versión, y qué hacer.
 
 Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivos del juego, keys ni enlaces a ellos.
 
@@ -555,6 +557,7 @@ puntos, **Añadir juegos**.
 
 | Problema | Qué hacer |
 |---|---|
+| No sabes si tus archivos del juego están bien | Engranaje → **Sistema** → **Tu partida** → **Verificar archivos del juego**. Lee todos los archivos, dice qué está mal (falta, cortado, cambiado, otra versión, una copia modificada, el código del juego) y qué hacer; la lista completa va al registro. No cambia ni descarga nada |
 | "No se instaló la app", o "el paquete entra en conflicto con un paquete existente" | Tienes una copia de la app bajada de otra página, firmada por otra persona. Guarda tu partida y sigue [Pasarte a la app oficial](#pasarte-a-la-app-oficial) |
 | El instalador habla de "ABI", o dice que la app no es compatible | Este teléfono tiene un Android de 32 bits (por ejemplo Android Go). La app necesita uno de 64 bits, así que no se puede instalar en este teléfono |
 | `python` no se reconoce | Instala Python de nuevo, marca **Add python.exe to PATH** y abre otra terminal |
@@ -713,7 +716,9 @@ MHGU
 ```
 
 Revísala: `romfs` tiene 35.531 archivos y ocupa unos 12,3 GB. Los archivos del juego sacados de otros lados suelen venir
-incompletos o dañados. Usa los de tu propia copia.
+incompletos o dañados. Usa los de tu propia copia. Cuando el juego abra, **F1** → **Sistema** → **Tu partida** →
+**Verificar archivos del juego** lee todos los archivos (unos minutos) y te dice qué falta, qué está cortado, qué cambió o
+es de otra versión.
 
 Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivos del juego, keys ni enlaces a ellos.
 
@@ -932,6 +937,7 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 
 | Problema | Qué hacer |
 |---|---|
+| No sabes si tus archivos del juego están bien | **F1** → **Sistema** → **Tu partida** → **Verificar archivos del juego**. Lee todos los archivos, dice qué está mal y qué hacer; la lista completa va a `log.txt`. No cambia ni descarga nada |
 | `python` no se reconoce | Instala Python de nuevo, marca **Add python.exe to PATH** y abre otra terminal |
 | `FileNotFoundError` con `hle_symbols.txt`, o la herramienta no encuentra sus propios archivos | La herramienta se usó fuera de su descarga. Descomprime entero el **Source code (zip)** y usa `build_game.py` desde su carpeta `tools`, sin moverlo |
 | "there is no exefs/main" | La ruta debe ser la carpeta que contiene `exefs` y `romfs` |

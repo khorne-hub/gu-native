@@ -157,6 +157,8 @@ MHGU
 
 Check it: `romfs` holds 35,531 files and takes about 12.3 GB. Game files from other places often come incomplete or
 damaged: then parts of the game show black, it closes, or the app says files are missing. Use the ones from your own copy.
+Once the game opens, gear → **System** → **Your game** → **Verify game files** reads every file (a few minutes) and
+tells you what is missing, cut short, changed or from another version, and what to do.
 
 This project does not explain how to dump a game from your console, and does not provide game files, keys or links to them.
 
@@ -542,6 +544,7 @@ dots, **Add games**.
 
 | Problem | What to do |
 |---|---|
+| Not sure your game files are right | Gear → **System** → **Your game** → **Verify game files**. It reads every file, says what is wrong (missing, cut short, changed, another version, a modified copy, the game code) and what to do; the full list goes to the log. It changes and downloads nothing |
 | "App not installed", or "package conflicts with an existing package" | You have a copy of the app from another website, signed by someone else. Keep your save and follow [Switch to the official app](#switch-to-the-official-app) |
 | The installer talks about "ABI", or says the app isn't compatible | This phone runs a 32-bit Android (for example Android Go). The app needs a 64-bit one, so it can't be installed on this phone |
 | `python` is not recognized | Install Python again, tick **Add python.exe to PATH**, and open a new terminal |
@@ -695,7 +698,8 @@ MHGU
 ```
 
 Check it: `romfs` holds 35,531 files and takes about 12.3 GB. Game files from other places often come incomplete or
-damaged. Use the ones from your own copy.
+damaged. Use the ones from your own copy. Once the game opens, **F1** → **System** → **Your game** → **Verify game files**
+reads every file (a few minutes) and tells you what is missing, cut short, changed or from another version.
 
 This project does not explain how to dump a game from your console, and does not provide game files, keys or links to them.
 
@@ -913,6 +917,7 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 | "This exefs is not version 1.4.0" | Use the `exefs` with the 1.4.0 update |
 | "romfs is incomplete" | Use the base game's `romfs` with the update applied. It has 35,531 files |
 | Black areas, missing parts, or it closes, with game files you didn't make yourself | Game files from other places are often incomplete or damaged, and the game can't fix them. Make the folder from your own copy, as [step 1](#step-1-get-your-game-files-1) says |
+| Not sure your game files are right | **F1** → **System** → **Your game** → **Verify game files**. It reads every file, says what is wrong and what to do; the full list goes to `log.txt`. It changes and downloads nothing |
 | "SDL3.dll was not found" | Unzip the whole zip into a folder first: `MHGU.exe` doesn't start from inside the zip |
 | Smart App Control blocked it | It blocks programs that aren't signed, with no **Run anyway**, and `MHGU.exe` isn't signed: it only runs with Smart App Control off (Windows Security, **App & browser control**, **Smart App Control settings**). Think it over first: on many versions of Windows it can't be turned back on without reinstalling Windows |
 | "mhgugame.dll is missing" | The download doesn't include it: do [Setup step 2](#step-2-create-the-game-code-1) (`python build_game.py --pc <your folder>`) and choose that folder |

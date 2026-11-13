@@ -19,6 +19,7 @@
 #include "platform.h"
 #include "textinput.h"
 #include "touch.h"
+#include "verify.h"
 #include "imgui_internal.h"
 #ifndef MHGU_VERSION
 #define MHGU_VERSION ""  // (the build gives it: native/CMakeLists.txt)
@@ -51,7 +52,8 @@ namespace {
 // (Page: a page one level down from a section's, State::at; MENU.md)
 enum class View { Main, Page, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons,
                   ComboEdit, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord, Profiles, ProfileSlot,
-                  Chat, Friends, ChatOn };  // (the chat's pages and its question: settings_chat.inc)
+                  Chat, Friends, ChatOn,  // (the chat's pages and its question: settings_chat.inc)
+                  Verify };  // (Verify game files: runtime/verify.c)
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -59,6 +61,8 @@ struct Row {
     bool enabled = true, cold = false, action = false, warn = false;
     bool header = false, current = false;  // a section title (not a row to select); the choice a dropdown has now
     bool note = false;                     // (a header) a line of text between the rows: the MH4U port's notes
+    float progress = -1;                   // (a note) a bar under its text, 0 to 1 (Verify game files' progress)
+    bool bright = false;                   // (a note) in the text's colour, not the dimmer one (a check that passed)
     std::string who;                       // (a note) a chat line's sender, over its text; who_mine: this player's
     bool who_mine = false;
     bool menu = false;                     // Confirm opens a dropdown of its choices
@@ -3458,11 +3462,99 @@ void reset_system_menu_10() {
     s.draft.menu_scale = f.menu_scale;
 }
 MENU_ENTRY("system/menu", 10, rows_system_menu_10, reset_system_menu_10);
+// System > Your game > Verify game files (runtime/verify.c; the MH4U port's same view and words): while it runs, its
+// progress, Cancel and Back (it goes on with the menu closed); then its report: what was found, what to do, Check again
+bool verify_busy(const VerifyState &v) { return v.stage == VERIFY_LISTING || v.stage == VERIFY_READING; }
+std::string verify_number(const char *v) {  // (Spanish: 4,1 GB)
+    std::string out = v;
+    if ((s.editing ? s.draft.language : config_language()) == 1)
+        for (char &c : out)
+            if (c == '.') c = ',';
+    return out;
+}
+std::string verify_value() {
+    VerifyState v = verify_state();
+    if (verify_busy(v))
+        return std::to_string(v.bytes_total ? (int)(v.bytes_done * 100 / v.bytes_total) : 0) + " %";
+    if (v.stage == VERIFY_CANCELLED) return tr("Cancelled");
+    if (v.stage == VERIFY_DONE || v.stage == VERIFY_FAILED)
+        return v.problems == 0 ? tr("All good") : v.problems == 1 ? tr("1 problem") : fmt("%d problems", v.problems);
+    return "";
+}
+void verify_open() {
+    VerifyState v = verify_state();
+    if (v.stage == VERIFY_NONE || v.stage == VERIFY_CANCELLED || v.stage == VERIFY_FAILED) verify_start();
+    push(View::Verify, verify_busy(verify_state()) ? "verify.cancel" : "verify.again");
+}
+void verify_rows(std::vector<Row> &r) {
+    VerifyState v = verify_state();
+    if (verify_busy(v)) {
+        std::string text = tr("Listing the files...");
+        float done = 0;
+        if (v.stage == VERIFY_READING && v.bytes_total) {
+            char a[24], b[24];
+            snprintf(a, sizeof a, "%.1f", v.bytes_done / 1e9), snprintf(b, sizeof b, "%.1f", v.bytes_total / 1e9);
+            done = (float)((double)v.bytes_done / v.bytes_total);
+            text = fmt("Reading the files: %s of %s GB (%d %%)", verify_number(a).c_str(), verify_number(b).c_str(), (int)(done * 100));
+            if (v.seconds >= 5 && v.bytes_done) {
+                double left = v.seconds * (double)(v.bytes_total - v.bytes_done) / (double)v.bytes_done;
+                text += left >= 90 ? fmt(" · about %d min left", (int)std::ceil(left / 60)) : std::string(tr(" · less than 2 min left"));
+            }
+        }
+        note(r, "verify.progress", text);
+        r.back().progress = done;
+        note(r, "verify.wait", tr("You can leave this page or close the menu: the check goes on."));
+        action(r, "verify.cancel", tr("Cancel"), []() { verify_cancel(); });
+        action(r, "verify.back", tr("Back"), []() { pop(); });
+        return;
+    }
+    if (s.focus == "verify.cancel") focus("verify.again");  // (the check ended under the controller's cursor)
+    std::vector<VerifyLine> lines(std::max(verify_lines(nullptr, 0), 1));
+    lines.resize(std::min((int)lines.size(), verify_lines(lines.data(), (int)lines.size())));
+    header(r, "verify.verdict", v.stage == VERIFY_CANCELLED ? tr("Check cancelled")
+                                : v.problems == 0       ? tr("All good: your game files are right")
+                                : v.problems == 1       ? tr("1 problem found")
+                                                        : fmt("%d problems found", v.problems));
+    // (a finding's example files go under its own text; what to do, under its header)
+    std::vector<std::pair<std::string, int>> found, todo;
+    for (const VerifyLine &l : lines) {
+        std::string text = fmt(l.text, verify_number(l.a).c_str(), verify_number(l.b).c_str());
+        if (l.kind == VL_FILE) {
+            if (!found.empty()) found.back().first += "\n" + fmt(l.text, l.a, l.b);
+        } else if (l.kind == VL_TODO) {
+            todo.push_back({text, l.kind});
+        } else {
+            found.push_back({text, l.kind});
+        }
+    }
+    for (size_t i = 0; i < found.size(); i++) {
+        note(r, "verify.line" + std::to_string(i), found[i].first);
+        r.back().warn = found[i].second == VL_PROBLEM;
+        r.back().bright = found[i].second == VL_OK || found[i].second == VL_PROBLEM;
+    }
+    if (!todo.empty()) {
+        header(r, "verify.todo", tr("What to do"));
+        for (size_t i = 0; i < todo.size(); i++)
+            note(r, "verify.todo" + std::to_string(i), todo[i].first), r.back().bright = true;
+    }
+    note(r, "verify.log", tr("The full list is in the log: System › Your game › Share log."));
+    action(r, "verify.again", tr("Check again"), []() {
+        verify_start();
+        focus("verify.cancel");
+    });
+    action(r, "verify.back", tr("Back"), []() { pop(); });
+}
+void verify_row(std::vector<Row> &r) {
+    action(r, "game.verify", tr("Verify game files"), []() { verify_open(); });
+    r.back().value = verify_value();
+    r.back().help = tr("Reads every game file and compares it with the version the port needs: says what is missing, cut short, changed or from another version, and what to do. It can take a few minutes; it changes and downloads nothing.");
+}
 // System > Your game (the MH4U port's same rows)
 void rows_system_game_10(std::vector<Row> &r) {
 #ifdef __ANDROID__
     action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
     r.back().help = tr("Where the game's exefs and romfs are read from. A new folder is used the next time the game starts.");
+    verify_row(r);
     action(r, "save.folder", tr("Save folder"), []() { ui_request_save_folder(); });
     r.back().help = tr("Where your save is kept. Choose a folder that a sync app shares with your other devices (the PC version too) to carry your hunt between them. Your save is copied there first, and the game restarts to use it.");
     action(r, "save.import", tr("Import save"), []() { ui_request_save_import(); });
@@ -3474,6 +3566,7 @@ void rows_system_game_10(std::vector<Row> &r) {
 #else  // (a desktop: the system's dialogs, runtime/pc_actions.c; the licenses are on Credits & Licenses)
     action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
     r.back().help = tr("Where the game's exefs, romfs and mhgugame.dll are read from. A new folder is used the next time the game starts.");
+    verify_row(r);
     action(r, "save.import", tr("Import save"), []() { ui_request_save_import(); });
     r.back().help = tr("Brings your save from an emulator or another device: choose its file named system. It replaces the characters here, and the current save is kept in a copy.");
     action(r, "save.export", tr("Export save"), []() { ui_request_save_export(); });
@@ -3937,6 +4030,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::ProfileSlot) { profile_slot_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
+    if (s.view == View::Verify) { verify_rows(r); return r; }
     if (s.view == View::Keyboard) {
         std::string chars = "1234567890abcdefghijklmnopqrstuvwxyz.:,-_/@";
         if (s.keyboard.upper)
@@ -4579,14 +4673,22 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             float size = std::floor(font * .86f), indent = font * 1.15f, wrap = width - indent - font * .3f;
             ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, wrap, r.title.c_str());
             float top = font * .3f, who = r.who.empty() ? 0 : std::floor(size * .9f);  // (a chat line's sender over it)
-            ImGui::Dummy(ImVec2(width, ts.y + top * 2 + who));
+            float bar = r.progress >= 0 ? std::floor(font * .55f) : 0, under = bar ? std::floor(font * .35f) : 0;
+            ImGui::Dummy(ImVec2(width, ts.y + top * 2 + who + under + bar));
+            if (bar) {  // (a progress: a dark slot under the text, filled with the accent as the game's gauges)
+                ImVec2 a(p.x + indent, p.y + top + who + ts.y + under), b(p.x + indent + wrap, a.y + bar);
+                float round = std::min(bar * .5f, theme().rounding), x = a.x + (b.x - a.x) * std::clamp(r.progress, 0.f, 1.f);
+                w->DrawList->AddRectFilled(a, b, IM_COL32(0, 0, 0, 120), round);
+                if (x > a.x + 1) w->DrawList->AddRectFilled(a, ImVec2(x, b.y), theme().accent, round);
+                w->DrawList->AddRect(a, b, fade(theme().accent, .55f), round, 0, std::max(1.f, s.m.line * .5f));
+            }
             diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + (who ? who * .55f : size * .55f)), size * .18f,
                     r.warn ? theme().warn : theme().accent);
             if (who)
                 shadow_text(w->DrawList, who, ImVec2(p.x + indent, p.y + top), r.who_mine ? theme().text_dim : theme().accent,
                             r.who.c_str());
             w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top + who),
-                                 r.warn ? theme().warn : r.who.empty() ? theme().text_dim : theme().text, r.title.c_str(),
+                                 r.warn ? theme().warn : r.who.empty() && !r.bright ? theme().text_dim : theme().text, r.title.c_str(),
                                  nullptr, wrap);
             continue;
         }
@@ -5116,6 +5218,7 @@ std::string view_title() {
                     : s.view == View::KeyCapture ? "Press the key for chat (Esc: cancel)"
                     : s.view == View::ImportSave ? "Import this save? The characters here are replaced by its own and the game restarts; the current save is kept in a copy."
                     : s.view == View::Licenses   ? "Licenses"
+                    : s.view == View::Verify     ? "Verify game files"
                     : s.view == View::OpenSite   ? "Open the project's page?"
                     : s.view == View::OpenDiscord ? "Open the community's Discord?"
                     : s.view == View::Chat       ? cs("Chat", "Chat")

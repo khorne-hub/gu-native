@@ -67,6 +67,8 @@ fi
 printf %s "$GAMELIB_ID" > "$DIST/gamelib_id.txt"  # (qué código del juego le sirve: tools/build_game.py)
 # los pipelines grabados en las zonas comunes (hashes y estados, nada del juego): el primer arranque los arma de fondo
 cp "$A/pipelines.list" "$DIST/"
+# la lista de los archivos de la 1.4.0 (rutas, tamaños y CRC-32, nada del juego): Verificar archivos del juego (runtime/verify.c)
+cp "$A/game_files.txt" "$DIST/"
 # los trucos opcionales del port: el primer arranque los copia a cheats/, apagados (runtime/pc_actions.c)
 cp "$A/cheats/comer_rapido.txt" "$DIST/extras/"
 # el aviso legal y las licencias (Créditos y licencias → Licencias las muestra, el aviso primero): las de Android con lo
@@ -118,7 +120,7 @@ MW="$(cygpath -u "$LLVM_MINGW")"
   if [ -f "$DIST/libxess.dll" ]; then
     echo; echo "libxess.dll: Intel's XeSS-SR runtime, unmodified, as Intel released it (XeSS.txt). It needs the Microsoft Visual C++ Redistributable (x64), which is not included."
   fi
-  echo; echo "gamelib_id.txt, pipelines.list and extras: the project's own files."
+  echo; echo "gamelib_id.txt, pipelines.list, game_files.txt and extras: the project's own files."
   echo; echo "Nothing of the game is included: each player makes the game code library, mhgugame.dll, from their own copy of the game. The Vulkan loader is the graphics driver's."
   echo; echo "Monster Hunter is a trademark of the Great C. This project is not affiliated with, endorsed by or sponsored by the Great C or the Great N."
   echo; echo "----------------------------------------"
@@ -129,7 +131,7 @@ MW="$(cygpath -u "$LLVM_MINGW")"
   if [ -f "$DIST/libxess.dll" ]; then
     echo; echo "libxess.dll: el XeSS-SR de Intel, sin modificar, tal como Intel lo publica (XeSS.txt). Necesita el Microsoft Visual C++ Redistributable (x64), que no viene incluido."
   fi
-  echo; echo "gamelib_id.txt, pipelines.list y extras: archivos propios del proyecto."
+  echo; echo "gamelib_id.txt, pipelines.list, game_files.txt y extras: archivos propios del proyecto."
   echo; echo "No incluye nada del juego: cada jugador arma la librería de código del juego, mhgugame.dll, con su propia copia del juego. El cargador de Vulkan es el del controlador (driver) de la tarjeta gráfica."
   echo; echo "Monster Hunter es una marca de la Gran C. Este proyecto no está afiliado, respaldado ni patrocinado por la Gran C ni la Gran N."
 } > "$L/Windows.txt"
@@ -153,7 +155,7 @@ if [ "${PACK:-0}" = 1 ]; then
   fi
   XZ=""; [ -f "$DIST/libxess.dll" ] && XZ=MHGU/libxess.dll  # (XeSS-SR, when this build has it)
   (cd "$OUT" && "$(cygpath -u "$SYSTEMROOT")/System32/tar.exe" -a -c -f "$Z" MHGU/MHGU.exe MHGU/mhguffmpeg.dll MHGU/SDL3.dll \
-     $XZ MHGU/gamelib_id.txt MHGU/pipelines.list MHGU/extras MHGU/licenses) || { echo "zip: failed"; exit 1; }
+     $XZ MHGU/gamelib_id.txt MHGU/pipelines.list MHGU/game_files.txt MHGU/extras MHGU/licenses) || { echo "zip: failed"; exit 1; }
   (cd "$OUT" && sha256sum "$Z" > "$Z.sha256.txt")
   echo "zip: $OUT/$Z"; echo "SHA-256: $(cut -d' ' -f1 "$OUT/$Z.sha256.txt")"
 fi
