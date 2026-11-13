@@ -299,6 +299,33 @@ Los teléfonos y las PC con 0.1.6 o posterior se encuentran en las mismas salas,
 en 0.1.9: dos teléfonos en una sala por el servidor predeterminado con una clave de emparejamiento, y una PC entrando a la sala
 de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión completa juntos.
 
+#### Juego cruzado con emuladores
+
+Los jugadores de esta app (teléfonos y PC) pueden jugar con jugadores de emuladores que corren el juego, en su juego en
+línea. En el engranaje, **Multijugador**, **Jugar en línea con**:
+
+- **Salas de emuladores (Eden, Citron, Sudachi, yuzu)**: las salas multijugador de la familia de emuladores de yuzu.
+  1. Elige una sala: **Salas públicas** lista las salas públicas donde se juega este juego (del lobby que usan esos
+     emuladores, lo mantienen jugadores, no este proyecto), o escribe una en **Sala** (su dirección, y `:puerto` si no es
+     24872), con su **Contraseña de la sala** si tiene. Elige un **Apodo** (de 4 a 20 letras, números, espacios, `.`, `_`, `-`).
+  2. O **Crear la sala en este dispositivo**: los demás entran con la dirección que muestra el menú. En el mismo Wi-Fi no
+     hace falta nada más; desde internet, redirige el puerto UDP 24872 (o el que elijas) a este dispositivo en el router.
+  3. Guarda. Después juega como en el juego local: **Crear** y **Buscar campamentos** pasan por la sala, y los jugadores de
+     emuladores que están en ella encuentran tu sala y tú las suyas. **Sala: estado** dice si estás dentro.
+- **Ryujinx (LDN)**: los servidores LDN de Ryujinx (y Ryubing). Escribe el **Servidor de Ryujinx** que usan los jugadores de
+  Ryujinx (no viene ninguno: lo eliges tú). Las reglas del servidor oficial de Ryujinx dicen que es solo para jugadores de
+  Ryujinx y que otros programas pueden recibir allí una prohibición de su dirección IP; un servidor propio (el programa
+  público ldn-server) sirve para los dos. A qué servidor entras es decisión tuya y responsabilidad tuya. Una **Frase de
+  acceso** (`Ryujinx-` y 8 caracteres de `0-9`, `a-f`, como la crea Ryujinx) hace privadas tus salas.
+
+Todos necesitan la versión 1.4.0 del juego. Un jugador con otra versión no puede entrar a tu sala, ni tú a la suya: la app
+dice qué versión tiene, y el chat de la sala se lo explica. Con el juego cruzado el juego funciona como el original: la
+sincronización de monstruos pequeños, los ajustes de vida de los monstruos y las misiones de la Aldea en la sala quedan
+apagados. **Las salas de esta app** (lo predeterminado) deja todo como antes.
+
+Probado en un PC: dos copias del juego se encontraron en una sala a través del servidor de salas de yuzu, y a través de un
+sustituto del servidor de Ryujinx. Con los emuladores mismos y en teléfonos todavía no está probado.
+
 #### Vida de los monstruos y misiones de aldea en sala
 
 La vida de los monstruos ajustable (engranaje, **Juego**) y las misiones de aldea en sala (engranaje, **Multijugador**) vienen de
@@ -675,7 +702,7 @@ Desde **F1**, **Opciones del menú**:
 ### Multijugador
 
 El juego local y las salas por internet funcionan como en el teléfono, con el mismo código y las mismas opciones, en **F1**,
-**Multijugador**: mira [Juego local](#juego-local) y [Por internet](#por-internet). En el pueblo, presiona ZL (Tab) y elige
+**Multijugador**: mira [Juego local](#juego-local), [Por internet](#por-internet) y [Juego cruzado con emuladores](#juego-cruzado-con-emuladores). En el pueblo, presiona ZL (Tab) y elige
 **Connect**.
 
 - **Create Hub** se confirma con X: R en el teclado.

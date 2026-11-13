@@ -35,6 +35,7 @@ static float get_float(SDL_AtomicInt *slot) {
 static SDL_AtomicInt live_gen;  // (each publish: config_live_generation)
 static SDL_SpinLock live_ldn_lock;  // [Multiplayer] Server / Key: read by the network threads (runtime/net/ldn.c)
 static char live_ldn_server[sizeof saved.ldn_server], live_ldn_key[sizeof saved.ldn_key];
+static XplayLive live_xplay;  // (under live_ldn_lock too: config_live_crossplay)
 // A save updates changed hot fields only. Saving the volume must not silently
 // remove an unchanged FOV/FPS override supplied by the development environment.
 static void publish_live(const Config *c, bool all) {
@@ -85,6 +86,18 @@ static void publish_live(const Config *c, bool all) {
         SDL_LockSpinlock(&live_ldn_lock);
         if (all || strcmp(c->ldn_server, saved.ldn_server)) memcpy(live_ldn_server, c->ldn_server, sizeof live_ldn_server);
         if (all || strcmp(c->ldn_key, saved.ldn_key)) memcpy(live_ldn_key, c->ldn_key, sizeof live_ldn_key);
+        SDL_UnlockSpinlock(&live_ldn_lock);
+    }
+    {  // crossplay (runtime/net/xroom.c, ryuldn.c)
+        XplayLive x = {c->crossplay};
+        SDL_strlcpy(x.room, c->xroom, sizeof x.room);
+        SDL_strlcpy(x.password, c->xroom_password, sizeof x.password);
+        SDL_strlcpy(x.nick, c->xnick, sizeof x.nick);
+        SDL_strlcpy(x.ryu_server, c->ryu_server, sizeof x.ryu_server);
+        SDL_strlcpy(x.ryu_passphrase, c->ryu_passphrase, sizeof x.ryu_passphrase);
+        x.host = c->xroom_host, x.host_port = c->xroom_host_port;
+        SDL_LockSpinlock(&live_ldn_lock);
+        live_xplay = x;
         SDL_UnlockSpinlock(&live_ldn_lock);
     }
     SDL_AddAtomicInt(&live_gen, 1);
@@ -193,6 +206,11 @@ void config_live_ldn(char *server, size_t server_size, char *key, size_t key_siz
     SDL_LockSpinlock(&live_ldn_lock);
     if (server) SDL_strlcpy(server, live_ldn_server, server_size);
     if (key) SDL_strlcpy(key, live_ldn_key, key_size);
+    SDL_UnlockSpinlock(&live_ldn_lock);
+}
+void config_live_crossplay(XplayLive *out) {
+    SDL_LockSpinlock(&live_ldn_lock);
+    *out = live_xplay;
     SDL_UnlockSpinlock(&live_ldn_lock);
 }
 int config_language(void) { return SDL_GetAtomicInt(&language); }

@@ -162,7 +162,23 @@ typedef struct {
     int gyro_aim;             // [Controls] GyroAim: aiming a bow or a bowgun, turning the phone (or a controller with a gyro)
                               // turns the aim too, from where it was as the aim began (runtime/host_input.c gyro_update)
     float gyro_sensitivity;   // [Controls] GyroSensitivity: the aim's turn for a turn of the phone (GYRO_SENS_MIN..MAX)
+    // Crossplay with emulators (runtime/net/net.h, xroom.c, ryuldn.c; the menu's Multiplayer page). Each one's default is
+    // zero, so none needs a value in CONFIG_DEFAULT_VALUES (kept last for that)
+    int crossplay;            // [Multiplayer] Crossplay: XPLAY_* (net.h): 0 Off, the port's own hubs
+    char xroom[256];          // [Multiplayer] Room: a yuzu-family room (Eden, Citron, Sudachi...): host[:port] (24872)
+    char xroom_password[64];  // [Multiplayer] RoomPassword: the room's, if it has one
+    char xnick[24];           // [Multiplayer] Nickname: ours in a room (4 to 20 letters, digits, spaces, . _ -); "" one made up
+    char ryu_server[256];     // [Multiplayer] RyujinxServer: a Ryujinx LDN server, host[:port]; "" the default (net.h)
+    char ryu_passphrase[64];  // [Multiplayer] RyujinxPassphrase: a private game's (Ryujinx-xxxxxxxx); "" public
+    int xroom_host;           // [Multiplayer] RoomHost: this app hosts the room (runtime/net/xroomhost.c) and joins it
+    int xroom_host_port;      // [Multiplayer] RoomHostPort: its UDP port; 0 the rooms' usual 24872
 } Config;
+// The crossplay settings as the network threads read them (config_live_crossplay)
+typedef struct {
+    int mode;  // XPLAY_*
+    char room[256], password[64], nick[24], ryu_server[256], ryu_passphrase[64];
+    int host, host_port;  // RoomHost, RoomHostPort (0: 24872)
+} XplayLive;
 // The remembered lists (Config's ldn_recent_*: n entries of `width` bytes, the last first, no empty one between): add puts
 // a value at the front once (nocase: compared as host names are; an empty one is nothing), the last one dropped when it
 // is full; remove takes it out, the rest moving up (false: it wasn't there)
@@ -300,6 +316,7 @@ int config_live_reverb(void);           // [Audio] Reverb
 void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, Grass, FPS; not saved)
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key
 int config_live_online_notice(void);  // [Multiplayer] OnlineNoticeShown
+void config_live_crossplay(XplayLive *out);  // [Multiplayer] Crossplay, Room, RoomPassword, Nickname, Ryujinx*
 bool config_restart_required(const Config *draft); // Raw cold fields vs this process's startup INI values.
 float config_audio_gain(void);  // atomic, safe on audio threads; 0 while muted in the background
 void config_window_focus(bool focused);  // the window got / lost the focus (runtime/host_input.c)

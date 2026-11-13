@@ -552,6 +552,31 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "SyncSmallMonsters = Off\n"
     "\n"
+    "; Crossplay with emulators, PC and phones: Off plays in this app's hubs (above). Rooms: the multiplayer rooms of\n"
+    "; Eden, Citron, Sudachi, Suyu and yuzu (Room below). Ryujinx: Ryujinx's LDN servers (RyujinxServer below).\n"
+    "; Everyone needs the game's version 1.4.0. While it is on the game plays as the original: no small monster\n"
+    "; sync, monster HP settings or Village quests in the Hub.\n"
+    "; Default: Off\n"
+    "Crossplay = Off\n"
+    "\n"
+    "; The room (Crossplay = Rooms): host or host:port (default port 24872), its password if it has one, and your\n"
+    "; nickname in it (4 to 20 letters, digits, spaces, '.', '_', '-'; empty: Hunter-<4 digits>)\n"
+    "Room =\n"
+    "RoomPassword =\n"
+    "Nickname =\n"
+    "\n"
+    "; Host the room on this device (On): others join it at this device's address and RoomHostPort (0: 24872), with\n"
+    "; RoomPassword; from the internet, that UDP port must be forwarded to this device. Room is not used then.\n"
+    "RoomHost = Off\n"
+    "RoomHostPort = 0\n"
+    "\n"
+    "; Ryujinx's LDN server (Crossplay = Ryujinx): host or host:port (default port 30456). None is set: you choose one.\n"
+    "; The official server's rules say it is for Ryujinx players only and other programs may get their IP banned\n"
+    "; there; a server of your own (ldn-server) works for both. Which server you join is your own responsibility.\n"
+    "; A passphrase (Ryujinx-<8 of 0-9, a-f>) makes your games private: only players with the same one see them.\n"
+    "RyujinxServer =\n"
+    "RyujinxPassphrase =\n"
+    "\n"
     "[Monster HP]\n"
     "; Playercount-specific HP multipliers for monsters in Hub quests.\n"
     "; Only affects large monster health.\n"
@@ -767,6 +792,7 @@ static bool parse_aspect(const char *v, float *out) {
 #define ERR_FSR "Invalid FSR quality, provider, sharpness or reactive mask."
 #define ERR_NET "Invalid port or Join address list (no newlines, ';' or '#')."
 #define ERR_SERVER "Invalid hub server or matchmaking key (no newlines, ';' or '#')."
+#define ERR_XPLAY "Invalid crossplay setting, room, password, nickname or server (no newlines, ';' or '#')."
 #define ERR_HP "HP factors must be 0.05-20."
 #define ERR_VILLAGE "Invalid village HP or quest override count."
 #define ERR_CONFIRM "Invalid menu confirmation policy."
@@ -891,6 +917,19 @@ const ConfigSetting g_settings[] = {
     {"Multiplayer", "Key", SET_TEXT, F(ldn_key), sizeof g_config.ldn_key, 0, 0, NULL, NULL, false, ERR_SERVER},
     ON_OFF("Multiplayer", "SyncSmallMonsters", sync_small_monsters, true),
     ON_OFF("Multiplayer", "OnlineNoticeShown", online_notice, false),  // (written as the notice closes: settings_panel.cpp)
+    // crossplay with emulators (runtime/net/net.h: XPLAY_*, xroom.c, ryuldn.c)
+    {"Multiplayer", "Crossplay", SET_CHOICE, F(crossplay), 0, 0, 0,
+     "Off|no|false|0,Rooms|yuzu|eden|citron|sudachi|suyu|1,Ryujinx|ryubing|ldn|2", NULL, false, ERR_XPLAY},
+    {"Multiplayer", "Room", SET_TEXT, F(xroom), sizeof g_config.xroom, 0, 0, NULL, NULL, false, ERR_XPLAY},
+    {"Multiplayer", "RoomPassword", SET_TEXT, F(xroom_password), sizeof g_config.xroom_password, 0, 0, NULL, NULL, false,
+     ERR_XPLAY},
+    {"Multiplayer", "Nickname", SET_TEXT, F(xnick), sizeof g_config.xnick, 0, 0, NULL, NULL, false, ERR_XPLAY},
+    ON_OFF("Multiplayer", "RoomHost", xroom_host, false),
+    {"Multiplayer", "RoomHostPort", SET_INT, F(xroom_host_port), 0, 0, 65535, NULL, NULL, false, ERR_XPLAY},
+    {"Multiplayer", "RyujinxServer", SET_TEXT, F(ryu_server), sizeof g_config.ryu_server, 0, 0, NULL, NULL, false,
+     ERR_XPLAY},
+    {"Multiplayer", "RyujinxPassphrase", SET_TEXT, F(ryu_passphrase), sizeof g_config.ryu_passphrase, 0, 0, NULL, NULL,
+     false, ERR_XPLAY},
     {"Monster HP", "1Player|1Players", SET_FACTOR, F(hp.scale[0]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
     {"Monster HP", "2Players|2Player", SET_FACTOR, F(hp.scale[1]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},
     {"Monster HP", "3Players|3Player", SET_FACTOR, F(hp.scale[2]), 0, HP_SCALE_MIN, HP_SCALE_MAX, NULL, NULL, true, ERR_HP},

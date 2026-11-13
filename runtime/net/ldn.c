@@ -12,6 +12,10 @@
 // the server too ("MHGR" relay prefix), else through the link. Empty, Server is LDN_DEFAULT_SERVER (config.h), a
 // community server; nothing reaches any server before the one-time notice about playing online was closed (online_ok).
 //
+// Crossplay (ini [Multiplayer] Crossplay, net.h): the network is an emulator's online play instead, through a backend
+// (XBackend: xroom.c for the yuzu family's rooms, ryuldn.c for Ryujinx's LDN servers); nn::ldn below asks it to create,
+// find and join networks, and the game's packets go through it. No LAN search, hub server or port link then.
+//
 // Link frames: u32 size (of what follows), u8 type, payload. Structures are the SDK's (sizes and offsets below).
 #ifdef _WIN32
 #include <winsock2.h>
@@ -173,9 +177,23 @@ static struct {
     struct sockaddr_in lobby_addr;
 } L = {.mu = PTHREAD_MUTEX_INITIALIZER, .listen_s = BADSOCK, .disc_s = BADSOCK, .us = BADSOCK};
 
+// Crossplay: the backend of the network up now (or being made / joined), NULL: the port's own network
+static const XBackend *X_be;
+static const XBackend *xplay_backend(void) {  // the setting's
+    XplayLive x;
+    config_live_crossplay(&x);
+    return x.mode == XPLAY_ROOMS ? &g_xroom : x.mode == XPLAY_RYUJINX ? &g_ryuldn : NULL;
+}
+int ldn_crossplay(void) {
+    const XBackend *b = X_be ? X_be : xplay_backend();
+    return b == &g_xroom ? XPLAY_ROOMS : b == &g_ryuldn ? XPLAY_RYUJINX : XPLAY_OFF;
+}
+bool ldn_crossplay_vanilla(void) { return ldn_crossplay() != XPLAY_OFF; }
+
 // Scan results: where each found network's host is (hub: on the hub server at addr, 0: the host's own address).
 #define MAX_FOUND 32
 static struct { uint8_t bssid[6], session[16]; struct sockaddr_in addr; uint64_t hub; } found[MAX_FOUND];
+static uint8_t found_info[MAX_FOUND][NETINFO_SIZE];  // (crossplay: each one's NetworkInfo, for the backend's connect)
 static int nfound;
 
 static void signal_change(void) {
@@ -356,7 +374,9 @@ static Hello make_hello(bool scan_only, const uint8_t *user_name) {
 
 // ---- the virtual network's packets (vsock.c -> here)
 uint32_t ldn_own_ip(void) { return L.own_ip; }
-uint32_t ldn_broadcast_ip(void) { return L.subnet ? L.subnet | 0xFF : 0xFFFFFFFFu; }
+// (the network's mask: /24, or the crossplay backend's - Ryujinx's servers give /16)
+static uint32_t net_mask(void) { const XBackend *xb = X_be; return xb ? xb->netmask() : 0xFFFFFF00u; }
+uint32_t ldn_broadcast_ip(void) { return L.subnet ? L.subnet | ~net_mask() : 0xFFFFFFFFu; }
 bool ldn_net_up(void) { return L.state == ST_AP_CREATED || L.state == ST_STATION_CONNECTED; }
 bool ldn_hosting(void) { return L.state == ST_AP_CREATED; }
 bool ldn_party(int *n, int *max, char *id, size_t size) {
@@ -392,6 +412,13 @@ static void host_route(int from, const VPacket *p, const void *data, uint32_t le
 }
 
 void ldn_send(const VPacket *p, const void *data, uint32_t len) {
+    const XBackend *xb = X_be;
+    if (xb && ldn_net_up()) {
+        bool all = p->dst_ip == ldn_broadcast_ip() || p->dst_ip == 0xFFFFFFFFu;
+        if (all || p->dst_ip == L.own_ip) vsock_deliver(p, data, len);  // (a broadcast reaches the sender too)
+        if (p->dst_ip != L.own_ip) xb->send(p, data, len);
+        return;
+    }
     if (L.state == ST_AP_CREATED) { host_route(0, p, data, len); return; }
     if (L.state != ST_STATION_CONNECTED) return;
     bool all = p->dst_ip == ldn_broadcast_ip() || p->dst_ip == 0xFFFFFFFFu;
@@ -404,6 +431,7 @@ void ldn_send(const VPacket *p, const void *data, uint32_t len) {
 
 // The port's own messages to every other game in the network (reliable, in order: the TCP link).
 void ldn_send_aux(const void *data, uint32_t len) {
+    if (X_be) return;  // (crossplay: the others' games have none of the port's additions)
     if (L.state == ST_AP_CREATED) {
         for (int i = 1; i < MAX_NODES; i++)
             if (L.nodes[i].alive) link_send(&L.nodes[i], F_AUX, data, len, NULL, 0);
@@ -480,6 +508,10 @@ static void link_received(int from, const VPacket *p, const void *data, uint32_t
 
 // ---- host
 static void push_info_locked(int except) {  // to every station (and the hub server's list): the network changed
+    if (X_be) {
+        if (L.state == ST_AP_CREATED) X_be->update(L.info);
+        return;
+    }
     for (int i = 1; i < MAX_NODES; i++)
         if (i != except && L.nodes[i].alive) link_send(&L.nodes[i], F_INFO, L.info, NETINFO_SIZE, NULL, 0);
     L.lobby_dirty = true;
@@ -1341,6 +1373,50 @@ static int discover(uint8_t (*infos)[NETINFO_SIZE], struct sockaddr_in *addrs, i
     return n;
 }
 
+// ---- crossplay: what a backend tells (from its thread)
+void ldn_x_info(const uint8_t *info) {
+    pthread_mutex_lock(&L.mu);
+    if (X_be && ldn_net_up()) {
+        memcpy(L.info, info, NETINFO_SIZE);
+        if (L.state == ST_STATION_CONNECTED) info_sane(L.info);
+    }
+    pthread_mutex_unlock(&L.mu);
+    signal_change();
+}
+void ldn_x_lost(int reason) {
+    if (!X_be || L.state != ST_STATION_CONNECTED) return;
+    L.state = ST_STATION, L.reason = reason;
+    L.own_ip = L.subnet = 0;
+    vsock_network_down();
+    signal_change();
+}
+void ldn_x_packet(const VPacket *p, const void *data, uint32_t len) {
+    if (X_be && ldn_net_up()) vsock_deliver(p, data, len);
+}
+void ldn_x_peer_gone(uint32_t ip) { vsock_peer_gone(ip); }
+
+// The backend's room / server, ready for a network: false (and a notice) when it isn't
+static bool xplay_ready(const XBackend *b, int wait_ms) {
+    XplayLive x;
+    config_live_crossplay(&x);
+    const char *where = b == &g_xroom ? x.room : *x.ryu_server ? x.ryu_server : "Ryujinx";
+    if (!online_ok(where, wait_ms)) return false;
+    if (b->ready(wait_ms)) return true;
+    XStatus st;
+    if (b == &g_xroom) xroom_status(&st);
+    else ryuldn_status(&st);
+    int lang = config_language();
+    static uint64_t last;
+    if (plat_now_ns() - last > 3000000000ull) {  // (a search and a hub right after it: one notice)
+        last = plat_now_ns();
+        overlay_notice(settings_text(lang, b == &g_xroom ? UI_TEXT("Crossplay: can't enter the room")
+                                                         : UI_TEXT("Crossplay: can't reach the Ryujinx server")),
+                       st.error[0] ? st.error : settings_text(lang, UI_TEXT("It doesn't answer yet. Try again in a moment.")));
+    }
+    LOG("[ldn] crossplay (%s): not ready: %s\n", b->name, st.error);
+    return false;
+}
+
 // ---- nn::ldn
 
 HLE_FUNC("_ZN2nn3ldn10InitializeEv", ldn_initialize) { NTRACE();
@@ -1355,11 +1431,25 @@ HLE_FUNC("_ZN2nn3ldn10InitializeEv", ldn_initialize) { NTRACE();
     pthread_mutex_unlock(&L.mu);
     ONCE("[ldn] local play over IP: host port %d, join %s (state event %x)\n", g_config.ldn_port,
          g_config.ldn_join[0] ? g_config.ldn_join : "(LAN search only)", L.ev_r);
+    const XBackend *xb = xplay_backend();
+    if (xb && settings_panel_online_ok(NULL)) {  // (into the room / server now, as an emulator's player sits in one)
+        LOG("[ldn] crossplay: %s\n", xb->name);
+        xb->ready(0);
+    }
     RET(0);
 }
 
 static void to_initialized(void) {
     int st = L.state;
+    if (X_be) {
+        const XBackend *xb = X_be;
+        if (st == ST_AP_CREATED) xb->destroy();
+        if (st == ST_STATION_CONNECTED) xb->disconnect();
+        if (st == ST_AP_CREATED || st == ST_STATION_CONNECTED) vsock_network_down();
+        X_be = NULL;
+        L.own_ip = L.subnet = 0;
+        return;
+    }
     if (st == ST_AP_CREATED || st == ST_ACCESS_POINT) host_stop(DR_DESTROYED_BY_USER);
     if (st == ST_STATION_CONNECTED || st == ST_STATION || st == ST_ERROR) station_leave();
     if (st == ST_AP_CREATED) vsock_network_down();
@@ -1395,7 +1485,7 @@ HLE_FUNC("_ZN2nn3ldn14GetNetworkInfoEPNS0_11NetworkInfoE", ldn_get_network_info)
 HLE_FUNC("_ZN2nn3ldn14GetIpv4AddressEPNS0_11Ipv4AddressEPNS0_10SubnetMaskE", ldn_get_ipv4) { NTRACE();
     if (!ldn_net_up()) { RET(R_INVALID_STATE); return; }
     if (ARG(0)) ST32(ARG(0), L.own_ip);
-    if (ARG(1)) ST32(ARG(1), 0xFFFFFF00u);
+    if (ARG(1)) ST32(ARG(1), net_mask());
     RET(0);
 }
 
@@ -1434,6 +1524,8 @@ HLE_FUNC("_ZN2nn3ldn16CloseAccessPointEv", ldn_close_ap) { NTRACE();
 
 static uint32_t create_network(const uint8_t *cfg, const uint8_t *sec, const uint8_t *sec_param, const uint8_t *user) {
     if (L.state != ST_ACCESS_POINT) return R_INVALID_STATE;
+    const XBackend *xb = xplay_backend();
+    if (xb && !xplay_ready(xb, 10000)) return R_INVALID_STATE;
     pthread_mutex_lock(&L.mu);
     memset(L.info, 0, NETINFO_SIZE);
     memcpy(L.info, cfg, 0x10);  // IntentId
@@ -1444,6 +1536,7 @@ static uint32_t create_network(const uint8_t *cfg, const uint8_t *sec, const uin
         rand_bytes(L.info + NI_SEC_PARAM, 0x10);
         rand_bytes(L.info + NI_SESSION_ID, 0x10);
     }
+    if (xb) xb->mac(L.mac);  // (the network's own: the room's address in it)
     memcpy(L.info + NI_BSSID, L.mac, 6);
     char ssid[33];
     snprintf(ssid, sizeof ssid, "MHGURecomp%08x%08x", arc4random(), arc4random());
@@ -1461,6 +1554,7 @@ static uint32_t create_network(const uint8_t *cfg, const uint8_t *sec, const uin
     L.lcv = rd16(cfg + 0x14);
     L.subnet = 0xA9FE0000u | (uint32_t)(1 + arc4random() % 254) << 8;  // 169.254.x.0/24
     L.own_ip = L.subnet | 1;
+    if (xb) L.own_ip = xb->address(), L.subnet = L.own_ip & xb->netmask();  // (the room's / server's)
     uint8_t *nd = node_at(L.info, 0);
     wr32(nd + NODE_IP, L.own_ip);
     memcpy(nd + NODE_MAC, L.mac, 6);
@@ -1474,6 +1568,23 @@ static uint32_t create_network(const uint8_t *cfg, const uint8_t *sec, const uin
     memcpy(L.info + NI_AUTH_ID, &auth, 8);
     memset(L.nodes, 0, sizeof L.nodes);
     for (int i = 0; i < MAX_NODES; i++) pthread_mutex_init(&L.nodes[i].wmu, NULL);
+    if (xb) {
+        uint32_t r = xb->create(L.info, sec, user);
+        if (r) {
+            pthread_mutex_unlock(&L.mu);
+            LOG("[ldn] crossplay (%s): the network could not be made (%#x)\n", xb->name, r);
+            L.own_ip = L.subnet = 0;
+            return r;
+        }
+        L.own_ip = rd32(node_at(L.info, 0) + NODE_IP), L.subnet = L.own_ip & xb->netmask();
+        X_be = xb;
+        pthread_mutex_unlock(&L.mu);
+        L.state = ST_AP_CREATED;
+        LOG("[ldn] network created through %s: %s, up to %d players, version %u\n", xb->name, ipstr(L.own_ip),
+            L.info[NI_NODE_MAX], L.lcv);
+        signal_change();
+        return 0;
+    }
     pthread_mutex_unlock(&L.mu);
     host_start();
     L.state = ST_AP_CREATED;
@@ -1494,7 +1605,8 @@ HLE_FUNC("_ZN2nn3ldn20CreateNetworkPrivateERKNS0_13NetworkConfigERKNS0_14Securit
 
 HLE_FUNC("_ZN2nn3ldn14DestroyNetworkEv", ldn_destroy) { NTRACE();
     if (L.state != ST_AP_CREATED) { RET(R_INVALID_STATE); return; }
-    host_stop(DR_DESTROYED_BY_USER);
+    if (X_be) X_be->destroy(), X_be = NULL;
+    else host_stop(DR_DESTROYED_BY_USER);
     vsock_network_down();
     L.state = ST_ACCESS_POINT;
     L.own_ip = L.subnet = 0;
@@ -1528,6 +1640,7 @@ HLE_FUNC("_ZN2nn3ldn22SetStationAcceptPolicyENS0_12AcceptPolicyE", ldn_set_accep
 
 // Reject(Ipv4Address): the host sends a player away
 HLE_FUNC("_ZN2nn3ldn6RejectENS0_11Ipv4AddressE", ldn_reject) { NTRACE();
+    if (X_be) { X_be->reject(ARG(0)); RET(0); return; }
     uint32_t r = DR_REJECTED;
     for (int i = 1; i < MAX_NODES; i++)
         if (L.nodes[i].alive && L.nodes[i].ip == ARG(0)) {
@@ -1554,7 +1667,11 @@ HLE_FUNC("_ZN2nn3ldn12CloseStationEv", ldn_close_station) { NTRACE();
 
 static bool filter_ok(const uint8_t *info, const uint8_t *f) {
     uint32_t flags = rd32(f + 0x5C);
-    if ((flags & SF_LOCAL_COMM_ID) && memcmp(info + NI_LOCAL_COMM_ID, f, 8)) return false;
+    if ((flags & SF_LOCAL_COMM_ID) && memcmp(info + NI_LOCAL_COMM_ID, f, 8)) {
+        // (-1 is "this program's own", which the system makes the program's id: a Ryujinx server lists that one)
+        uint64_t want = rd64(f), have = rd64(info + NI_LOCAL_COMM_ID);
+        if (!(want == ~0ull && have == XPLAY_TITLE_ID)) return false;
+    }
     if ((flags & SF_SCENE_ID) && rd16(info + NI_SCENE_ID) != rd16(f + 0x0A)) return false;
     if ((flags & SF_SESSION_ID) && memcmp(info + NI_SESSION_ID, f + 0x10, 0x10)) return false;
     if ((flags & SF_BSSID) && memcmp(info + NI_BSSID, f + 0x24, 6)) return false;
@@ -1572,6 +1689,24 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     struct sockaddr_in addrs[MAX_FOUND];
     uint64_t hubs[MAX_FOUND] = {0};
     pthread_t lt;
+    const XBackend *xb = xplay_backend();
+    if (xb) {  // crossplay: the room's / server's networks only
+        int n = xplay_ready(xb, 10000) ? xb->scan(filter, infos, MAX_FOUND) : 0, k = 0;
+        nfound = 0;
+        for (int i = 0; i < n; i++) {
+            if (!info_sane(infos[i]) || !filter_ok(infos[i], filter)) continue;
+            memcpy(found[nfound].bssid, infos[i] + NI_BSSID, 6);
+            memcpy(found[nfound].session, infos[i] + NI_SESSION_ID, 16);
+            memcpy(found_info[nfound], infos[i], NETINFO_SIZE);
+            found[nfound].hub = 0;
+            nfound++;
+            if (k < max) memcpy((uint8_t *)G2H(out) + (size_t)k++ * NETINFO_SIZE, infos[i], NETINFO_SIZE);
+        }
+        if (pcount) ST32(pcount, k);
+        LOG("[ldn] scan through %s: %d network(s), %d given to the game\n", xb->name, nfound, k);
+        RET(0);
+        return;
+    }
     hnet_init();  // (before the thread's first socket call)
     bool asked = lobby_server(online.server) && online_ok(online.server, 60000) &&
                  !pthread_create(&lt, NULL, lobby_list_thread, &online);
@@ -1607,11 +1742,40 @@ HLE_FUNC("_ZN2nn3ldn4ScanEPNS0_11NetworkInfoEPiiRKNS0_10ScanFilterEi", ldn_scan)
     RET(0);
 }
 
+// Crossplay: joining a network the backend found (i: in found)
+static uint32_t connect_crossplay(const XBackend *xb, int i, const uint8_t *user, uint16_t lcv) {
+    if (!xplay_ready(xb, 5000)) return R_CONNECT_FAILURE;
+    uint8_t node[NODE_SIZE] = {0}, info[NETINFO_SIZE];
+    uint32_t ip = xb->address();
+    wr32(node + NODE_IP, ip);
+    xb->mac(L.mac);
+    memcpy(node + NODE_MAC, L.mac, 6);
+    node[NODE_CONNECTED] = 1;
+    memcpy(node + NODE_NAME, user, 0x20);
+    wr16(node + NODE_LCV, lcv);
+    L.lcv = lcv;
+    uint32_t r = xb->connect(found_info[i], node, info);
+    if (r) return r;
+    ip = xb->address();  // (a server may give it only now)
+    pthread_mutex_lock(&L.mu);
+    memcpy(L.info, info, NETINFO_SIZE);
+    info_sane(L.info);
+    L.own_ip = ip, L.subnet = ip & xb->netmask();
+    X_be = xb;
+    L.state = ST_STATION_CONNECTED, L.reason = DR_NONE;
+    pthread_mutex_unlock(&L.mu);
+    LOG("[ldn] joined a network through %s as %s\n", xb->name, ipstr(ip));
+    signal_change();
+    return 0;
+}
+
 static uint32_t connect_network(const uint8_t *info, const uint8_t *user, uint16_t lcv) {
     if (L.state != ST_STATION) return R_INVALID_STATE;
     int i = 0;
     while (i < nfound && memcmp(found[i].bssid, info + NI_BSSID, 6)) i++;
     if (i == nfound) return R_CONNECT_NOT_FOUND;
+    const XBackend *xb = xplay_backend();
+    if (xb) return connect_crossplay(xb, i, user, lcv);
     hsock s;
     uint32_t pair = 0;
     uint64_t secret = 0;
@@ -1698,7 +1862,8 @@ HLE_FUNC("_ZN2nn3ldn14ConnectPrivateERKNS0_13NetworkConfigERKNS0_14SecurityConfi
 
 HLE_FUNC("_ZN2nn3ldn10DisconnectEv", ldn_disconnect) { NTRACE();
     if (L.state != ST_STATION_CONNECTED && L.state != ST_ERROR) { RET(R_INVALID_STATE); return; }
-    station_leave();
+    if (X_be) X_be->disconnect(), X_be = NULL, vsock_network_down();
+    else station_leave();
     L.state = ST_STATION, L.reason = DR_BY_USER;
     L.own_ip = L.subnet = 0;
     signal_change();

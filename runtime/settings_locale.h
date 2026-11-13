@@ -504,6 +504,12 @@ static inline const char *settings_text(int language, const char *english) {
         {"Could not join the hub.", "No se pudo entrar en la sala."},
         {"Your hub is listed online again.", "Tu sala vuelve a aparecer en línea."},
         {"The host did not answer through the hub server.", "El anfitrión no respondió a través del servidor de salas."},
+        // crossplay with emulators (runtime/net/ldn.c xplay_ready; the menu's rows have theirs beside them, settings_panel.cpp)
+        {"Crossplay: can't enter the room", "Juego cruzado: no se puede entrar a la sala"},
+        {"Crossplay: can't reach the Ryujinx server", "Juego cruzado: no se puede conectar con el servidor de Ryujinx"},
+        {"It doesn't answer yet. Try again in a moment.", "Todavía no responde. Prueba otra vez en un momento."},
+        {"Invalid crossplay setting, room, password, nickname or server (no newlines, ';' or '#').",
+         "Juego cruzado, sala, contraseña, apodo o servidor no válidos (sin saltos de línea, ';' ni '#')."},
         {"Sync small monsters", "Sincronizar monstruos pequeños"},
         {"Village quests in Hub", "Misiones de aldea en sala"},
         {"Discord Rich Presence", "Presencia en Discord"},

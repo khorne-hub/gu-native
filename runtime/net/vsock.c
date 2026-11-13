@@ -33,6 +33,7 @@ enum { T_NONE, T_LISTEN, T_CONNECTING, T_CONNECTED, T_REFUSED };
 typedef struct {
     bool used, pending;      // pending: accepted by the network, not yet by the game (in a listener's queue)
     int type;                // S_SOCK_*
+    int protocol;            // as the game opened it (0, or 17 for UDP): crossplay rooms tell it apart (xroom.c)
     bool nonblock;
     uint32_t ip, rip;        // local / remote address (rip: TCP peer, or a connected UDP socket's)
     uint16_t port, rport;
@@ -258,9 +259,11 @@ static void x_socket(Cpu *c) {
     if (type != S_SOCK_STREAM && type != S_SOCK_DGRAM) { RET(fail(S_EPROTONOSUPPORT)); return; }
     pthread_mutex_lock(&mu);
     VSock *s = alloc_sock(type);
+    if (s) s->protocol = (int)ARG(2);
     pthread_mutex_unlock(&mu);
     if (!s) { RET(fail(S_EMFILE)); return; }
     NETLOG("[net] socket(%s) -> %d\n", type == S_SOCK_DGRAM ? "udp" : "tcp", fd_of(s));
+    if (type == S_SOCK_DGRAM) ONCE("[net] the game's datagram sockets: protocol %d\n", (int)ARG(2));
     RET(fd_of(s));
 }
 
@@ -385,7 +388,7 @@ static int do_send(Cpu *c, int fd, uint32_t buf, uint32_t len, int flags, uint32
             ip = s->rip, port = s->rport;
         }
         if (!s->port) s->port = ephemeral(S_SOCK_DGRAM);
-        VPacket p = {s->ip ? s->ip : ldn_own_ip(), ip, s->port, port, VPROTO_UDP, 0, 0};
+        VPacket p = {s->ip ? s->ip : ldn_own_ip(), ip, s->port, port, VPROTO_UDP, 0, (uint16_t)s->protocol};
         pthread_mutex_unlock(&mu);
         if (len > 0xFFE0) return fail(S_EMSGSIZE);
         if (!ldn_net_up()) return fail(S_ENETUNREACH);

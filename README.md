@@ -295,6 +295,33 @@ Phones and PCs with 0.1.6 or later meet in the same hubs, through the server or 
 phones in one hub through the default server with a matchmaking key, and a PC joining a phone's hub through the server and
 on the same Wi-Fi; a full quest together not yet.
 
+#### Crossplay with emulators
+
+Players of this app (phones and PCs) can play with players of emulators running the game, in their online play. Under the
+gear, **Multiplayer**, **Play online with**:
+
+- **Emulator rooms (Eden, Citron, Sudachi, yuzu)**: the multiplayer rooms of the yuzu family of emulators.
+  1. Choose a room: **Public rooms** lists the public rooms where the game is played (from the lobby those emulators use,
+     run by players, not by this project), or type one under **Room** (its address, and `:port` if it isn't 24872), with
+     its **Room password** if it has one. Choose a **Nickname** (4 to 20 letters, digits, spaces, `.`, `_`, `-`).
+  2. Or **Host the room on this device**: the others join it at the address the menu shows. On the same Wi-Fi that's all;
+     from the internet, forward UDP port 24872 (or the one you set) on your router to this device.
+  3. Save. Then play as in [Local play](#local-play): **Create Hub** and **Search Hubs** now go through the room, and the
+     emulator players in it find your hub and you theirs. **Room: state** says whether you are in it.
+- **Ryujinx (LDN)**: the LDN servers of Ryujinx (and Ryubing). Type the **Ryujinx server** the Ryujinx players use (none is
+  set: you choose). The rules of Ryujinx's official server say it is for Ryujinx players only and that other programs may
+  get their IP address banned there; a server of your own (the public ldn-server program) works for both. Which server you
+  join is your own decision and your own responsibility. A **Passphrase** (`Ryujinx-` and 8 characters of `0-9`, `a-f`, as
+  Ryujinx makes it) keeps your hubs private.
+
+Everyone needs version 1.4.0 of the game. A player on another version can't join your hub, nor you theirs: the app says
+which version they have, and the room's chat tells them. While crossplay is on the game plays as the original: small
+monster sync, the monster HP settings and Village quests in the Hub stay off. **This app's hubs** (the default) keeps
+everything as before.
+
+Tested on a PC: two copies of the game met in a hub through yuzu's own room server, and through a stand-in of Ryujinx's
+server. With the emulators themselves and on phones it is not tested yet.
+
 #### Monster HP and Village quests in the Hub
 
 Adjustable monster HP (gear, **Gameplay**) and Village quests in the Hub (gear, **Multiplayer**) come from MHGURecomp, the project this
@@ -660,7 +687,7 @@ From **F1**, **Menu Options**:
 ### Multiplayer
 
 Local play and hubs over the internet work as on the phone, with the same code and the same settings, under **F1**,
-**Multiplayer**: see [Local play](#local-play) and [Over the internet](#over-the-internet). In town, press ZL (Tab) and choose
+**Multiplayer**: see [Local play](#local-play), [Over the internet](#over-the-internet) and [Crossplay with emulators](#crossplay-with-emulators). In town, press ZL (Tab) and choose
 **Connect**.
 
 - **Create Hub** is confirmed with X: R on a keyboard.

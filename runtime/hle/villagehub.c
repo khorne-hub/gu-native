@@ -25,6 +25,7 @@
 
 #include "../config.h"
 #include "../hle.h"
+#include "../net/net.h"
 #include "input.h"
 
 // main v1.4.0, runtime addresses
@@ -187,8 +188,10 @@ static void ui_update(Cpu *c) {
     held = b;
     uint32_t ui = c->r[0], a = area_addr();
     uint8_t st = LD8(ui + UI_STATE);
+    // (crossplay: the emulators' games have no Village quests in the Hub, net.h; a list shown is put back to the Hub's)
+    bool crossplay = ldn_crossplay_vanilla();
     if (a && hub_area(LD8(a)) && (st == UI_RANK_MENU || st == UI_STAR_MENU) &&
-        (pressed & ((1ull << BTN_L) | (1ull << BTN_R)))) {
+        ((!crossplay && (pressed & ((1ull << BTN_L) | (1ull << BTN_R)))) || (crossplay && g_village))) {
         g_village = !g_village;
         reload_list(c);
         ST8(ui + UI_STATE, 0);  // (lays the menu out again)
