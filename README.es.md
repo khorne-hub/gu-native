@@ -18,8 +18,8 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 - [Android](#android): [Qué ofrece](#qué-ofrece), [¿Qué tan bien corre?](#qué-tan-bien-corre),
   [Qué necesitas](#qué-necesitas), [Instalación](#instalación), [Partidas](#partidas), [Trucos y mods](#trucos-y-mods),
   [Multijugador](#multijugador), [Dónde se guarda cada cosa](#dónde-se-guarda-cada-cosa),
-  [Actualizar](#actualizar-a-una-versión-nueva), [Desinstalar](#desinstalar), [Samsung: Game Booster](#samsung-game-booster),
-  [Si algo falla](#si-algo-falla)
+  [Actualizar](#actualizar-a-una-versión-nueva), [Pasarte a la app oficial](#pasarte-a-la-app-oficial),
+  [Desinstalar](#desinstalar), [Samsung: Game Booster](#samsung-game-booster), [Si algo falla](#si-algo-falla)
 - [PC (Windows)](#pc-windows): [Qué ofrece](#qué-ofrece-1), [¿Qué tan bien corre?](#qué-tan-bien-corre-1),
   [Qué necesitas](#qué-necesitas-1), [Instalación](#instalación-1), [Controles](#controles), [Gráficos y FPS](#gráficos-y-fps),
   [Partidas](#partidas-1), [Trucos y mods](#trucos-y-mods-1), [Multijugador](#multijugador-1),
@@ -107,13 +107,21 @@ Para que vaya más rápido, activa el modo gama baja: entra al engranaje, **Grá
 ### Qué necesitas
 
 - **Un dispositivo Android:** Android 9 o superior (en Android 9 es experimental: no se pudo probar en uno), de 64 bits, con Vulkan 1.2. Casi cualquiera de los últimos años. Con Vulkan 1.1 funciona de forma experimental. En procesadores anteriores a 2018 la app adapta el código del juego la primera vez que arranca, unos segundos.
+  Un teléfono con un Android de 32 bits (muchos teléfonos con Android Go) no puede instalar la app: Android dice algo
+  sobre "ABI". Una actualización no puede cambiar eso.
 - **Unos 13 GB libres** en el dispositivo.
 - **Una PC con Windows o Linux,** solo para la instalación, con unos 10 GB libres.
 - **Tu propia copia del juego,** actualizada a la versión 1.4.0.
 
 ### Instalación
 
-Son tres pasos, y se hacen una sola vez.
+Son tres pasos, y se hacen una sola vez. En resumen:
+
+1. En tu PC, pon las carpetas `exefs` y `romfs` de tu juego en una misma carpeta.
+2. Usa la herramienta de la misma versión que tu APK. Crea el código del juego, dos archivos, en esa carpeta.
+3. Copia la carpeta a tu teléfono, instala el APK y elige la carpeta en la app.
+
+¿Algo salió mal? La mayoría de los problemas están en [Si algo falla](#si-algo-falla), con qué hacer.
 
 #### Paso 1: Consigue los archivos de tu juego
 
@@ -132,6 +140,10 @@ MHGU
 └─ romfs
 ```
 
+Revísala: `romfs` tiene 35.531 archivos y ocupa unos 12,3 GB. Los archivos del juego sacados de otros lados suelen venir
+incompletos o dañados: entonces partes del juego se ven negras, se cierra, o la app dice que faltan archivos. Usa los de tu
+propia copia.
+
 Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivos del juego, keys ni enlaces a ellos.
 
 #### Paso 2: Crea el código del juego
@@ -139,8 +151,10 @@ Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivo
 La app no trae código del juego, así que creas el tuyo a partir de tu copia. Se hace en tu PC y no envía nada a ningún lado.
 
 1. Instala [Python](https://www.python.org/downloads/). En Windows, marca **Add python.exe to PATH** en el instalador.
-2. En esta página, haz clic en el botón verde **Code**, luego en **Download ZIP**, y descomprímelo.
-3. Abre la carpeta descomprimida y entra a `tools`.
+2. Baja la herramienta de la misma versión que tu APK: en [Releases](../../releases/latest), en **Assets**, haz clic en
+   **Source code (zip)**.
+3. Descomprímelo entero (en Windows: clic derecho en el ZIP, **Extraer todo**). Abre la carpeta descomprimida y entra a
+   `tools`. Deja `build_game.py` ahí: necesita las otras carpetas de la descarga a su lado.
 4. Windows: haz clic en la barra de direcciones de esa ventana, escribe `cmd` y presiona Enter. Linux: abre una terminal en esa carpeta.
 5. Escribe esto, con tu propia carpeta, y presiona Enter:
 
@@ -168,9 +182,11 @@ unos minutos más. Si lo vuelves a hacer, conserva lo que ya está creado y al d
 #### Paso 3: Instala
 
 1. Copia la carpeta `MHGU` completa a tu dispositivo, por ejemplo con un cable USB. Puede ir en cualquier lugar de la memoria o de
-   una tarjeta SD, menos dentro de `Android/data`.
+   una tarjeta SD, menos dentro de `Android/data`. Espera a que termine la copia: `romfs` también tiene que ocupar unos
+   12,3 GB en el dispositivo.
 2. En tu dispositivo, descarga el APK desde [Releases](../../releases/latest) y ábrelo. Android puede pedirte permitir la instalación
-   de apps desde el navegador.
+   de apps desde el navegador. Si tenías una copia de la app bajada de otra página, Android no instala esta encima: mira
+   [Pasarte a la app oficial](#pasarte-a-la-app-oficial).
 3. Abre **MHGU**, toca **Dar permiso y elegir carpeta** y activa el acceso a los archivos cuando Android lo pida. El juego solo lee esa carpeta.
 4. Busca tu carpeta `MHGU` (aparece con un ✓) y toca **Usar esta carpeta**. La app tiene su propio explorador; si prefieres el de Android, toca **Selector de Android**.
 
@@ -295,9 +311,31 @@ MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo 
 1. Descarga el APK nuevo desde [Releases](../../releases/latest) y ábrelo: se instala encima de la app que tienes. Tus
    partidas, ajustes, controles táctiles y carpeta del juego se mantienen.
 2. Si la versión nueva necesita un código del juego nuevo, la app dice "Este libmhgugame.so es de otra versión" al arrancar.
-   Haz de nuevo el paso 2 con la herramienta de la versión nueva (otra vez el ZIP de esta página, o **Source code (zip)** en
-   su versión de Releases) y copia los dos archivos nuevos a tu carpeta del dispositivo. De la 0.1.6 a la 0.1.7 el código
-   del juego es el mismo.
+   Haz de nuevo el paso 2 con la herramienta de la versión nueva (**Source code (zip)** en su versión de Releases) y copia
+   los dos archivos nuevos a tu carpeta del dispositivo. De la 0.1.6 a la 0.1.9.2 el código del juego es el mismo.
+
+### Pasarte a la app oficial
+
+¿Bajaste la app de otra página (apkvision, por ejemplo)? Esa copia la firmó otra persona. Android solo instala una
+actualización firmada igual que la app que tienes, así que el APK oficial no se instala encima. Android dice entonces "No
+se instaló la app" o "el paquete entra en conflicto con un paquete existente". Haz esto una vez:
+
+1. Guarda tu partida. En la app que tienes: engranaje, **Opciones del menú**, **Exportar partida**, y elige una carpeta,
+   como Descargas.
+2. Abre los **Ajustes** del teléfono, **Aplicaciones**, **MHGU**, **Almacenamiento**, y toca **Borrar datos** (o **Borrar
+   almacenamiento**).
+3. Toca **Desinstalar**. Si Android pregunta si quieres conservar los datos de la app, di que no.
+4. Instala el APK desde [Releases](../../releases/latest).
+5. Ábrelo y elige tu carpeta del juego. Después engranaje, **Opciones del menú**, **Importar partida**, y elige el archivo
+   `system` de la carpeta del paso 1.
+
+Tu carpeta del juego y el código del juego que creaste quedan como están. ¿Sigue diciendo "No se instaló la app"?
+
+- Desinstalaste la copia vieja pero conservaste sus datos: instala de nuevo esa copia vieja y haz los pasos 2 y 3.
+- La copia vieja puede estar también en otro espacio del teléfono (Segundo espacio, Apps duales, Carpeta segura o un
+  perfil de trabajo): desinstálala también ahí.
+
+El APK oficial está solo en las [Releases](../../releases/latest) de esta página: mira [Descargas oficiales](#descargas-oficiales).
 
 ### Desinstalar
 
@@ -325,13 +363,17 @@ puntos, **Añadir juegos**.
 
 | Problema | Qué hacer |
 |---|---|
+| "No se instaló la app", o "el paquete entra en conflicto con un paquete existente" | Tienes una copia de la app bajada de otra página, firmada por otra persona. Guarda tu partida y sigue [Pasarte a la app oficial](#pasarte-a-la-app-oficial) |
+| El instalador habla de "ABI", o dice que la app no es compatible | Este teléfono tiene un Android de 32 bits (por ejemplo Android Go). La app necesita uno de 64 bits, así que no se puede instalar en este teléfono |
 | `python` no se reconoce | Instala Python de nuevo, marca **Add python.exe to PATH** y abre otra terminal |
 | "Failed to build installable wheels" para lz4 | La herramienta desde la 0.1.9 lee el código del juego sin el paquete lz4 cuando tu Python no puede instalarlo: descárgala de nuevo |
+| `FileNotFoundError` con `hle_symbols.txt`, o la herramienta no encuentra sus propios archivos | La herramienta se usó fuera de su descarga. Descomprime entero el **Source code (zip)** y usa `build_game.py` desde su carpeta `tools`, sin moverlo |
 | "there is no exefs/main" | La ruta debe ser la carpeta que contiene `exefs` y `romfs` |
 | "Este exefs no es de la versión 1.4.0" | Usa el `exefs` con la actualización 1.4.0 |
 | "romfs está incompleto" | Usa el `romfs` del juego base con la actualización aplicada. Tiene 35.531 archivos |
 | "Falta libmhgugame.so" | Haz el paso 2 y copia los dos archivos nuevos a la carpeta de tu dispositivo |
-| "Este libmhgugame.so es de otra versión" | Una versión nueva de la app lo necesita otra vez: repite el paso 2 con la nueva descarga |
+| "Este libmhgugame.so es de otra versión" | El código del juego se creó con la herramienta de otra versión. Créalo de nuevo con la herramienta de la misma versión que tu APK (**Source code (zip)** en [Releases](../../releases/latest)). Después copia los dos archivos nuevos, `libmhgugame.so` y `libmhgugame.id`, a la carpeta de tu dispositivo |
+| Zonas negras, partes que faltan, o se cierra, con archivos del juego que no sacaste tú | Los archivos del juego de otros lados suelen venir incompletos o dañados, y la app no puede arreglarlos. Arma la carpeta con tu propia copia, como dice el [paso 1](#paso-1-consigue-los-archivos-de-tu-juego), y cópiala de nuevo al dispositivo |
 | La pantalla de archivos del juego dice "EACCES" u "open failed" | Otra app (un administrador de archivos, por ejemplo con Shizuku) creó la carpeta de la app en `Android/data`. Desde la 0.1.9 la app la recupera, o guarda sus archivos en su carpeta privada y lo avisa |
 | El juego se cierra solo | Cierra otras apps y baja la Resolución 3D. Suele ser falta de memoria |
 | Pantalla negra con solo los controles táctiles, o se cierra al presionar A | La copia de `romfs` a tu dispositivo no terminó. Cópiala de nuevo y revisa que ocupe 12,3 GB |
@@ -339,7 +381,7 @@ puntos, **Añadir juegos**.
 | Se cierra después de unos minutos de juego | Actualiza a la 0.1.6 o una más nueva: usa la memoria de video de otra forma en GPU PowerVR. Si sigue pasando, comparte el registro: anota la memoria cada minuto |
 | En un teléfono débil va lento | Activa el modo gama baja, apaga **Sombras** y prueba la resolución 3D al 33 % o al 25 %. Si sigue lento: modo gama baja, **Tostadora** |
 
-Si sigue fallando, pregunta en el [Discord](https://discord.gg/sk5xEjEMwF) o abre un [issue](../../issues) y adjunta el registro. Si el juego se cierra por un error, aparece una pantalla para
+Si sigue fallando, pregunta en el [Discord](https://discord.gg/sk5xEjEMwF) o abre un [issue](../../issues) con el modelo de tu dispositivo, la versión de la app y el registro. Si el juego se cierra por un error, aparece una pantalla para
 compartirlo; si no, está en el engranaje, **Opciones del menú**, **Compartir registro**. Si la pantalla se queda en negro y no llegas al
 engranaje, mantén pulsado el ícono de la app: también ofrece **Compartir registro**. No adjuntes archivos del juego.
 
@@ -477,6 +519,9 @@ MHGU
 └─ romfs
 ```
 
+Revísala: `romfs` tiene 35.531 archivos y ocupa unos 12,3 GB. Los archivos del juego sacados de otros lados suelen venir
+incompletos o dañados. Usa los de tu propia copia.
+
 Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivos del juego, keys ni enlaces a ellos.
 
 #### Paso 2: Crea el código del juego
@@ -484,8 +529,10 @@ Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivo
 El programa no trae código del juego, así que creas el tuyo a partir de tu copia. Se hace en tu PC y no envía nada a ningún lado.
 
 1. Instala [Python](https://www.python.org/downloads/). Marca **Add python.exe to PATH** en el instalador.
-2. En esta página, haz clic en el botón verde **Code**, luego en **Download ZIP**, y descomprímelo.
-3. Abre la carpeta descomprimida y entra a `tools`.
+2. Baja la herramienta de la misma versión que tu zip `MHGU-PC`: en [Releases](../../releases/latest), en **Assets**, haz
+   clic en **Source code (zip)**.
+3. Descomprímelo entero (clic derecho en el ZIP, **Extraer todo**). Abre la carpeta descomprimida y entra a `tools`. Deja
+   `build_game.py` ahí: necesita las otras carpetas de la descarga a su lado.
 4. Haz clic en la barra de direcciones de esa ventana, escribe `cmd` y presiona Enter.
 5. Escribe esto, con tu propia carpeta, y presiona Enter:
 
@@ -655,8 +702,8 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 1. Descomprime la versión nueva y copia sus archivos encima de los viejos. Tus ajustes, la carpeta que elegiste y la posición
    del HUD se mantienen, y tus partidas quedan como estaban en cualquier caso.
 2. Si la versión nueva necesita un código del juego nuevo, el juego dice "Este mhgugame.dll es de otra versión" al arrancar.
-   Haz de nuevo el paso 2 con la herramienta de la versión nueva (otra vez el ZIP de esta página, o **Source code (zip)** en su
-   versión de Releases) y vuelve a abrir el juego.
+   Haz de nuevo el paso 2 con la herramienta de la versión nueva (**Source code (zip)** en su versión de Releases) y vuelve a
+   abrir el juego.
 
 ### Desinstalar
 
@@ -675,13 +722,15 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 | Problema | Qué hacer |
 |---|---|
 | `python` no se reconoce | Instala Python de nuevo, marca **Add python.exe to PATH** y abre otra terminal |
+| `FileNotFoundError` con `hle_symbols.txt`, o la herramienta no encuentra sus propios archivos | La herramienta se usó fuera de su descarga. Descomprime entero el **Source code (zip)** y usa `build_game.py` desde su carpeta `tools`, sin moverlo |
 | "there is no exefs/main" | La ruta debe ser la carpeta que contiene `exefs` y `romfs` |
 | "Este exefs no es de la versión 1.4.0" | Usa el `exefs` con la actualización 1.4.0 |
 | "romfs está incompleto" | Usa el `romfs` del juego base con la actualización aplicada. Tiene 35.531 archivos |
+| Zonas negras, partes que faltan, o se cierra, con archivos del juego que no sacaste tú | Los archivos del juego de otros lados suelen venir incompletos o dañados, y el juego no puede arreglarlos. Arma la carpeta con tu propia copia, como dice el [paso 1](#paso-1-consigue-los-archivos-de-tu-juego-1) |
 | "no se encontró SDL3.dll" | Descomprime primero el zip entero en una carpeta: `MHGU.exe` no arranca desde dentro del zip |
 | El Control inteligente de aplicaciones lo bloqueó | Bloquea los programas sin firma, sin **Ejecutar de todas formas**, y `MHGU.exe` no está firmado: solo arranca con el Control inteligente de aplicaciones desactivado (Seguridad de Windows, **Control de aplicaciones y navegador**, **Configuración de Control inteligente de aplicaciones**). Piénsalo antes: en muchas versiones de Windows no se puede volver a activar sin reinstalar Windows |
 | "En esa carpeta falta mhgugame.dll" | La descarga no lo trae: haz el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1) (`python build_game.py --pc <tu carpeta>`) y elige esa carpeta |
-| "Este mhgugame.dll es de otra versión" | Una versión nueva de PC lo necesita de nuevo: repite el paso 2 con la descarga nueva |
+| "Este mhgugame.dll es de otra versión" | El código del juego se creó con la herramienta de otra versión. Créalo de nuevo con la herramienta de la misma versión que tu zip (**Source code (zip)** en [Releases](../../releases/latest)) y vuelve a abrir el juego |
 | "A este procesador le faltan instrucciones que necesita el código del juego" | El juego de PC necesita un procesador con SSE4.2: mira [Qué necesitas](#qué-necesitas-1) |
 | "Este programa tiene que llamarse MHGU.exe" | Vuelve a ponerle `MHGU.exe` |
 | "La tarjeta gráfica de esta PC no tiene controlador Vulkan" | Instala el último driver desde el sitio del fabricante de tu tarjeta. Las más viejas no tienen: mira [Qué necesitas](#qué-necesitas-1) |

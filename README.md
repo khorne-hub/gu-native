@@ -18,7 +18,8 @@ Talk with other players and ask for help in the community's [Discord](https://di
 - [Android](#android): [What it does](#what-it-does), [How well does it run?](#how-well-does-it-run),
   [What you need](#what-you-need), [Setup](#setup), [Saves](#saves), [Cheats and mods](#cheats-and-mods),
   [Multiplayer](#multiplayer), [Where things are kept](#where-things-are-kept), [Update](#update-to-a-new-version),
-  [Uninstall](#uninstall-it), [Samsung: Game Booster](#samsung-game-booster), [If something goes wrong](#if-something-goes-wrong)
+  [Switch to the official app](#switch-to-the-official-app), [Uninstall](#uninstall-it),
+  [Samsung: Game Booster](#samsung-game-booster), [If something goes wrong](#if-something-goes-wrong)
 - [PC (Windows)](#pc-windows): [What it does](#what-it-does-1), [How well does it run?](#how-well-does-it-run-1),
   [What you need](#what-you-need-1), [Setup](#setup-1), [Controls](#controls), [Graphics and frame rate](#graphics-and-frame-rate),
   [Saves](#saves-1), [Cheats and mods](#cheats-and-mods-1), [Multiplayer](#multiplayer-1),
@@ -107,13 +108,21 @@ resolution to 40% and the limit to 30 fps, and you can change both. It costs som
 ### What you need
 
 - **An Android device:** Android 9 or newer (Android 9 is experimental: it couldn't be tested on one), 64-bit, with Vulkan 1.2. Almost any device from the last few years. Vulkan 1.1 works experimentally. On processors from before 2018 the app adapts the game code the first time it starts, which takes a few seconds.
+  A phone with a 32-bit Android (many Android Go phones) can't install the app: Android says something about "ABI". An
+  update can't change that.
 - **About 13 GB free** on the device.
 - **A Windows or Linux PC,** only for setup, with about 10 GB free.
 - **Your own copy of the game,** updated to version 1.4.0.
 
 ### Setup
 
-It takes three steps, and you only do them once.
+It takes three steps, and you only do them once. In short:
+
+1. On your PC, put your game's `exefs` and `romfs` folders in one folder.
+2. Run the tool from the same version as your APK. It makes the game code, two files, in that folder.
+3. Copy the folder to your phone, install the APK, and choose the folder in the app.
+
+Something went wrong? Most problems are in [If something goes wrong](#if-something-goes-wrong), with what to do.
 
 #### Step 1: Get your game files
 
@@ -132,6 +141,9 @@ MHGU
 └─ romfs
 ```
 
+Check it: `romfs` holds 35,531 files and takes about 12.3 GB. Game files from other places often come incomplete or
+damaged: then parts of the game show black, it closes, or the app says files are missing. Use the ones from your own copy.
+
 This project does not explain how to dump a game from your console, and does not provide game files, keys or links to them.
 
 #### Step 2: Create the game code
@@ -139,8 +151,10 @@ This project does not explain how to dump a game from your console, and does not
 The app has no game code in it, so you create yours from your own copy. It runs on your PC and sends nothing anywhere.
 
 1. Install [Python](https://www.python.org/downloads/). On Windows, tick **Add python.exe to PATH** in the installer.
-2. On this page, click the green **Code** button, then **Download ZIP**, and unzip it.
-3. Open the unzipped folder, then its `tools` folder.
+2. Get the tool from the same version as your APK: on [Releases](../../releases/latest), under **Assets**, click
+   **Source code (zip)**.
+3. Unzip all of it (on Windows: right-click the ZIP, **Extract All**). Open the unzipped folder, then its `tools` folder.
+   Leave `build_game.py` there: it needs the other folders of the download beside it.
 4. Windows: click the address bar of that window, type `cmd` and press Enter. Linux: open a terminal in that folder.
 5. Type this, with your own folder, and press Enter:
 
@@ -168,9 +182,10 @@ Running it again keeps what is already made and up to date.
 #### Step 3: Install it
 
 1. Copy the whole `MHGU` folder to your device, for example with a USB cable. It can go anywhere in its storage or on an SD card,
-   except inside `Android/data`.
+   except inside `Android/data`. Wait until the copy ends: `romfs` must take about 12.3 GB on the device too.
 2. On your device, download the APK from [Releases](../../releases/latest) and open it. Android may ask you to allow installing
-   apps from your browser.
+   apps from your browser. If you had a copy of the app from another website, Android won't install this one over it: see
+   [Switch to the official app](#switch-to-the-official-app).
 3. Open **MHGU**, tap **Give permission and choose folder**, and turn on file access when Android asks. The game only reads that folder.
 4. Find your `MHGU` folder (it shows a ✓) and tap **Use this folder**. The app has its own folder browser; if you'd rather use Android's, tap **Android's picker**.
 
@@ -292,8 +307,29 @@ one is based on. They haven't been fully tested on Android yet.
 1. Download the new APK from [Releases](../../releases/latest) and open it: it installs over the app you have. Your saves,
    settings, touch layout and game folder stay.
 2. If the new version needs new game code, the app says "This libmhgugame.so is from another version" when it starts. Do
-   step 2 again with the new version's tool (this page's ZIP again, or **Source code (zip)** on its release) and copy the
-   two new files to your folder on the device. From 0.1.6 to 0.1.7 the game code stays the same.
+   step 2 again with the new version's tool (**Source code (zip)** on its release) and copy the two new files to your
+   folder on the device. From 0.1.6 to 0.1.9.2 the game code stays the same.
+
+### Switch to the official app
+
+Did you get the app from another website (apkvision, for example)? That copy was signed by someone else. Android only
+installs an update signed like the app you have, so the official APK won't go over it. Android then says "App not
+installed" or "package conflicts with an existing package". Do this once:
+
+1. Keep your save. In the app you have: gear, **Menu Options**, **Export save**, and choose a folder, such as Download.
+2. Open your phone's **Settings**, **Apps**, **MHGU**, **Storage**, and tap **Clear data** (or **Clear storage**).
+3. Tap **Uninstall**. If Android asks whether to keep the app's data, say no.
+4. Install the APK from [Releases](../../releases/latest).
+5. Open it and choose your game folder. Then gear, **Menu Options**, **Import save**, and pick the `system` file in the
+   folder from step 1.
+
+Your game folder and the game code you made stay as they are. Still "App not installed"?
+
+- You uninstalled the old copy but kept its data: install that old copy again, then do steps 2 and 3.
+- The old copy may also be in a second space of the phone (Second space, Dual apps, Secure Folder or a work profile):
+  uninstall it there too.
+
+The official APK is only on this page's [Releases](../../releases/latest): see [Official downloads](#official-downloads).
 
 ### Uninstall it
 
@@ -321,13 +357,17 @@ dots, **Add games**.
 
 | Problem | What to do |
 |---|---|
+| "App not installed", or "package conflicts with an existing package" | You have a copy of the app from another website, signed by someone else. Keep your save and follow [Switch to the official app](#switch-to-the-official-app) |
+| The installer talks about "ABI", or says the app isn't compatible | This phone runs a 32-bit Android (for example Android Go). The app needs a 64-bit one, so it can't be installed on this phone |
 | `python` is not recognized | Install Python again, tick **Add python.exe to PATH**, and open a new terminal |
 | "Failed to build installable wheels" for lz4 | The tool from 0.1.9 on reads the game code without the lz4 package when your Python can't install it: download it again |
+| `FileNotFoundError` with `hle_symbols.txt`, or the tool can't find its own files | The tool was run outside its download. Unzip all of **Source code (zip)** and run `build_game.py` from its `tools` folder, without moving it |
 | "there is no exefs/main" | The path must be the folder that holds `exefs` and `romfs` |
 | "This exefs is not version 1.4.0" | Use the `exefs` with the 1.4.0 update |
 | "romfs is incomplete" | Use the base game's `romfs` with the update applied. It has 35,531 files |
 | "libmhgugame.so is missing" | Do step 2, then copy the two new files to the folder on your device |
-| "This libmhgugame.so is from another version" | A new app version needs it again: repeat step 2 with the new download |
+| "This libmhgugame.so is from another version" | The game code was made with another version's tool. Make it again with the tool from the same release as your APK (**Source code (zip)** on [Releases](../../releases/latest)). Then copy both new files, `libmhgugame.so` and `libmhgugame.id`, to the folder on your device |
+| Black areas, missing parts, or it closes, with game files you didn't make yourself | Game files from other places are often incomplete or damaged, and the app can't fix them. Make the folder from your own copy, as [step 1](#step-1-get-your-game-files) says, and copy it to the device again |
 | The game files screen says "EACCES" or "open failed" | Another app (a file manager, for example through Shizuku) made the app's folder in `Android/data`. From 0.1.9 the app takes it back, or keeps its files in its private folder and says so |
 | The game closes by itself | Close other apps and lower the 3D resolution. It's usually a lack of memory |
 | Black picture with only the touch controls, or it closes when you press A | The copy of `romfs` to your device didn't finish. Copy it again and check that it takes up 12.3 GB |
@@ -335,7 +375,7 @@ dots, **Add games**.
 | It closes after a few minutes of play | Update to 0.1.6 or newer: it uses video memory differently on PowerVR GPUs. If it still happens, share the log: it notes the memory every minute |
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 
-If it still fails, ask in the [Discord](https://discord.gg/sk5xEjEMwF) or open an [issue](../../issues) with your device model and the log. If the game closes because of an error, a screen lets you
+If it still fails, ask in the [Discord](https://discord.gg/sk5xEjEMwF) or open an [issue](../../issues) with your device model, the app's version and the log. If the game closes because of an error, a screen lets you
 share it; if not, it's under the gear, **Menu Options**, **Share log**. If the screen stays black and you can't reach the gear, a long
 press on the app's icon offers **Share log** too. Don't attach game files.
 
@@ -468,6 +508,9 @@ MHGU
 └─ romfs
 ```
 
+Check it: `romfs` holds 35,531 files and takes about 12.3 GB. Game files from other places often come incomplete or
+damaged. Use the ones from your own copy.
+
 This project does not explain how to dump a game from your console, and does not provide game files, keys or links to them.
 
 #### Step 2: Create the game code
@@ -475,8 +518,10 @@ This project does not explain how to dump a game from your console, and does not
 The program has no game code in it, so you create yours from your own copy. It runs on your PC and sends nothing anywhere.
 
 1. Install [Python](https://www.python.org/downloads/). Tick **Add python.exe to PATH** in the installer.
-2. On this page, click the green **Code** button, then **Download ZIP**, and unzip it.
-3. Open the unzipped folder, then its `tools` folder.
+2. Get the tool from the same version as your `MHGU-PC` zip: on [Releases](../../releases/latest), under **Assets**,
+   click **Source code (zip)**.
+3. Unzip all of it (right-click the ZIP, **Extract All**). Open the unzipped folder, then its `tools` folder. Leave
+   `build_game.py` there: it needs the other folders of the download beside it.
 4. Click the address bar of that window, type `cmd` and press Enter.
 5. Type this, with your own folder, and press Enter:
 
@@ -642,7 +687,7 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 1. Unzip the new version and copy its files over the old ones. Your settings, the folder you chose and the HUD's layout stay,
    and your saves stay in any case.
 2. If the new version needs new game code, the game says "This mhgugame.dll is from another version" when it starts. Do step 2
-   again with the new version's tool (this page's ZIP again, or **Source code (zip)** on its release) and open the game again.
+   again with the new version's tool (**Source code (zip)** on its release) and open the game again.
 
 ### Uninstall it
 
@@ -661,13 +706,15 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 | Problem | What to do |
 |---|---|
 | `python` is not recognized | Install Python again, tick **Add python.exe to PATH**, and open a new terminal |
+| `FileNotFoundError` with `hle_symbols.txt`, or the tool can't find its own files | The tool was run outside its download. Unzip all of **Source code (zip)** and run `build_game.py` from its `tools` folder, without moving it |
 | "there is no exefs/main" | The path must be the folder that holds `exefs` and `romfs` |
 | "This exefs is not version 1.4.0" | Use the `exefs` with the 1.4.0 update |
 | "romfs is incomplete" | Use the base game's `romfs` with the update applied. It has 35,531 files |
+| Black areas, missing parts, or it closes, with game files you didn't make yourself | Game files from other places are often incomplete or damaged, and the game can't fix them. Make the folder from your own copy, as [step 1](#step-1-get-your-game-files-1) says |
 | "SDL3.dll was not found" | Unzip the whole zip into a folder first: `MHGU.exe` doesn't start from inside the zip |
 | Smart App Control blocked it | It blocks programs that aren't signed, with no **Run anyway**, and `MHGU.exe` isn't signed: it only runs with Smart App Control off (Windows Security, **App & browser control**, **Smart App Control settings**). Think it over first: on many versions of Windows it can't be turned back on without reinstalling Windows |
 | "mhgugame.dll is missing" | The download doesn't include it: do [Setup step 2](#step-2-create-the-game-code-1) (`python build_game.py --pc <your folder>`) and choose that folder |
-| "This mhgugame.dll is from another version" | A new PC version needs it again: repeat step 2 with the new download |
+| "This mhgugame.dll is from another version" | The game code was made with another version's tool. Make it again with the tool from the same release as your zip (**Source code (zip)** on [Releases](../../releases/latest)) and open the game again |
 | "This processor lacks instructions the game code needs" | The PC game needs a processor with SSE4.2: see [What you need](#what-you-need-1) |
 | "This program must be called MHGU.exe" | Rename it back to `MHGU.exe` |
 | "This PC's graphics has no Vulkan driver" | Install the latest driver from your graphics card's maker. The oldest graphics have none: see [What you need](#what-you-need-1) |
