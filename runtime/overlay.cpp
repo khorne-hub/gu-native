@@ -29,6 +29,7 @@ static void ImGui_ImplVulkan_NewFrame() {}
 static void ImGui_ImplVulkan_UpdateTexture(ImTextureData *) {}
 #endif
 
+#include "chat_port.h"
 #include "config.h"
 #include "touch.h"
 #include "forge.h"
@@ -775,11 +776,13 @@ static void frame_once(void *cpu) {
     bool notice = notice_due(now);
     char line[256];
     bool chat = chat_composing(line, sizeof line);
+    chat_port_init();  // (the port's chat: its button and lines over the game, runtime/chat_port.cpp)
+    bool chat_over = chat_port_frame();
     ImGuiIO &io = ImGui::GetIO();
     bool touch = touch_drawn();  // (hidden, the settings button still shows)
     bool stats = perfstats_visible();  // ([Performance] ShowStats: runtime/perfstats.cpp)
     bool fading = settings_panel_fading();  // (the settings menu closed a moment ago: fading out, taking no input)
-    if (!open && !free_render && !notice && !chat && !touch && !stats && !credits && !fading) {  // (nothing to draw)
+    if (!open && !free_render && !notice && !chat && !chat_over && !touch && !stats && !credits && !fading) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear(), g_snap_seq++;
         apply_input(io);  // (keep the queue short)
@@ -793,7 +796,7 @@ static void frame_once(void *cpu) {
     // theirs moving, nothing they show changed) is not built again: the render thread draws the copy it has (g_snap), as
     // it does every frame. Once a second it is built anyway. =2, a check: such frames are built, compared with the copy
     // (snap_same) and a difference logged
-    bool alone = touch && !open && !free_render && !notice && !chat && !stats && !credits && !fading && !g_modal_open &&
+    bool alone = touch && !open && !free_render && !notice && !chat && !chat_over && !stats && !credits && !fading && !g_modal_open &&
                  !g_settings_open && !g_forge_open && !settings_panel_confirming();
     bool same = g_perf_overlay_reuse && alone && g_reuse_last && g_snap.Valid && w == g_reuse_w && h == g_reuse_h &&
                 now - g_reuse_built_ns < 1000000000ull && touch_draw_unchanged((float)w, (float)h);
@@ -871,6 +874,7 @@ static void frame_once(void *cpu) {
     if (chat && !g_modal_open) draw_chat(line, now, scale);
     if (stats) perfstats_draw((float)w, (float)h);  // (under the touch controls, on the same background list)
     if (touch) touch_draw((float)w, (float)h);  // (the touch controls: runtime/touch.cpp)
+    if (chat_over) chat_port_draw((float)w, (float)h);  // (over them: the chat button, the last lines)
     ImGui::Render();
     settings_panel_after_render(ImGui::GetDrawData());
 

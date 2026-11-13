@@ -28,6 +28,9 @@ bool discord_running(void);  // its thread runs (Android with MHGU_PERF_NODISCOR
 void discord_set_activity(const DiscordActivity *a);
 // runtime/hle/presence.c: the game's state into an activity (each frame, from the game's input polling)
 void presence_tick(void);
+// The hunter being played: its name (runtime/hle/presence.c); false before there is one
+bool presence_hunter_name(char *out, size_t size);
+int presence_town(void);  // 0 the Hub, 1-6 a village, 7 the Hunters' Pub, 0xff a quest; -1 none yet
 
 #ifdef __cplusplus
 }

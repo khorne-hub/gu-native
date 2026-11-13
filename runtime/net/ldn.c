@@ -98,7 +98,7 @@ enum { DR_NONE, DR_BY_USER, DR_BY_SYSTEM, DR_DESTROYED_BY_USER, DR_DESTROYED_BY_
 // ---- link protocol
 #define PROTO_MAGIC "MHGL"
 #define PROTO_VERSION 2
-enum { F_HELLO = 1, F_INFO, F_WELCOME, F_REFUSE, F_PACKET, F_DESTROY, F_AUX };  // F_AUX: the port's own messages (emsync.c, hle/hpscale.c)
+enum { F_HELLO = 1, F_INFO, F_WELCOME, F_REFUSE, F_PACKET, F_DESTROY, F_AUX };  // F_AUX: the port's own messages (emsync.c, hle/hpscale.c, the chat)
 typedef struct {
     char magic[4];
     uint16_t version;
@@ -568,8 +568,9 @@ static void *station_thread(void *arg) {
         } else if (type == F_AUX && n > 0) {  // to the host's own game and on to the other stations
             emsync_aux_received(buf, (uint32_t)n);
             hpscale_aux_received(buf, (uint32_t)n);
-            for (int i = 1; i < MAX_NODES; i++)
-                if (i != slot && L.nodes[i].alive) link_send(&L.nodes[i], F_AUX, buf, (uint32_t)n, NULL, 0);
+            if (chat_aux_received(buf, (uint32_t)n))  // (a chat line whose signature fails goes no further)
+                for (int i = 1; i < MAX_NODES; i++)
+                    if (i != slot && L.nodes[i].alive) link_send(&L.nodes[i], F_AUX, buf, (uint32_t)n, NULL, 0);
         }
     }
 
@@ -1130,6 +1131,7 @@ static void *uplink_thread(void *arg) {
         } else if (type == F_AUX && n > 0) {
             emsync_aux_received(buf, (uint32_t)n);
             hpscale_aux_received(buf, (uint32_t)n);
+            chat_aux_received(buf, (uint32_t)n);
         }
     }
     L.uth_run = false;

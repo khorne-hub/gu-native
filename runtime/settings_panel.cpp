@@ -4,6 +4,10 @@
 #include "settings_locale.h"
 #include "settings_icons.h"
 #include "app_actions.h"
+#include "chat/chat.h"
+#include "chat/chat_crypto.h"
+#include "chat/chat_text.h"
+#include "chat_port.h"
 #include "cheats.h"
 #include "overlay.h"
 #include "padmap.h"
@@ -42,7 +46,8 @@ extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
-                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord };
+                  PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord,
+                  Chat, Friends, ChatOn };  // (the chat's pages and its question: settings_chat.inc)
 enum class Command { None, Save };
 struct Row {
     std::string id, title, value;
@@ -50,6 +55,8 @@ struct Row {
     bool enabled = true, cold = false, action = false, warn = false;
     bool header = false, current = false;  // a section title (not a row to select); the choice a dropdown has now
     bool note = false;                     // (a header) a line of text between the rows: the MH4U port's notes
+    std::string who;                       // (a note) a chat line's sender, over its text; who_mine: this player's
+    bool who_mine = false;
     bool menu = false;                     // Confirm opens a dropdown of its choices
     int toggle = -1;                       // On / Off (1 / 0; -1: not a switch): the phone draws a switch
     bool number = false;                   // a number: left / right step it (the phone: - and + buttons on the row)
@@ -693,7 +700,7 @@ void draw_guides(ImGuiWindow *window, const GuideLayout &layout, float top) {
 bool confirmation() {
     return s.view == View::CloseChanges || s.view == View::Exit || s.view == View::Restart ||
            s.view == View::Reset || s.view == View::ImportSave || s.view == View::Remove || s.view == View::OpenSite ||
-           s.view == View::OpenDiscord;
+           s.view == View::OpenDiscord || s.view == View::ChatOn;
 }
 // The guides a desktop's view shows at its bottom (0: none): all four on the tabs, Confirm and Back on a dialog, and
 // Navigation too on a page of rows (the licenses' scroll: no Confirm there). None while a key is being chosen, text
@@ -1186,6 +1193,7 @@ void reopen_picker(std::vector<Row> &rows) {
     if (s.dropdown.open && !s.dropdown.names.empty())
         focus("choice." + std::to_string(std::clamp(s.reopen_at, 0, (int)s.dropdown.names.size() - 1)));
 }
+#include "settings_chat.inc"  // (S32, S35: the chat's pages, the key's generator)
 void server_row(std::vector<Row> &rows) {
     static const char *const presets[] = LDN_SERVERS;
     const std::vector<std::string> used = remembered(true);
@@ -1268,12 +1276,18 @@ void key_row(std::vector<Row> &rows) {
         names.push_back(v), removable.push_back(1);
     names.push_back(selected == custom ? fmt("Custom: %s", now) : std::string(tr("Custom...")));
     removable.push_back(0);
+    names.push_back(cs("Generate a key", "Generar una clave"));  // (S35: settings_chat.inc)
+    removable.push_back(0);
     Row r;
     r.id = "key";
     r.title = tr("Matchmaking key");
     r.value = *now ? std::string(now) : std::string(tr("Public"));
     keyed(r, ini("Key"));
     auto set = [used, custom](int i) {
+        if (i == custom + 1) {
+            chat_new_key();
+            return;
+        }
         if (i == custom) {
             const size_t size = sizeof s.draft.ldn_key;
             keyboard(tr("Matchmaking key"), g_custom_key, size - 1, [size](const std::string &typed, std::string &error) {
@@ -2423,6 +2437,8 @@ std::vector<Row> main_rows() {
         server_row(r);
         key_row(r);
         hub_check(r);
+        chat_key_rows(r);
+        chat_entry_rows(r);
         header(r, "lan.header", tr("Local network"));
         number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
         text(r, "hosts", "Search hosts", c.ldn_join, sizeof c.ldn_join, *c.ldn_join ? c.ldn_join : tr("LAN"), ini("Join"));
@@ -2589,6 +2605,8 @@ std::vector<Row> main_rows() {
         note(r, "about.by", tr("Made by khorne-hub. Free."));
         note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
         note(r, "about.base", tr("Based on MHGURecomp."));
+        note(r, "about.chat", cs("The chat, the friends and the room keys follow the designs of tabarong (Discord; GitHub: oliveaglien).",
+                                 "El chat, los amigos y las claves de sala siguen los diseños de tabarong (Discord; GitHub: oliveaglien)."));
         note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
 #ifdef __ANDROID__
         note(r, "about.legal", tr("This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));
@@ -2816,6 +2834,8 @@ std::vector<Row> rows_for_view(bool *open) {
         return main_rows();
     std::vector<Row> r;
     if (s.view == View::TouchButtons) { touch_button_rows(r); return r; }
+    if (s.view == View::Chat) { chat_page_rows(r); return r; }
+    if (s.view == View::Friends) { friends_page_rows(r); return r; }
     if (s.view == View::ComboEdit) { combo_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
@@ -2913,6 +2933,12 @@ std::vector<Row> rows_for_view(bool *open) {
             action(r, "dialog.open", tr("Open"), []() {
                 pop();
                 open_discord();
+            });
+        if (s.view == View::ChatOn)  // (the online chat's relays, the first time: settings_chat.inc)
+            action(r, "dialog.chat", cs("Turn it on", "Activarlo"), []() {
+                chat::set_notice_seen();
+                chat::set_enabled(true);
+                pop();
             });
         if (s.view == View::CloseChanges) {
             action(r, "dialog.save", tr("Save and close"), [open]() {
@@ -3332,11 +3358,14 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             ImVec2 p = ImGui::GetCursorScreenPos();
             float size = std::floor(font * .86f), indent = font * 1.15f, wrap = width - indent - font * .3f;
             ImVec2 ts = ImGui::GetFont()->CalcTextSizeA(size, FLT_MAX, wrap, r.title.c_str());
-            float top = font * .3f;
-            ImGui::Dummy(ImVec2(width, ts.y + top * 2));
-            diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + size * .55f), size * .18f, theme().accent);
-            w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top), theme().text_dim, r.title.c_str(),
-                                 nullptr, wrap);
+            float top = font * .3f, who = r.who.empty() ? 0 : std::floor(size * .9f);  // (a chat line's sender over it)
+            ImGui::Dummy(ImVec2(width, ts.y + top * 2 + who));
+            diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + (who ? who * .55f : size * .55f)), size * .18f, theme().accent);
+            if (who)
+                shadow_text(w->DrawList, who, ImVec2(p.x + indent, p.y + top), r.who_mine ? theme().text_dim : theme().accent,
+                            r.who.c_str());
+            w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top + who),
+                                 r.who.empty() ? theme().text_dim : theme().text, r.title.c_str(), nullptr, wrap);
             continue;
         }
         if (r.header) {  // (a section's title: accent-coloured, a little apart from the rows above it)
@@ -3810,6 +3839,9 @@ std::string view_title() {
                     : s.view == View::Licenses   ? "Licenses"
                     : s.view == View::OpenSite   ? "Open the project's page?"
                     : s.view == View::OpenDiscord ? "Open the community's Discord?"
+                    : s.view == View::Chat       ? cs("Chat", "Chat")
+                    : s.view == View::Friends    ? cs("Friends", "Amigos")
+                    : s.view == View::ChatOn     ? cs("Turn on the online chat?", "¿Activar el chat en línea?")
                                                  : "Unsaved changes");
 }
 // What a dialog's question means, under it (empty: the question says it all)
@@ -3818,6 +3850,7 @@ std::string view_detail() {
                ? tr("It opens in your browser. On phones with little memory, Android may close the game, so save in the game first.")
            : s.view == View::OpenDiscord
                ? tr("It opens in your browser or the Discord app. On phones with little memory, Android may close the game, so save in the game first.")
+           : s.view == View::ChatOn ? chat_on_detail()
                : "";
 }
 // The tab's notes under its rows (text, a warning)
@@ -4198,7 +4231,7 @@ void touch_panel(bool *open, const Config &before) {
             help_rect = ImRect(lx, bottom - box, end, bottom);
         }
     };
-    bool with_help = s.view == View::Main || s.view == View::TouchButtons;
+    bool with_help = s.view == View::Main || s.view == View::TouchButtons || s.view == View::Chat || s.view == View::Friends;
     if (s.view == View::Main) {
         float tw = 0;
         for (const char *name : page_names)
@@ -4231,6 +4264,9 @@ void touch_panel(bool *open, const Config &before) {
         }
         list_and_help(left + tw + pad * 1.4f);
     } else if (s.view == View::TouchButtons) {
+        list_and_help(left);
+    } else if (s.view == View::Chat || s.view == View::Friends) {  // (a line refused, then the rows and their help)
+        top += error_text(top, left, end - left);
         list_and_help(left);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)
         ImRect field(left, top, end, top + f * 2.3f);
@@ -4971,6 +5007,12 @@ void settings_panel(bool *open) {
         load_cheat_files();
 #endif
         if (s.view != View::Restart) push(View::Restart, "dialog.cancel");
+        break;
+    case SETTINGS_VIEW_CHAT:  // (the chat button over the game: runtime/chat_port.cpp)
+        if (s.view != View::Chat) {
+            first_page(NET_PAGE);
+            push(View::Chat, "chat.say");
+        }
         break;
     case SETTINGS_VIEW_GAME_TEXT:  // (the touch controls' Keyboard plate, a game's text entry open)
         if (textinput_active() && s.view != View::Keyboard) game_text_keyboard();
