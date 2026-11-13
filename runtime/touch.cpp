@@ -32,7 +32,9 @@
 //     reloads (a bow: its melee attack), aim, crouching fire (a bow: its coating), dodge, sheathe, and arrows for the
 //     ammo; a swipe up or down on the item bar changes the ammo too. Laid out on its own in the editor
 //   - anywhere else: dragging turns the camera by the angle moved, as in a phone game (the hunt camera's own angles,
-//     runtime/hle/mousecam.c; elsewhere as the right stick); a double tap centres it (L)
+//     runtime/hle/mousecam.c; elsewhere as the right stick). No double tap does anything there (up to 0.1.9.3 one
+//     centred the camera, L: pressed by accident in a fight it turned the camera away, gu-native #130, #132); the camera
+//     button does it
 // Every control can be moved and resized (the layout editor: a long press on the settings button, or the settings
 // menu's Controls page), kept in touch_layout.txt beside mhgurecomp.ini.
 // The same editor moves, sizes and hides each part of the game's HUD (runtime/hud_parts.h: the item bar, the Hunter Arts,
@@ -981,9 +983,7 @@ struct State {
                              // between two reads still reaches the game, as mashing to break free of a grab needs (#150)
     uint64_t last_ns;        // the last touch
     uint64_t cam_ns;         // the last camera drag
-    uint64_t tap_ns;         // the last short tap on the camera's part (a second one soon after centres it)
     uint64_t step_ns;        // when a drag may move a menu's cursor again
-    float tap_x, tap_y;
     Pulse pulse[6];
     bool run;                // running: R held (the stick's locked run, or the Run button held)
     bool run_lock;           // the stick's run locked ([Touch] StickRun): the thumb lifted on the lock circle, the
@@ -1324,7 +1324,7 @@ uint64_t target_buttons(void) {
     if (target_in_town()) return B(BTN_ZL);
     return mousecam_target_buttons();
 }
-// The camera button (L on the layout) and a double tap on the camera's part: the game's camera centring, L, or ZL in a hunt
+// The camera button (L on the layout): the game's camera centring, L, or ZL in a hunt
 // with the game's L/R Button Controls swapped (L is then Type 1's change target, the target button's: both changed the
 // monster, and nothing centred the camera); in a town L, beside the target button's ZL. The lock-on's pause for a turn by
 // the game goes by the same button (touch_lock_buttons)
@@ -2144,11 +2144,6 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (f->kind == F_ARTS && tap && f->part >= 0) art_tap(s, f->part, now);  // a tap on a Hunter Art's panel: that art
     // the settings button: a tap opens the port's menu (a long press opened the editor: touch_input)
     if (f->kind == F_BUTTON && f->ctl == C_SETTINGS && !f->done && e->type == SDL_EVENT_FINGER_UP) overlay_toggle_settings();
-    if (s.menu) s.tap_ns = 0;  // (in the game's menus L turns pages: no double tap there)
-    else if (f->kind == F_CAMERA && tap) {  // a double tap on the camera's part centres it (L)
-        if (now - s.tap_ns < 350 * MS && hypotf(x - s.tap_x, y - s.tap_y) < .08f * s.h) pulse(s, camera_buttons(), 60 * MS), s.tap_ns = 0;
-        else s.tap_ns = now, s.tap_x = x, s.tap_y = y;
-    }
     f->kind = F_NONE;
     recompute_held(s);
     return true;
@@ -2477,7 +2472,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
 }
 
 // (MHGU_PERF_INPUT_WAKE) What touch_input does by the clock, between events: a finger down (the long presses, the
-// stick's run, an ammo arrow held, the menu pad), a timed press (a tap's, an art's, the camera's double tap), the run
+// stick's run, an ammo arrow held, the menu pad), a timed press (a tap's, an art's), the run
 // held back after X, the locked run, the lock-on (its follow comes back LOCK_AFTER_TURN after a turn), a locked shot,
 // a Hunter Art on the right stick, the item bar held open, the editor. While any is on the window loop polls every 3 ms
 // as always
@@ -2493,7 +2488,7 @@ extern "C" bool touch_busy(void) {
         return true;
     if (s.held || s.tapped || s.pad_held || s.cam_dx != 0 || s.cam_dy != 0 || g_tap_due) return true;
     if (now < s.ammo_hold || now < s.ammo_ready || now < s.run_x_until || now < s.lit_until || now < s.rs_until ||
-        now < s.item_flash || now < s.art_flash || now - s.tap_ns < 350 * MS)
+        now < s.item_flash || now < s.art_flash)
         return true;
     if (s.combo_t0 || s.assist_wait || now < s.assist_until || now < s.assist_fire || s.keep_r || now < s.replay_until)
         return true;
@@ -4259,7 +4254,7 @@ bool draw_key(float w, float h, DrawKey *k) {
     if ((k->pad_a > 0 && k->pad_a < 1) || (k->mpad_out > 0 && k->mpad_out < 1)) return false;
     // (clocks: those that draw something as what they draw; the others, which move while nothing changes, cleared)
     s.last_ns = s.menu_on_ns = s.item_flash = s.art_flash = s.lit_until = 0;
-    s.hunt_ns = s.hunter_ns = s.cam_ns = s.tap_ns = s.step_ns = s.others_ns = s.stuck_ns = 0;
+    s.hunt_ns = s.hunter_ns = s.cam_ns = s.step_ns = s.others_ns = s.stuck_ns = 0;
     k->flags = (int)g_visible | (int)g_gear_only << 1 | (int)overlay_menu_open() << 2 | (int)lit << 3 | (int)item_lit << 4 |
                (int)art_lit << 5 | (int)idle << 6 | (int)menu_pages_zl() << 7;
     k->w = w, k->h = h;
