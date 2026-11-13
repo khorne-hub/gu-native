@@ -18,10 +18,8 @@
  *     again for clang and lld (/proc/self/exe, which is this program): with BUILDER_ZIG_INNER set (by the first one)
  *     such a run passes its arguments on unchanged. Zig finds its lib folder through ZIG_LIB_DIR.
  *
- *     It runs with its memory at fixed places (fixed_layout): Zig 0.13's clang makes a slightly different object of a
- *     very large function from one run to the next when its memory is at other places, and Android places a program's
- *     memory at random ones at every run, so a build that went on after a cut gave a library different from one made
- *     from the start.
+ *     It asks for its memory at fixed places (fixed_layout): Zig 0.13's clang makes one of a few slightly different
+ *     objects of a very large function from one run to the next, following where its memory is.
  *
  * Both die with the process that started them (PR_SET_PDEATHSIG): a build that is cancelled, or whose app is closed,
  * leaves no compiler running. And both tell Android's low-memory killer to take them before the app (a higher
@@ -192,11 +190,11 @@ static char *push(char **top, const void *data, size_t size) {
 extern char **environ;
 
 /* Zig 0.13's clang compiles one very large function of MH4U's game code (f_00ce7920 with the single-screen mod: 300 KB
- * of machine code) into a slightly different object depending on where its memory is: on an RG406V four compiles of
- * the same C gave two objects, with the address space layout randomized; with it off (personality ADDR_NO_RANDOMIZE),
- * the same object every time, as on a PC with a Zig without ASLR. So this program asks for it and runs itself again
- * (/proc/self/exe; Zig's own runs of itself keep it): the same C, the same arguments and the same environment give
- * the same object, and a build that goes on after a cut gives the library a build from the start gives, byte for byte.
+ * of machine code) into one of a few slightly different objects, following where its memory is: on an RG406V four
+ * compiles of the same C in a shell gave two objects with the address space layout randomized, and with it off
+ * (personality ADDR_NO_RANDOMIZE) the same object 16 times out of 16. So this program asks for it and runs itself again
+ * (/proc/self/exe; Zig's own runs of itself keep it). Inside the app it is not enough: two whole builds on the RG406V
+ * still differed in that one function (1.0), as two builds from the start can; every other object comes out the same.
  * A system that refuses the call (an error, or a seccomp filter's SIGSYS, which is caught here) leaves it as it was. */
 static volatile sig_atomic_t g_sigsys;
 static void on_sigsys(int sig) {

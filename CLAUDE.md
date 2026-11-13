@@ -185,10 +185,11 @@ screen's **Build on this phone** when the game code is missing or from another v
   in the work folder keeps a hash of its inputs (exefs/main and exefs/sdk, every file of the packed tools, the Python) and
   of the C it wrote (names and sizes); a run whose inputs and C give the same goes straight to the compile, any other
   drops the stamp and the `.done` notes first and translates again. The library is the same byte for byte as a clean
-  run's (1.0, checked on the PC: a clean run, and one killed while compiling then resumed). `libzigcc.so` runs with its
-  memory at fixed places (`fixed_layout` in toolrun.c: personality ADDR_NO_RANDOMIZE, then itself again; left as it was
-  if the system refuses): Zig 0.13's clang compiled one very large MH4U function into a different object depending on
-  where its memory was, so two builds of the same C could give two libraries.
+  run's (1.0, checked on the PC: a clean run, and one killed while compiling then resumed: ae3f5ecf both). `libzigcc.so`
+  asks for its memory at fixed places (`fixed_layout` in toolrun.c: personality ADDR_NO_RANDOMIZE, then itself again;
+  left as it was if the system refuses): Zig 0.13's clang compiles one very large MH4U function into one of a few
+  objects depending on where its memory is (the same object 16 times out of 16 in a shell on the RG406V with it; inside
+  the app two MH4U builds still differed in that one function, so it doesn't rule that out).
 - **Heat and battery** (`BuilderService.watchHeat`, every 5 s): thermal status moderate, only two compilers run (the
   others SIGSTOP'd); severe or worse, the whole build waits until light; 15 % battery or less and not charging, it waits.
   Compilers at once: the free memory / 300 MB, at most the cores, half after a run that stopped while compiling.
