@@ -14,7 +14,7 @@ struct OverlayPort {
     std::function<void(const char *)> log;
 };
 void overlay_setup(const OverlayPort &port);
-bool overlay_frame();                 // each frame: true while something is to be drawn
+bool overlay_frame();                 // each frame: true while something is to be drawn (never while both chats are off)
 void overlay_draw(float w, float h);  // then, over the touch controls (the foreground list)
 // a finger that landed on no control (fractions of the screen): true when the button took it; its moves and its lift
 bool bubble_down(float fx, float fy);

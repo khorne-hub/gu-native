@@ -436,12 +436,15 @@ The app has a chat of its own, apart from the game's: under the gear, **Multipla
 three chats, and private messages with your friends:
 
 - **Hub:** everyone in your hub. It travels over the hub's own link between the games, so it needs no internet relay and no
-  notice. Only players whose version has the chat see it: players on an emulator don't.
+  notice. Only players whose version has the chat, with the hub chat on, see it: players on an emulator don't.
 - **General:** everyone in the online chat who plays MHGU, on Android and PC.
 - **Global:** everyone in the online chat of both ports, MHGU and MH4U.
 
-A round chat button shows over the game while the online chat is on or you are in a hub. A tap opens the chat, a drag moves
-it, and the number on it counts the lines you haven't read. Under **Chat**, **Options**, **Chat button** turns it off and
+**Both chats start off.** Until you turn one on, at the top of the **Chat** page, nothing of the chat shows over the game:
+**Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
+
+A round chat button shows over the game while the online chat is on, or the hub chat is on and you are in a hub. A tap opens
+the chat, a drag moves it, and the number on it counts the lines you haven't read. Under **Chat**, **Options**, **Chat button** turns it off and
 **Chat button size** changes its size. New lines show for a few seconds beside it: **Lines over the game** picks **Off**,
 **Hub and friends** (the default) or **All**.
 

@@ -120,6 +120,28 @@ void chat_use_share(const chat::Line &l) {
                       "Puesta desde el chat: Guarda para conservarla. Así las salas con esta clave salen en la búsqueda del juego."));
 }
 
+// The hub's chat: a switch of its own, off as it comes (1.0). On, the hub's lines come here and over the game, and in a
+// hub the chat button shows; off, the port's chat takes no part in the hub (its lines are passed on unread)
+void chat_hub_row(std::vector<Row> &r) {
+    Row row;
+    row.id = "chat.hub", row.title = chat::hub_chat_name();
+    const bool on = chat::hub_chat();
+    row.toggle = on, row.value = on ? cs("On", "Activo") : cs("Off", "Apagado");
+#ifdef __ANDROID__
+    row.help = cs("Talk with everyone in the hub you are in. On: their lines show here and over the game, and in a hub the "
+                  "chat button opens the chat. It travels with the hub itself: no relay, nothing leaves the hub.",
+                  "Habla con todos los de la sala en la que estás. Activo: sus líneas se ven acá y sobre el juego, y en una "
+                  "sala el botón del chat abre el chat. Viaja con la sala misma: sin relés, nada sale de la sala.");
+#else
+    row.help = cs("Talk with everyone in the hub you are in. On: their lines show here and over the game. It travels with "
+                  "the hub itself: no relay, nothing leaves the hub.",
+                  "Habla con todos los de la sala en la que estás. Activo: sus líneas se ven acá y sobre el juego. Viaja con "
+                  "la sala misma: sin relés, nada sale de la sala.");
+#endif
+    row.activate = []() { chat::set_hub_chat(!chat::hub_chat()); };
+    row.adjust = [](int d) { chat::set_hub_chat(d > 0); };
+    r.push_back(std::move(row));
+}
 // The relays' row: their state (a tap turns them on or off), the players online
 void chat_status_row(std::vector<Row> &r) {
     int up = 0, total = 0;
@@ -151,11 +173,12 @@ void chat_status_row(std::vector<Row> &r) {
 void chat_page_rows(std::vector<Row> &r) {
     cs("", "");  // (the language)
     std::vector<chat::Person> people = chat::people();
-    if (g_chat < 0) g_chat = chat::hub_up() ? chat::HUB : chat::GLOBAL;
+    if (g_chat < 0) g_chat = chat::hub_chat() && chat::hub_up() ? chat::HUB : chat::GLOBAL;
     bool found = g_chat != chat::FRIEND;
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
     if (!found) g_chat = chat::GLOBAL, g_chat_peer.clear();
+    chat_hub_row(r);  // (the two switches, both off as they come)
     chat_status_row(r);
     {  // the chat shown: Global, General, the hub, each friend
         std::vector<std::string> names;
@@ -180,7 +203,7 @@ void chat_page_rows(std::vector<Row> &r) {
         r.back().help = chat::channel_help(g_chat);
     }
     std::string label;
-    const bool hub = chat::hub_up(&label), relays = chat::enabled();
+    const bool hub_on = chat::hub_chat(), hub = hub_on && chat::hub_up(&label), relays = chat::enabled();
     const bool can = g_chat == chat::HUB ? hub : relays;
     action(r, "chat.say", cs("Say something", "Decir algo"), []() {
         const int ch = g_chat;
@@ -194,10 +217,12 @@ void chat_page_rows(std::vector<Row> &r) {
     }, can);
     r.back().help = fmt("%s %d %s", cs("Up to", "Hasta"), (int)chat::max_text(), cs("characters. The keyboard's Enter sends it.", "caracteres. El Enter del teclado lo manda."));
     if (!can)
-        note(r, "chat.why", g_chat == chat::HUB ? cs("Not in a hub: in the game, go to the Gathering Hall and create or join one.",
-                                                     "No estás en una sala: en el juego, ve al Salón de reuniones y crea o únete a una.")
-                                                : cs("Turn on the online chat above to read and write here.",
-                                                     "Activa el chat en línea arriba para leer y escribir acá."));
+        note(r, "chat.why", g_chat != chat::HUB ? cs("Turn on the online chat above to read and write here.",
+                                                     "Activa el chat en línea arriba para leer y escribir acá.")
+                            : !hub_on       ? cs("Turn on the hub chat above to read and write here.",
+                                                 "Activa el chat de la sala arriba para leer y escribir acá.")
+                                            : cs("Not in a hub: in the game, go to the Gathering Hall and create or join one.",
+                                                 "No estás en una sala: en el juego, ve al Salón de reuniones y crea o únete a una."));
     std::vector<chat::Line> lines = chat::lines(g_chat, g_chat_peer, 30);
     chat::mark_read(g_chat, g_chat_peer);
     if (lines.empty() && can) note(r, "chat.none", cs("Nothing has been said yet.", "Todavía no se dijo nada."));
@@ -271,10 +296,10 @@ void chat_page_rows(std::vector<Row> &r) {
         row.id = "chat.bubble", row.title = cs("Chat button", "Botón del chat");
         bool on = chat::bubble_shown();
         row.toggle = on, row.value = on ? cs("On", "Activo") : cs("Off", "Apagado");
-        row.help = cs("A round button over the game while the chat is on or you are in a hub: a tap opens the chat, a drag "
-                      "moves it. The number on it: lines not read yet.",
-                      "Un botón redondo sobre el juego mientras el chat está activo o estás en una sala: un toque abre el "
-                      "chat, arrastrarlo lo mueve. El número: líneas sin leer.");
+        row.help = cs("A round button over the game while the online chat is on, or the hub chat is on and you are in a hub: "
+                      "a tap opens the chat, a drag moves it. The number on it: lines not read yet.",
+                      "Un botón redondo sobre el juego mientras el chat en línea está activo, o el chat de la sala está activo "
+                      "y estás en una sala: un toque abre el chat, arrastrarlo lo mueve. El número: líneas sin leer.");
         row.activate = []() { chat::set_bubble_shown(!chat::bubble_shown()); };
         row.adjust = [](int d) { chat::set_bubble_shown(d > 0); };
         r.push_back(std::move(row));
@@ -456,11 +481,13 @@ void chat_entry_rows(std::vector<Row> &r) {
     action(r, "chat.open", cs("Chat", "Chat"), []() { push(View::Chat, "chat.say"); });
     int up = 0, total = 0;
     chat::Status st = chat::status(&up, &total);
-    r.back().value = (unread ? fmt("%d %s - ", unread, cs("unread", "sin leer")) : std::string()) + chat::status_text(st, up, total);
+    r.back().value = (unread ? fmt("%d %s - ", unread, cs("unread", "sin leer")) : std::string()) + chat::chat_state_text(st, up, total);
     r.back().help = cs("Talk with the hub you are in, with every player of the ports (Global) or of this game (General), and "
-                       "with your friends.",
+                       "with your friends. Off until you turn on the hub chat or the online chat there; until then nothing "
+                       "of the chat shows over the game.",
                        "Habla con la sala en la que estás, con todos los jugadores de los ports (Global) o de este juego "
-                       "(General), y con tus amigos.");
+                       "(General), y con tus amigos. Apagado hasta que actives ahí el chat de la sala o el chat en línea; "
+                       "hasta entonces no se ve nada del chat sobre el juego.");
     action(r, "friends.open", cs("Friends", "Amigos"), []() { push(View::Friends, "friends.code"); });
     int on = 0, requests = 0;
     for (const chat::Person &p : chat::people()) on += p.is_friend && p.online, requests += p.request && !p.is_friend && !p.blocked;

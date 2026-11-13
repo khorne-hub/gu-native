@@ -15,7 +15,9 @@ std::string explain(const std::string &coded);  // a reason from say(), add_frie
 std::string line_text(const Line &l);           // a line's text as shown (the chat's own lines, a share in words)
 std::string channel_name(int channel);          // Global, General (MHGU), Hub / Room, Friends
 std::string channel_help(int channel);          // who reads it
-std::string status_text(Status s, int up, int total);
+std::string status_text(Status s, int up, int total);  // the online chat's
+std::string hub_chat_name();                    // the hub's or room's chat switch: Hub chat / Room chat
+std::string chat_state_text(Status s, int up, int total);  // both chats in a word: Off, the online chat's, Hub chat only
 std::string ago(int64_t unix_time);             // "just now", "3 min ago"
 
 }  // namespace chat

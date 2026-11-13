@@ -442,12 +442,17 @@ La app tiene un chat propio, aparte del del juego: en el engranaje, **Multijugad
 chats, y mensajes privados con tus amigos:
 
 - **Sala:** todos los de tu sala. Viaja por la conexión de la sala misma entre los juegos, así que no necesita relés de
-  internet ni cartel. Solo lo ven los jugadores con una versión que tiene el chat: los de un emulador no.
+  internet ni cartel. Solo lo ven los jugadores con una versión que tiene el chat, con el chat de la sala activo: los de un
+  emulador no.
 - **General:** todos los del chat en línea que juegan MHGU, en Android y PC.
 - **Global:** todos los del chat en línea de los dos ports, MHGU y MH4U.
 
-Un botón redondo del chat aparece sobre el juego mientras el chat en línea está activo o estás en una sala. Un toque abre el
-chat, arrastrarlo lo mueve, y el número que tiene cuenta las líneas que no leíste. En **Chat**, **Opciones**, **Botón del
+**Los dos chats empiezan apagados.** Hasta que actives uno, arriba en la página **Chat**, no se ve nada del chat sobre el
+juego: **Chat de la sala** activa el de la sala (sin relés, nada sale de la sala) y **Chat en línea** Global, General y
+amigos.
+
+Un botón redondo del chat aparece sobre el juego mientras el chat en línea está activo, o el chat de la sala está activo y
+estás en una sala. Un toque abre el chat, arrastrarlo lo mueve, y el número que tiene cuenta las líneas que no leíste. En **Chat**, **Opciones**, **Botón del
 chat** lo apaga y **Tamaño del botón del chat** cambia su tamaño. Las líneas nuevas se ven unos segundos a su lado:
 **Líneas sobre el juego** elige **Apagado**, **Sala y amigos** (lo predeterminado) o **Todos**.
 

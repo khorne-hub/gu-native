@@ -77,9 +77,13 @@ void init(const Port &port);
 std::string game();  // the port's ("mhgu", "mh4u")
 void tick();  // each frame, from the interface: the hub's state
 
-// settings (at once, in chat.txt)
+// settings (at once, in chat.txt). Both chats start off (1.0): while both are, the chat takes no part in the game - nothing
+// over it, no button, no hub or room watched (active() false)
 bool enabled();                   // the relays (Global, General, friends) are on
 void set_enabled(bool on);        // (the port shows the notice about the relays first: notice_seen)
+bool hub_chat();                  // the hub's (MHGU) or room's (MH4U) chat is on: its lines read and shown, said in it
+void set_hub_chat(bool on);       //   (off: MHGU passes the hub's lines on unread, MH4U's room shows its own as before)
+bool active();                    // either chat is on (each frame, the link's threads: no lock taken)
 bool notice_seen();
 void set_notice_seen();
 std::string name();               // as others see it
@@ -129,7 +133,7 @@ bool is_blocked(const std::string &id);
 std::string person_name(const std::string &id);
 
 // the port's hub link: a line that came (from: a key if the line was signed, else "hub:<name>" or "room:<name>"); its
-// own lines too (mine), as its link sends them; the hub gone (its lines cleared)
+// own lines too (mine), as its link sends them (none kept while the hub's chat is off); the hub gone (its lines cleared)
 void hub_line(const std::string &from, const std::string &name, const std::string &text, bool mine);
 void hub_reset();
 // a line for the hub's link of MHGU: signed with the player's key and bound to the hub (its id), and its check

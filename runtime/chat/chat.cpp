@@ -108,6 +108,8 @@ struct State {
     std::string key, code;
     // settings
     bool enabled = false, notice = false, bubble_shown = true, has_bubble = false;
+    bool hub = false;  // the hub's or room's chat (off as it comes)
+    std::atomic<bool> hub_on{false}, any_on{false};  // (hub, and hub || enabled, read without the lock: hub_chat(), active())
     std::string name;
     std::vector<std::string> relays;
     int overlay = OVERLAY_HUB_FRIENDS;
@@ -161,7 +163,7 @@ void save_locked() {
     fprintf(f, "# The chat's own file (this device only, never sent anywhere): its key, its settings, friends, mutes and blocks.\n"
                "# The key is your identity in the chat (your friend code comes from it): keep it to yourself.\n");
     fprintf(f, "secret\t%s\n", chatc::hex(g.sec, 32).c_str());
-    fprintf(f, "enabled\t%d\nnotice\t%d\noverlay\t%d\n", (int)g.enabled, (int)g.notice, g.overlay);
+    fprintf(f, "enabled\t%d\nhub\t%d\nnotice\t%d\noverlay\t%d\n", (int)g.enabled, (int)g.hub, (int)g.notice, g.overlay);
     fprintf(f, "name\t%s\n", g.name.c_str());
     std::string rl;
     for (auto &r : g.relays) rl += (rl.empty() ? "" : " ") + r;
@@ -194,9 +196,13 @@ Person &person_locked(const std::string &id) {
     }
     return p;
 }
+void mirror_locked() {
+    g.hub_on = g.hub;
+    g.any_on = g.hub || g.enabled;
+}
 void load_locked() {
     FILE *f = fopen(g.file.c_str(), "rb");
-    bool have_key = false;
+    bool have_key = false, have_hub = false;
     g.relays.clear();
     if (f) {
         char line[1024];
@@ -216,6 +222,7 @@ void load_locked() {
             std::string v = p.size() > 1 ? p[1] : "", n = p.size() > 2 ? clean(p[2], MAX_NAME) : "";
             if (k == "secret" && chatc::unhex(v, g.sec, 32) && chatc::public_key(g.sec, g.pub)) have_key = true;
             else if (k == "enabled") g.enabled = v == "1";
+            else if (k == "hub") g.hub = v == "1", have_hub = true;
             else if (k == "notice") g.notice = v == "1";
             else if (k == "overlay") g.overlay = std::clamp(atoi(v.c_str()), 0, 2);
             else if (k == "name") g.name = clean(v, MAX_NAME);
@@ -250,6 +257,10 @@ void load_locked() {
         }
         fclose(f);
     }
+    // (a chat.txt from before the hub's chat had a switch of its own - the test builds of 1.0, where it was on for all: a
+    // player who had turned the chat on keeps the hub's on too; anyone else starts with it off)
+    if (!have_hub) g.hub = g.enabled;
+    mirror_locked();
     if (!have_key) {
         chatc::new_secret(g.sec);
         chatc::public_key(g.sec, g.pub);
@@ -663,7 +674,8 @@ void init(const Port &port) {
     g.file = port.dir.empty() ? std::string("chat.txt") : port.dir + "/chat.txt";
     chatws::platform_init(port.java_class.c_str());
     load_locked();
-    note("[chat] %s: friend code %s, relays %s", port.app.c_str(), chatc::show_code(g.code).c_str(), g.enabled ? "on" : "off");
+    note("[chat] %s: friend code %s, relays %s, hub chat %s", port.app.c_str(), chatc::show_code(g.code).c_str(), g.enabled ? "on" : "off",
+         g.hub ? "on" : "off");
     if (g.enabled && g.notice) start_locked();
 }
 std::string game() {
@@ -691,6 +703,7 @@ void set_enabled(bool on) {
         std::lock_guard<std::mutex> l(g.mu);
         if (g.enabled == on && (g.run || !on)) return;
         g.enabled = on;
+        mirror_locked();
         save_locked();
         if (on) {
             start_locked();
@@ -699,6 +712,17 @@ void set_enabled(bool on) {
     }
     stop();
 }
+bool hub_chat() { return g.hub_on; }
+void set_hub_chat(bool on) {
+    std::lock_guard<std::mutex> l(g.mu);
+    if (g.hub == on) return;
+    g.hub = on;
+    mirror_locked();
+    if (!on) g.chans[HUB].clear();  // (and nothing more comes in: hub_line)
+    save_locked();
+    note("[chat] hub chat %s", on ? "on" : "off");
+}
+bool active() { return g.any_on; }
 bool notice_seen() { std::lock_guard<std::mutex> l(g.mu); return g.notice; }
 void set_notice_seen() {
     std::lock_guard<std::mutex> l(g.mu);
@@ -897,6 +921,10 @@ bool say(int channel, const std::string &peer, const std::string &typed, std::st
     std::unique_lock<std::mutex> l(g.mu);
     if (channel == HUB) {  // (the limits count only what could be sent)
         auto send = g.port.hub_send;
+        if (!g.hub) {
+            if (why) *why = "\x01hubchat\x01";
+            return false;
+        }
         if (!g.hub_was || !send) {
             if (why) *why = "\x01nohub\x01";
             return false;
@@ -1052,6 +1080,7 @@ std::string person_name(const std::string &id) {
 
 void hub_line(const std::string &from, const std::string &n, const std::string &typed, bool mine) {
     std::lock_guard<std::mutex> l(g.mu);
+    if (!g.hub) return;  // (the hub's chat off: its lines are not the chat's)
     std::string text = clean(typed, 500), who = clean(n, MAX_NAME);
     if (text.empty()) return;
     if (!mine && !admit_locked(from, who, HUB, "")) return;

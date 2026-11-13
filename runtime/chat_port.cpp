@@ -4,7 +4,8 @@
 //   - the hub's lines, after tabarong's design (PORT_CHAT.md): an "MHPC" message in the link's F_AUX frame, which the hub's
 //     host passes on to the other games. Each line is signed with the player's chat key and bound to the hub (its id, a
 //     hash of the session's, the same in every game of it), so a line can't be made to come from someone else; the host
-//     passes on only lines whose signature holds. Builds without the chat ignore the message, as any F_AUX they don't know
+//     passes on only lines whose signature holds. Builds without the chat ignore the message, as any F_AUX they don't know,
+//     and so does a game whose hub chat is off (as it comes: a host then passes the lines on unread, as those builds do)
 //   - over the game (overlay.cpp): the chat button and the last lines, runtime/chat/chat_overlay.cpp
 //
 // The message: "MHPC", u8 version (1), u8 name bytes, u16 text bytes, i64 unix time, the key (32), the signature (64),
@@ -87,6 +88,9 @@ void chat_log(const char *s) { rt_logf("%s\n", s); }
 extern "C" bool chat_aux_received(const void *data, uint32_t len) {
     const uint8_t *m = (const uint8_t *)data;
     if (len < 4 || memcmp(m, "MHPC", 4)) return true;  // (not the chat's)
+    // (the hub's chat off, as it comes: the line is not read, and a host passes it on unread as 0.1.9.3 passed every
+    // message - each game that reads it checks it)
+    if (!chat::hub_chat()) return true;
     if (len < HEAD || m[4] != VERSION) return false;
     size_t nn = m[5], tn = m[6] | (size_t)m[7] << 8;
     if (HEAD + nn + tn != len || !tn || tn > 600) return false;
@@ -130,25 +134,35 @@ extern "C" void chat_port_init(void) {
     chat::overlay_setup(o);
 }
 
-// S34: how to play together, where it starts. In the Hub (or the Hunters' Pub) with no hub up, once a session, until the
-// player has been in a hub: ZL, Connect, Create Hub or Search Hubs; the first hub ever: the quests at the counter and the
-// chat (chat.txt's flags hubguide, hubseen)
+// S34: how to play together, where it starts, once the player has turned a chat on (both start off, and these notices
+// with them: 0.1.9.3 had none). In the Hub (or the Hunters' Pub) with no hub up, once a session, until the player has
+// been in a hub: ZL, Connect, Create Hub or Search Hubs; the first hub with the hub's chat on: the quests at the counter
+// and the chat (chat.txt's flags hubbeen, hubseen)
 static void play_together_notices() {
     static bool told, was_up;
     static uint64_t since;
     const bool up = ldn_net_up();
     if (up && !was_up) {
-        if (!chat::flag("hubseen")) {
+        chat::set_flag("hubbeen");  // (the way to a hub needs no more telling)
+        if (chat::hub_chat() && !chat::flag("hubseen")) {
             chat::set_flag("hubseen");
+#ifdef __ANDROID__
             overlay_notice(chat::t("In a hub", "En una sala"),
                            chat::t("Post a quest at the counter, or join one posted there. The chat button talks to everyone in "
                                    "the hub; gear, Multiplayer, Chat for the rest.",
                                    "Publica una misión en el mostrador, o únete a una publicada ahí. El botón del chat habla con "
                                    "todos los de la sala; engranaje, Multijugador, Chat para lo demás."));
+#else
+            overlay_notice(chat::t("In a hub", "En una sala"),
+                           chat::t("Post a quest at the counter, or join one posted there. To talk to everyone in the hub: F1, "
+                                   "Multiplayer, Chat.",
+                                   "Publica una misión en el mostrador, o únete a una publicada ahí. Para hablar con todos los de "
+                                   "la sala: F1, Multijugador, Chat."));
+#endif
         }
     }
     was_up = up;
-    if (told || up || chat::flag("hubseen")) return;
+    if (told || up || chat::flag("hubseen") || chat::flag("hubbeen")) return;
     const int town = presence_town();
     const uint64_t now = SDL_GetTicks();
     if (town != 0 && town != 7) {
@@ -179,6 +193,9 @@ static void play_together_notices() {
 // ---- over the game: the shared part (runtime/chat/chat_overlay.cpp), with this port's controls and menu
 extern "C" bool chat_port_frame(void) {
     if (!g_started) return false;
+    // (both chats off, as they come: no hub watched, no notice, nothing over the game - so the overlay reuses its frames
+    // with the touch controls alone, hubs included, as in 0.1.9.3)
+    if (!chat::active()) return chat::overlay_frame();
     chat::set_spanish(config_language() == 1);
     chat::tick();
     play_together_notices();

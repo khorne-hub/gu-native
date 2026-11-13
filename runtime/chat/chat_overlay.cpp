@@ -40,9 +40,9 @@ void load() {
 }
 float radius() { return g_h * .048f * g_bs; }
 bool menu_open() { return g_port.menu_open && g_port.menu_open(); }
-bool wanted() {
+bool wanted() {  // (the online chat on, or the hub's chat on and a hub up)
 #ifdef __ANDROID__
-    return bubble_shown() && g_port.controls_shown && g_port.controls_shown() && !menu_open() && (enabled() || hub_up());
+    return bubble_shown() && g_port.controls_shown && g_port.controls_shown() && !menu_open() && (enabled() || (hub_chat() && hub_up()));
 #else
     return false;
 #endif
@@ -66,6 +66,10 @@ ImU32 faded(ImU32 c, float a) { return (c & 0x00ffffffu) | ((ImU32)(((c >> 24) &
 void overlay_setup(const OverlayPort &port) { g_port = port; }
 
 bool overlay_frame() {
+    if (!active()) {  // (both chats off, as they come: nothing over the game, and the button takes no finger)
+        if (g_serial_known || g_on_screen) g_shown.clear(), g_on_screen = g_drag = false, g_serial_known = false;
+        return false;
+    }
     unsigned last = last_serial();
     if (!g_serial_known) g_seen_serial = last, g_serial_known = true;
     double now = SDL_GetTicks() / 1000.0;
@@ -78,7 +82,9 @@ bool overlay_frame() {
     }
     g_shown.erase(std::remove_if(g_shown.begin(), g_shown.end(), [now](const Shown &s) { return now - s.at > SHOWN; }), g_shown.end());
     if (menu) g_shown.clear();
-    return !g_shown.empty() || wanted();
+    const bool want = wanted();
+    if (!want) g_on_screen = false;  // (gone - the hub left, say - and not drawn: no finger for it either)
+    return !g_shown.empty() || want;
 }
 
 void overlay_draw(float w, float h) {

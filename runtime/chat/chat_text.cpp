@@ -35,6 +35,11 @@ std::string explain(const std::string &coded) {
                                         "%s todavía no te agregó: le llega tu solicitud cuando esté en línea."), arg);
     if (what == "nohub")
         return game() == "mh4u" ? t("You are not in a room.", "No estás en una sala.") : t("You are not in a hub.", "No estás en una sala.");
+    if (what == "hubchat")
+        return game() == "mh4u" ? t("The room chat is off: turn it on above to talk in the room.",
+                                    "El chat de la sala está apagado: actívalo arriba para hablar en la sala.")
+                                : t("The hub chat is off: turn it on above to talk in the hub.",
+                                    "El chat de la sala está apagado: actívalo arriba para hablar en la sala.");
     if (what == "hubshare")
         return t("Everyone here is already with you: share it with a friend, or in Global or General.",
                  "Todos acá ya están contigo: compártelo con un amigo, o en Global o General.");
@@ -106,6 +111,11 @@ std::string status_text(Status s, int up, int total) {
     case UNAVAILABLE: return t("Not on this system", "No en este sistema");
     default: return t("Off", "Apagado");
     }
+}
+std::string hub_chat_name() { return game() == "mh4u" ? t("Room chat", "Chat de la sala") : t("Hub chat", "Chat de la sala"); }
+std::string chat_state_text(Status s, int up, int total) {
+    if (enabled() || !hub_chat()) return status_text(s, up, total);
+    return game() == "mh4u" ? t("Room chat only", "Solo el chat de la sala") : t("Hub chat only", "Solo el chat de la sala");
 }
 std::string ago(int64_t at) {
     int64_t d = (int64_t)std::time(nullptr) - at;
