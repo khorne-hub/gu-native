@@ -18,6 +18,8 @@ android/.gradle/
 android/build/
 android/app/build/
 android/app/src/main/jniLibs/
+# (the on-phone builder's tools: native/build_native.sh, tools/pack_builder_tools.py)
+android/app/src/main/assets/builder/
 android/local.properties
 native/build/
 deps/src/

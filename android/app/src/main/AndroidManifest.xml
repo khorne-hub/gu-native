@@ -22,6 +22,11 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- the on-phone builder (BuilderService): it goes on in the background, with a notification, and keeps the CPU awake -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- allowNativeHeapPointerTagging=false: el runtime convierte punteros del host a direcciones del juego (32 bits)
          y no espera la etiqueta en el byte alto que Android pone a los punteros de malloc en arm64.
@@ -139,6 +144,19 @@
         <activity android:name=".SaveFolderActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:screenOrientation="sensorLandscape"
+            android:exported="false" />
+
+        <!-- Build the game code on the phone (Settings, Game folder): the screen, and the service that builds in the
+             background (the downloaded CPython and Zig run through the launchers libpyrun.so and libzigcc.so of the
+             native library folder; native/builder/toolrun.c) -->
+        <activity android:name=".BuilderActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+        <service android:name=".BuilderService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
         <activity android:name=".LicensesActivity"

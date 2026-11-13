@@ -121,16 +121,20 @@ resolution to 40% and the limit to 30 fps, and you can change both. It costs som
   A phone with a 32-bit Android (many Android Go phones) can't install the app: Android says something about "ABI". An
   update can't change that.
 - **About 13 GB free** on the device.
-- **A Windows or Linux PC,** only for setup, with about 10 GB free.
+- **Optional: a Windows or Linux PC,** only for setup, with about 10 GB free. Without one, the app makes the game code on
+  the phone itself (Step 2): it then needs about 2 GB more free while it works, an internet connection the first time,
+  and time.
 - **Your own copy of the game,** updated to version 1.4.0.
 
 ### Setup
 
 It takes three steps, and you only do them once. In short:
 
-1. On your PC, put your game's `exefs` and `romfs` folders in one folder.
-2. Run the tool from the same version as your APK. It makes the game code, two files, in that folder.
-3. Copy the folder to your phone, install the APK, and choose the folder in the app.
+1. Put your game's `exefs` and `romfs` folders in one folder.
+2. Make the game code, two files, in that folder: on the phone, from the app, or on a PC with the tool from the same
+   version as your APK.
+3. Install the APK and choose the folder in the app (on the phone, the folder is chosen first and the app offers to make
+   the game code there).
 
 Something went wrong? Most problems are in [If something goes wrong](#if-something-goes-wrong), with what to do.
 
@@ -158,7 +162,26 @@ This project does not explain how to dump a game from your console, and does not
 
 #### Step 2: Create the game code
 
-The app has no game code in it, so you create yours from your own copy. It runs on your PC and sends nothing anywhere.
+The app has no game code in it, so you create yours from your own copy, once. Nothing is sent anywhere. There are two
+ways: on the phone, with no PC, or on a PC (faster).
+
+**On the phone.** Copy the `MHGU` folder with `exefs` and `romfs` to the phone, install the APK (Step 3) and choose the
+folder. The app says the game code is missing: tap **Build on this phone**, then **Build**. Later it is also in the gear
+button, **Menu Options**, **Build the game code**.
+
+- The first time it downloads its tools, about 100 MB: Python from python.org and Zig, a C compiler, from PyPI. Both are
+  free software, checked before they are used, and nothing of the game is ever downloaded.
+- It needs about 2 GB free while it works; when it ends, only the tools (about 200 MB) stay, and **Delete the tools**
+  removes them too.
+- It takes about 10 minutes on a recent high-end phone (measured on a Galaxy S25) and up to about 2 hours on a low-end
+  one. It goes on with the screen off or in another app, with its progress in a notification, and if it is cut (the
+  phone restarts, the app is closed) it goes on from where it stopped.
+- The phone gets warm: keep it charging, out of its case if you can. Warm, it goes slower; too hot, it waits until the
+  phone cools down.
+
+When it says it is ready, `libmhgugame.so` and `libmhgugame.id` are in your folder, and **Play** starts the game.
+
+**On a PC:**
 
 1. Install [Python](https://www.python.org/downloads/). On Windows, tick **Add python.exe to PATH** in the installer.
 2. Get the tool from the same version as your APK: on [Releases](../../releases/latest), under **Assets**, click
@@ -922,6 +945,11 @@ Ideas from the community: Alfonso, sending all the rewards to the box at once.
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
 Android the same way.
+
+Making the game code on the phone was [Klark231](https://github.com/klark231)'s idea
+([mh4u-builder](https://github.com/klark231/mh4u-builder)); the app's builder is this project's own implementation of it. It
+downloads Python ([python.org](https://www.python.org), PSF License) and [Zig](https://ziglang.org) (MIT; with LLVM, Apache
+2.0 with LLVM exceptions) the first time it runs; their licenses are in the app's **Licenses** too.
 
 ## Official downloads
 

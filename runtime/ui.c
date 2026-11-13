@@ -53,6 +53,7 @@ void ui_request_save_folder(void) { request(12); }
 void ui_request_pictures(void) { request(20); }  // (the layout editor's Add pictures)
 static void *requested_activity;  // (a string literal: ui_request_activity; SDL_SetAtomicPointer)
 void ui_request_activity(const char *method) { SDL_SetAtomicPointer(&requested_activity, (void *)method), ui_loop_wake(); }
+void ui_request_builder(void) { request(13); }  // (Android: the on-phone builder, BuilderActivity)
 #ifdef __ANDROID__
 void ui_request_gpu_driver(void) { request(8); }
 static void activity_call(const char *method) {  // (a static void method of GameActivity: as restart_application)
@@ -356,6 +357,7 @@ int ui_run(void) {
         if (action == 20) activity_call("importPictures");
         const char *method = (const char *)SDL_SetAtomicPointer(&requested_activity, NULL);
         if (method) activity_call(method);
+        if (action == 13) activity_call("showBuilder");
         static float screen_for = -1;  // (the screen's refresh rate follows the FPS limit: GameActivity.setFrameCap)
         float fps_now = config_live_fps();
         if (fps_now != screen_for) screen_for = fps_now, frame_cap_to_activity(fps_now);

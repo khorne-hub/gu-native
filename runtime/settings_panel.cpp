@@ -2435,6 +2435,25 @@ void scale_row(std::vector<Row> &r) {
     }
 #endif
 }
+// S46 (group build): the game code made on the phone (android/.../BuilderActivity.java), Android only. Its row, its help
+// and its words (settings_locale.h): MENU.md puts it in System, Game code (system/code, 10).
+void game_code_rows(std::vector<Row>& r) {
+#ifdef __ANDROID__
+    action(r, "game.build", tr("Build the game code"), []() { ui_request_builder(); });
+    r.back().help = tr("Makes the game code (libmhgugame.so) on this phone, from your own exefs in the game folder. No PC needed. The first time it downloads the tools (about 100 MB). It takes 10 minutes to about 2 hours depending on the phone and goes on in the background; the game starts again to use it.");
+#else
+    (void)r;
+#endif
+}
+// ...and its credit, among Credits & Licenses' notes (about).
+void builder_credit_rows(std::vector<Row>& r) {
+#ifdef __ANDROID__
+    note(r, "about.builder", tr("Building the game code on the phone was Klark231's idea (github.com/klark231/mh4u-builder)."));
+#else
+    (void)r;
+#endif
+}
+MENU_ENTRY("system/code", 10, game_code_rows);  // (Android: a desktop's game code is made with the PC's tools)
 // Clear shader cache (runtime/cache_clear.c, 1.0's S30): a tap leaves the mark the next start deletes the shader cache
 // by, before anything reads it; another tap takes it back. Nothing to Save: the mark is the setting. The size is read
 // again at most every 5 s (the SPIR-V folder holds thousands of files)

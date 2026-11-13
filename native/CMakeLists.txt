@@ -209,3 +209,18 @@ endif()
 if(NOT WIN32)
   target_link_options(main PRIVATE -Wl,-z,max-page-size=16384)
 endif()
+
+# ---------------------------------------------------------------- the on-phone builder's launchers (Android)
+# builder/toolrun.c (the same file as MH4U for Android's): programs named lib*.so so that they go into the APK's native
+# library folder, the one place Android lets an app run a program from. libpyrun.so runs the CPython for Android the
+# builder downloads, libzigcc.so runs Zig's C compiler (BuilderService.java); build_native.sh copies them into jniLibs.
+if(ANDROID AND ANDROID_ABI STREQUAL "arm64-v8a")
+  foreach(tool pyrun zigcc)
+    add_executable(${tool} ${CMAKE_CURRENT_LIST_DIR}/builder/toolrun.c)
+    set_target_properties(${tool} PROPERTIES OUTPUT_NAME lib${tool} SUFFIX ".so")
+    target_link_options(${tool} PRIVATE -Wl,-z,max-page-size=16384)
+  endforeach()
+  target_compile_definitions(pyrun PRIVATE TOOLRUN_PYTHON)
+  target_link_libraries(pyrun PRIVATE dl)
+  target_compile_definitions(zigcc PRIVATE TOOLRUN_ZIG)
+endif()

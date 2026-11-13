@@ -28,6 +28,9 @@ Follow `README.md`. In short:
 4. Install the APK from Releases. For Samsung's Game Booster: `adb install -r -i com.mhgu.recomp <apk>`.
 5. The person opens the app, grants file access and chooses the folder.
 
+With no PC: steps 1, 3, 4 and 5, and the app offers **Build on this phone** for the missing game code (below, "Making the
+game code on the phone"). Its log is `Android/data/com.mhgu.recomp/files/builder_log.txt`.
+
 To diagnose a device: `adb logcat -s MHGU`, or `Android/data/com.mhgu.recomp/files/log.txt`. A player whose game stays black can
 still share the log: a long press on the app's icon offers Share log (`res/xml/shortcuts.xml`; `LogShareActivity` is exported for
 it, and `adb shell am start -a android.intent.action.VIEW -f 0x1000c000 -n com.mhgu.recomp/.LogShareActivity` fires the same
@@ -142,6 +145,54 @@ In Git Bash, with llvm-mingw 20241217 (UCRT) and the Android SDK's CMake 3.22.1 
   a 1 ms guest wait took 15 ms (median), a 16 ms one 31; now 1.1-1.3 and 16.3, p99 about 0.6 ms late (the timer's 0.5 ms tick here).
   A wait that times out as it is woken counts as woken, as in Horizon. `MHGU_KWAIT_PTHREAD=1`: the condition variables as before; the
   log's `[kernel] guest waits` line says which. Android and Linux: the condition variables, unchanged.
+
+## Making the game code on the phone (S46)
+
+The app can make `libmhgugame.so` itself, with no PC: Settings, Menu Options, **Build the game code**, or the game folder
+screen's **Build on this phone** when the game code is missing or from another version (`BuilderActivity`,
+`BuilderService`, `BuilderTools`, `BuilderText`). MH4U for Android has the same classes and texts (its pipeline is mh4n's
+`tools/android/phone_build.py`): change both. Making the game code on the phone was Klark231's idea
+(github.com/klark231/mh4u-builder); none of that project's files are used.
+
+- **What runs.** `tools/phone_build.py` runs `tools/build_game.py <folder> --android --force --zig-cc <cc> --work <dir>
+  --no-pip`: the PC tool itself, so what it checks and makes on a PC it checks and makes on the phone. It prints `@@` lines
+  for the app (`@@pid`, `@@id`, `@@stage`, `@@progress`, `@@error <stage> <why>`, `@@done`); the app shows the stages and
+  explains each failure in English and Spanish (`BuilderText.failure`).
+- **Python and the compiler.** Both are downloaded the first time from their official sources, checked against their
+  SHA-256 and kept in `files/builder` (`BuilderTools`): CPython 3.14.9 for Android from python.org (23 MB; only
+  `libpython3.14.so` and the standard library, about 20 MB) and Zig 0.13.0 for aarch64 Linux from PyPI's `ziglang` wheel
+  (78 MB; its 141 MB program and the 27 MB of its lib folder `zig cc -nostdlib` reads). Licences: PSF, and MIT (Zig, with
+  LLVM's Apache 2.0 with LLVM exceptions and musl's MIT): `licenses/Builder-tools.txt`, THIRD_PARTY_NOTICES. Never game
+  files. A download cut short goes on with an HTTP range; an unpack is done beside its place and renamed when whole.
+- **Running them on Android.** An app may run a program only from its native library folder (W^X since Android 10), so
+  the APK carries two small programs as `libpyrun.so` and `libzigcc.so` (`native/builder/toolrun.c`, built by
+  `native/CMakeLists.txt`, copied by `build_native.sh`). `libpyrun.so` opens `$PYTHONHOME/lib/libpython3.N.so` and calls
+  `Py_BytesMain`; `sys.executable` is itself, so `gen.py`'s runs work. `libzigcc.so` maps Zig's static program from the
+  app's files (opening a file as code is allowed, as dlopen does) and enters it with a stack and auxv like the kernel's;
+  Zig runs `/proc/self/exe` (that same launcher) again for clang and lld, and `BUILDER_ZIG_INNER` makes those runs pass
+  their arguments on. Both die with their parent (`PR_SET_PDEATHSIG`).
+- **Zig instead of the NDK** (`build_game.py --zig-cc`, `ZIG_CFLAGS`): the same flags, the CPU as `-mcpu=generic+v8_2a`
+  (`-march=armv8.2-a`), `-nostdlibinc` with `tools/android_libc` (string.h and math.h: the game code calls only Android's
+  libc.so and libm.so), linked with `-nostdlib` against stand-ins of libc.so, libm.so, libdl.so and libmain.so, and
+  stripped by the link (`-Wl,-s`). Zig 0.13's clang is LLVM 18, as NDK r27's; it reserves x18 on Android as the NDK does
+  (checked in a register-heavy test). GAMELIB_ID doesn't change: none of its files or its flags string changed, and the
+  APK's tools zip is checked against it (`tools/pack_builder_tools.py`).
+- **Resuming.** `--work` keeps the work folder: a translation of the same input by the same translator is skipped
+  (`gen/<part>.done`), gen.py writes only the C that changed, and an object of the same compiler and flags newer than its C
+  is kept (`obj_android/flags.txt`; one a cut left half written is made again). A run cut by Android, a reboot, Cancel or
+  the heat goes on from there; `--clean` deletes the folder once the library is in place.
+- **Heat and battery** (`BuilderService.watchHeat`, every 5 s): thermal status moderate, only two compilers run (the
+  others SIGSTOP'd); severe or worse, the whole build waits until light; 15 % battery or less and not charging, it waits.
+  Compilers at once: the free memory / 300 MB, at most the cores, half after a run that stopped while compiling.
+- **Measured** on a Galaxy S25 Ultra (Snapdragon 8 Elite, 12 GB), in a shell with the same launchers, 8 compilers: the
+  translation (sdk and main, 98,000 functions) about 70 s with Python at 1.8 GB at most; the 384 files in about 7 minutes
+  with the tests' heat rule (paused twice at thermal status 2); the link 2 s; the work folder 668 MB. Going on after a
+  failed link took 2 s (translation skipped, every object kept). The library (109.7 MB) has the NDK one's needed
+  libraries, soname, BIND_NOW and exported symbol; it lacks only crtbegin_so's three imports (`__cxa_atexit`,
+  `__cxa_finalize`, `__register_atfork`), and its read-only data has a segment of its own. Not yet run in the game.
+- **The PC route** is unchanged: without `--zig-cc` and `--work`, the NDK build is made as before (a temporary work
+  folder, the same objects and link), and the library and its id are now put in the folder whole (written beside, then
+  renamed).
 
 ## Testing on a device
 

@@ -120,16 +120,20 @@ Para que vaya más rápido, activa el modo gama baja: entra al engranaje, **Grá
   Un teléfono con un Android de 32 bits (muchos teléfonos con Android Go) no puede instalar la app: Android dice algo
   sobre "ABI". Una actualización no puede cambiar eso.
 - **Unos 13 GB libres** en el dispositivo.
-- **Una PC con Windows o Linux,** solo para la instalación, con unos 10 GB libres.
+- **Opcional: una PC con Windows o Linux,** solo para la instalación, con unos 10 GB libres. Sin PC, la app crea el
+  código del juego en el mismo teléfono (Paso 2): entonces necesita unos 2 GB más libres mientras trabaja, internet la
+  primera vez, y tiempo.
 - **Tu propia copia del juego,** actualizada a la versión 1.4.0.
 
 ### Instalación
 
 Son tres pasos, y se hacen una sola vez. En resumen:
 
-1. En tu PC, pon las carpetas `exefs` y `romfs` de tu juego en una misma carpeta.
-2. Usa la herramienta de la misma versión que tu APK. Crea el código del juego, dos archivos, en esa carpeta.
-3. Copia la carpeta a tu teléfono, instala el APK y elige la carpeta en la app.
+1. Pon las carpetas `exefs` y `romfs` de tu juego en una misma carpeta.
+2. Crea el código del juego, dos archivos, en esa carpeta: en el teléfono, desde la app, o en una PC con la herramienta
+   de la misma versión que tu APK.
+3. Instala el APK y elige la carpeta en la app (en el teléfono, primero se elige la carpeta y la app ofrece crear ahí
+   el código del juego).
 
 ¿Algo salió mal? La mayoría de los problemas están en [Si algo falla](#si-algo-falla), con qué hacer.
 
@@ -158,7 +162,26 @@ Este proyecto no explica cómo volcar un juego de tu consola y no ofrece archivo
 
 #### Paso 2: Crea el código del juego
 
-La app no trae código del juego, así que creas el tuyo a partir de tu copia. Se hace en tu PC y no envía nada a ningún lado.
+La app no trae código del juego, así que creas el tuyo a partir de tu copia, una sola vez. No se envía nada a ningún
+lado. Hay dos formas: en el teléfono, sin PC, o en una PC (más rápido).
+
+**En el teléfono.** Copia la carpeta `MHGU` con `exefs` y `romfs` al teléfono, instala el APK (Paso 3) y elige la
+carpeta. La app dice que falta el código del juego: toca **Crear en este teléfono** y después **Crear**. Más tarde
+también está en el engranaje, **Opciones del menú**, **Crear el código del juego**.
+
+- La primera vez descarga sus herramientas, unos 100 MB: Python desde python.org y Zig, un compilador de C, desde PyPI.
+  Las dos son software libre, se comprueban antes de usarse, y nunca se descarga nada del juego.
+- Necesita unos 2 GB libres mientras trabaja; al terminar quedan solo las herramientas (unos 200 MB), y **Borrar las
+  herramientas** también las quita.
+- Tarda unos 10 minutos en un teléfono reciente de gama alta (medido en un Galaxy S25) y hasta unas 2 horas en uno de
+  gama baja. Sigue con la pantalla apagada o en otra app, con su avance en una notificación, y si se corta (el teléfono
+  se reinicia, se cierra la app) sigue desde donde quedó.
+- El teléfono se calienta: déjalo cargando, sin funda si puedes. Caliente, va más despacio; muy caliente, espera hasta que
+  se enfría.
+
+Cuando dice que está listo, `libmhgugame.so` y `libmhgugame.id` están en tu carpeta, y **Jugar** abre el juego.
+
+**En una PC:**
 
 1. Instala [Python](https://www.python.org/downloads/). En Windows, marca **Add python.exe to PATH** en el instalador.
 2. Baja la herramienta de la misma versión que tu APK: en [Releases](../../releases/latest), en **Assets**, haz clic en
@@ -944,6 +967,11 @@ Ideas de la comunidad: Alfonso, mandar todas las recompensas a la caja de una ve
 
 Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
 Android de la misma forma.
+
+Crear el código del juego en el teléfono fue idea de [Klark231](https://github.com/klark231)
+([mh4u-builder](https://github.com/klark231/mh4u-builder)); el creador de la app es una implementación propia de este
+proyecto. La primera vez descarga Python ([python.org](https://www.python.org), licencia PSF) y [Zig](https://ziglang.org)
+(MIT; con LLVM, Apache 2.0 con excepciones de LLVM); sus licencias también están en **Licencias** de la app.
 
 ## Descargas oficiales
 
