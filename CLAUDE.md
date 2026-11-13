@@ -322,6 +322,15 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - A menu's left windows on layer 100 keep the middle 16:9 with its windows at 21:9 and Edges. Some are drawn before the menu's windows
   in the frame (the smithy's parchment and its model, the quest counter's quest card: under the window beside them), so a window of
   this frame or the two before tells (`ui_window_frame`); by the pass alone they went Right, over that window. hudtrace marks them.
+  A town's world map (X) and its "Choose a destination" list are on layer 100 too (x 291..985, y 192..522), with no window of
+  layer 97 beside them: in a town (`g_town_ns`, its update within 500 ms) layer 100 above y 600 and left of x 1000 keeps the
+  middle as well, its prompts at the bottom right the edge. Up to 0.1.9.3 the map and the list sat right of the middle with
+  Edges / 21:9 (128 of the canvas's units at 1600:720, hudtrace on the RG406V: GU#219).
+- Layer 110 holds the loading screen's strips (y 168, 433, 570, the 168 ones first in the pass) and, in the field, a gun's
+  quick-aim reticle (one piece at about 650, 433), the lock-on markers and effects: those keep the middle at any HUD anchor, as
+  the 3D picture they are on does. Up to 0.1.9.3 the reticle went right by place with Edges / 21:9, and in frames where its y
+  fell within 0.3 of 433 it was taken for a strip, with the status after it at the loading screen's places (RG406V,
+  `MHGU_UI_ANCHOR=Edges`, `MHGU_ASPECT=2340:1080`, Valor heavy bowgun training: GU#219).
 - The hunter: heading at +0x14a0, in the camera's units, (x, z) = (sin, cos); written, the hunter turns at once. Place at +0xa0, zone at
   +0x1054, which monsters have too. The classes are `uPlayerQuest00..15` in weapon order, no 05: 04 and 06 the bowguns, 10 the bow.
   Writing the place does nothing: the game puts it back. Each zone of a map has its own coordinates.
@@ -780,14 +789,21 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   pouch's comes as a long gathering ends, past `WINDOW_PRESS`; `fakewindow <ms>` in the control file shows such a window. A model
   drawn in a town's menu (a shop's or the smithy's weapon, the item box's hunter: a depth-tested draw in a viewport smaller than the picture,
   `touch_hud_preview`) turns with the sticks: the touch stick and drags are the game's sticks there, never its cursor.
+  So does the hunter in the item box (shown up close, its "Turn" hint): a stick that turns him where he stands stays the
+  game's (`[touch] the stick turns the hunter in this menu`); up to 0.1.9.3 it became the cursor 300 ms in, and he stopped
+  (#162, #186). A talk's menu (the house Felyne's, RG406V) turns nobody: its stick moves its cursor.
 - The menu pad's presses are no longer dropped (up to 0.1.9.2 they were): while no menu's cursor ran in the last update (`menu_takes_input` false)
   hle/input.c doesn't give them to the game as the d-pad (no Hunter Art) and hle/mousemenu.c `pad_update` writes them into the
   menu's half of the game's pad (sFestaPad +0x6bf4 held, +0x6bfc pressed, +0x6c34 repeated), which the hunter never reads, as the
   desktop's mouse does. So menus that run none of the counted cursors take them: the Options' values, a talk's yes / no (#196,
   #210, #215, Discord). A dialog is a menu for the touch controls too (`menu_dialog_age`: the talk window's
   update 0x83d010 ran, or the message window 0x84bc40 waits for a button, as the desktop's mouse sees them): a talk's window sits
-  where the chat's log does, which is no menu window here, so the Transpurrter's "cancel the delivery?" had no menu pad (#210)
-  and a town's "choose a destination" none either (#163, #216). `[touch] a model in the menu` and `[touch] the player walks
+  where the chat's log does, which is no menu window here, so the Transpurrter's "cancel the delivery?" had no menu pad (#210).
+  A town's world map (X) and the "Choose a destination" list after it (the village, the hunter's house) are neither: no window
+  the HUD's layers tell, no talk, only a cursor of the game's running, and the hunter counts as played (the town's update runs
+  under them). Outside a quest such a cursor makes a menu (`town_cursor_menu`; in a town none runs but a menu's), so the menu
+  pad shows there and the stick moves the cursor (#163, #216; up to 0.1.9.3 only the highlighted place could be taken).
+  `[touch] a model in the menu` and `[touch] the player walks
   nowhere in this menu` are logged always (a model that stops turning after a moment, Low-end at 50 %: #162, #186, Discord).
 - A text entry of the game's (the hunter's name at character creation...) shows a Keyboard plate at the top while the port's
   menu is closed (`g_text_plate`): a tap opens the menu's keyboard view for it (`SETTINGS_VIEW_GAME_TEXT`), Accept types the
@@ -800,8 +816,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   logged (a keyboard's typing in a shared log).
 - The Hunter Arts' pieces on layer 100 are taken from y 560 to the canvas's end (720): a style with fewer than three arts draws
   the empty slots' frames below it (one art: rows at 676, 721, 766), out of sight on the console, and the touch arrangement lifted
-  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 103 left of x 950 (the item
-  bar's pieces start at x 1005 even with L held, its neighbours shown: hudtrace on a Moto g06), and go with the arts.
+  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 100 at x 688 and 692, left of
+  the art's button (726) on its row (hudtrace on the RG406V, Adept with one art): pieces left of x 700 go with the arts only on
+  a row an art was drawn on (`arts_row_has`); up to 0.1.9.3 nothing took them and they stayed by the item bar. Layer 103 left
+  of x 950 is taken for the arts too (the item bar's pieces start at x 1005 even with L held: hudtrace on a Moto g06).
 - Phone tests of the touch controls without the player's save: `MHGU_SAVE_DIR` to a copy and `MHGU_CONFIG` to a copy of the ini
   (`Controls = On`). On the Moto g06 adb can't read the app's save files (the app's uid, rw-rw----): copy a save from another phone's backup.
   A folder the game made in an `MHGU_SAVE_DIR` (a new game's save_0) is the app's and adb can't remove it.

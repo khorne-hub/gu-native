@@ -141,3 +141,11 @@ bool player_place(float *x, float *z) {
     *x = px, *z = pz;
     return true;
 }
+
+// ...and its heading (+0x14a0, the camera's units: 0..65535), or -1 if there is none
+int player_heading(void) {
+    uint32_t gc = LD32(G_GAMECONTROL), sp = LD32(G_SPLAYER);
+    if (!sane(gc) || !sane(sp)) return -1;
+    uint32_t slot = LD32(gc + 0x30), pl = slot <= 3 ? LD32(sp + 0x1c + 4u * slot) : 0;
+    return sane(pl) ? (int)(LD32(pl + 0x14a0) & 0xffffu) : -1;
+}

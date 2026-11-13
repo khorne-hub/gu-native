@@ -1819,6 +1819,7 @@ static uint64_t ui_window_frame;  // the frame (g_present_count) that drew one o
 static struct { float x, y; uint8_t vanchor, hanchor; } ui_recent[UI_RECENT];
 static uint32_t ui_nrecent;  // (quads recorded this pass; the slot is the count modulo UI_RECENT)
 static bool ui_loading_pass;  // this pass draws the loading screen (its backdrop, layer 110, came first)
+extern volatile uint64_t g_town_ns;  // (hle/quickhunt.c: when a town's walking-around update last ran)
 static bool ui_title_pass;  // this pass draws the title screen (its layout, layer 108 at the canvas centre, came first)
 static bool ui_frontend_pass;  // this pass draws a front-end screen (Main Menu, Character Select: its 16:9 backdrop, layer
                                // 250 at the canvas centre, came first)
@@ -1880,6 +1881,33 @@ static int hud_status_part(float x, float y, bool *nearest) {
 static bool target_piece(float x, float y) {
     if (fabsf(x - 1200.0f) < 1.0f) return y < 100.0f;
     return (fabsf(x - 1170.0f) < 1.0f || fabsf(x - 1230.0f) < 1.0f) && y < 70.0f;
+}
+// The Hunter Arts' rows (layer 100: the y of their pieces at x 700..900, this frame's and last frame's), so what the game
+// draws left of an art on its row goes with it: with Control Type 3 the "ZL +" before each art's button, at x 688 and 692
+// with the button at 726 and its name from 746 (hudtrace on the RG406V: Adept, one art, its row at y 681 / 696). It is
+// on layer 100, not 103, and left of x 700 nothing took it: it stayed by the item bar when the arts went to the top right
+#define ARTS_ROWS 12
+static float arts_row_y[2][ARTS_ROWS];
+static int arts_rows_n[2];
+static uint64_t arts_rows_frame;
+static void arts_rows_turn(void) {
+    if (arts_rows_frame == g_present_count) return;
+    arts_rows_frame = g_present_count;
+    memcpy(arts_row_y[1], arts_row_y[0], sizeof arts_row_y[0]);
+    arts_rows_n[1] = arts_rows_n[0], arts_rows_n[0] = 0;
+}
+static void arts_row_note(float y) {
+    arts_rows_turn();
+    for (int i = 0; i < arts_rows_n[0]; i++)
+        if (fabsf(arts_row_y[0][i] - y) < 1.0f) return;
+    if (arts_rows_n[0] < ARTS_ROWS) arts_row_y[0][arts_rows_n[0]++] = y;
+}
+static bool arts_row_has(float y) {
+    arts_rows_turn();
+    for (int f = 0; f < 2; f++)
+        for (int i = 0; i < arts_rows_n[f]; i++)
+            if (fabsf(arts_row_y[f][i] - y) < 2.0f) return true;
+    return false;
 }
 
 static bool hud_accept(int part, float z, float x, float y) {
@@ -4663,8 +4691,13 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                 if (fabsf(pos_z - 110.0f) < 0.5f) {
                     sy = 1.0f;
                     // (only the strips: the lock-on markers and other effects use layer 110 too, mid-hunt, and made
-                    // everything after them center-anchored, so the HUD jumped down)
-                    loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 433.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f;
+                    // everything after them center-anchored, so the HUD jumped down. A gun's quick aim draws its reticle
+                    // here too, one piece at about 650, 433 (642..657, 432.7..433.3: RG406V, Valor heavy bowgun): taken
+                    // for the middle strip, it went to x * s and the status drawn after it to the loading screen's rule,
+                    // the clock and the bars toward the middle in those frames with Edges / 21:9. By the middle a piece
+                    // at y 433 is a strip only once the pass is the loading screen's: the others came before it)
+                    loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f ||
+                                    (fabsf(pos_y - 433.0f) < 0.3f && (ui_loading_pass || fabsf(pos_x - 650.0f) > 40.0f));
                     if (loading_strip) ui_loading_pass = true;
                     static int dbg = -1;  // (MHGU_TOUCH_LOG: a strip taken mid-hunt would put the whole HUD at the game's places)
                     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != NULL;
@@ -4797,16 +4830,27 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // Effects over the Felyne skills, #167). Not a cinematic's bar, nor the Meownster screen's frame
                         if (window_lately && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
                             anchor = ANCHOR_CENTER, window_before = !ui_window_pass;
+                        // A town's windows here, the world map (X) and the "Choose a destination" list after it (x 291..985,
+                        // y 192..522), keep the middle 16:9 too: Right, at 21:9 / Edges they sat right of the middle (GU#219;
+                        // RG406V, Edges at 1600:720: 128 of the canvas's units). A town's prompts at the bottom right (x 1102..,
+                        // y 640..) stay at the edge; a hunt's pieces (no town's update just now) as before
+                        else if (!ui_meownster_pass && pos_x < 1000.0f && pos_y >= 10.0f && pos_y < 600.0f &&
+                                 plat_now_ns() - g_town_ns < 500000000ull)
+                            anchor = ANCHOR_CENTER;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (target_piece) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's). Not below the canvas: a
                         // style with fewer than three arts has the empty slots' frames there (one art: rows at y 676,
                         // 721, 766), out of sight on the console; taken by their top row, they came into view as blank
                         // rows under the arts (#125, Discord)
+                        // (and what is drawn left of an art on its row: arts_row_has)
                         bool flat = !(fabsf(m[0]) > 2.0f && fabsf(m[5]) > 2.0f);
-                        if (hunt_hud && flat && pos_x >= 700.0f && pos_x <= 900.0f && pos_y > 560.0f && pos_y < 720.0f &&
+                        bool arts_box = pos_x >= 700.0f && pos_x <= 900.0f;
+                        bool arts_label = pos_x >= 640.0f && pos_x < 700.0f && arts_row_has(pos_y);
+                        if (hunt_hud && flat && (arts_box || arts_label) && pos_y > 560.0f && pos_y < 720.0f &&
                             hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) {
                             part = HP_ARTS, part_touch = true;
+                            if (arts_box) arts_row_note(pos_y);
                             if (prof == HUD_TOUCH) vanchor = V_TOP;
                         } else if (hunt_hud && target_piece(pos_x, pos_y) && hud_accept(HP_TARGET, pos_z, pos_x, pos_y)) {
                             part = HP_TARGET, part_touch = true;
@@ -4826,9 +4870,10 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                                 if (hud_accept(p, pos_z, pos_x, pos_y)) part = p;
                             }
                         } else if (hunt_hud && pos_x < 950.0f && pos_y >= 560.0f && pos_y < 720.0f) {
-                            // (the Hunter Arts' "ZL +" before each art's button with Control Type 3, drawn on this
-                            // layer left of the item bar's art (x 992..): the arts' own, with them. Taken for the item
-                            // bar's, they stayed by the moved bar when the arts were moved: Discord, and a 0.1.8 shot)
+                            // (left of the item bar's pieces (x 992..), taken as the Hunter Arts' own: thought to be their
+                            // "ZL +" with Control Type 3, which a hudtrace with an art equipped found on layer 100 instead,
+                            // left of the art's row: arts_row_has. Taken for the item bar's, they stayed by the moved bar
+                            // when the arts were moved: Discord, and a 0.1.8 shot)
                             anchor = ANCHOR_RIGHT;
                             vanchor = prof == HUD_TOUCH ? V_TOP : V_BOTTOM;
                             if (hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) part = HP_ARTS, part_touch = true;
@@ -4859,6 +4904,12 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                                 if (picture) map_frame = g_present_count;
                             }
                         }
+                    } else if (fabsf(pos_z - 110.0f) < 0.5f && hunt_hud && !loading_strip) {
+                        // 110.0 in the field: a gun's quick-aim reticle, the lock-on markers, effects: on the 3D picture,
+                        // which keeps its middle at any HUD anchor. By place (the fallback below) the reticle, at x 650.1,
+                        // went right with Edges / 21:9, off the shot's line (GU#219), and anything else left or right
+                        anchor = ANCHOR_CENTER;
+                        vanchor = V_CENTER;
                     } else {
                         // General fallback for other layers
                         if (pos_x <= 430.0f) anchor = ANCHOR_LEFT;
