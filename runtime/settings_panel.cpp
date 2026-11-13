@@ -1968,6 +1968,25 @@ void scale_row(std::vector<Row> &r) {
     r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer; the HUD and the text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D models in the menus get no anti-aliasing.");
 #endif
 }
+// S46 (group build): the game code made on the phone (android/.../BuilderActivity.java), Android only. Its row, its help
+// and its words (settings_locale.h): MENU.md puts it in System, Game code (system/code, 10).
+void game_code_rows(std::vector<Row>& r) {
+#ifdef __ANDROID__
+    action(r, "game.build", tr("Build the game code"), []() { ui_request_builder(); });
+    r.back().help = tr("Makes the game code (libmhgugame.so) on this phone, from your own exefs in the game folder. No PC needed. The first time it downloads the tools (about 100 MB). It takes 20 minutes to 3 hours depending on the phone and goes on in the background; the game starts again to use it.");
+#else
+    (void)r;
+#endif
+}
+// ...and its credit, among Credits & Licenses' notes (about).
+void builder_credit_rows(std::vector<Row>& r) {
+#ifdef __ANDROID__
+    note(r, "about.builder", tr("Building the game code on the phone was Klark231's idea (github.com/klark231/mh4u-builder)."));
+#else
+    (void)r;
+#endif
+}
+
 std::vector<Row> main_rows() {
     std::vector<Row> r;
     Config &c = s.draft;
@@ -2541,9 +2560,7 @@ std::vector<Row> main_rows() {
 #ifdef __ANDROID__
         action(r, "game.folder", tr("Game folder"), []() { ui_request_game_folder(); });
         r.back().help = tr("Where the game's exefs and romfs are read from. A new folder is used the next time the game starts.");
-        // (S46: the game code made on the phone, BuilderActivity; its own row, its words in settings_locale.h)
-        action(r, "game.build", tr("Build the game code"), []() { ui_request_builder(); });
-        r.back().help = tr("Makes the game code (libmhgugame.so) on this phone, from your own exefs in the game folder. No PC needed. The first time it downloads the tools (about 100 MB). It takes 20 minutes to 3 hours depending on the phone and goes on in the background; the game starts again to use it.");
+        game_code_rows(r);
         action(r, "save.folder", tr("Save folder"), []() { ui_request_save_folder(); });
         r.back().help = tr("Where your save is kept. Choose a folder that a sync app shares with your other devices (the PC version too) to carry your hunt between them. Your save is copied there first, and the game restarts to use it.");
         action(r, "save.import", tr("Import save"), []() { ui_request_save_import(); });
@@ -2592,9 +2609,7 @@ std::vector<Row> main_rows() {
         note(r, "about.by", tr("Made by khorne-hub. Free."));
         note(r, "about.site", std::string(tr("Official download:")) + " github.com/khorne-hub/gu-native");
         note(r, "about.base", tr("Based on MHGURecomp."));
-#ifdef __ANDROID__
-        note(r, "about.builder", tr("Building the game code on the phone was Klark231's idea (github.com/klark231/mh4u-builder)."));
-#endif
+        builder_credit_rows(r);
         note(r, "about.4u", std::string(tr("Also by khorne-hub: MH4U for Android,")) + " github.com/khorne-hub/4u-native");
 #ifdef __ANDROID__
         note(r, "about.legal", tr("This app includes no game code, files, ROMs or keys: you need your own copy of the game. Not affiliated with the Great C or the Great N."));

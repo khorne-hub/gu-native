@@ -38,6 +38,10 @@ what only one of them contains is marked "Android only" or "PC only".
   this repository (third_party/xess/README.md).
 - libadrenotools and liblinkernsbypass, Android only (third_party/libadrenotools, by Billy Laws: loading the player's
   own GPU driver): BSD 2-Clause License.
+- Downloaded by the app's on-phone builder the first time it runs, not part of the APK or of this repository (Android
+  only; android/.../BuilderTools.java, licenses/Builder-tools.txt): CPython 3.14.9 for Android from python.org (Python
+  Software Foundation License Version 2) and Zig 0.13.0 for 64-bit ARM Linux from PyPI's ziglang package (MIT; it
+  includes LLVM, Clang and LLD under the Apache License 2.0 with LLVM Exceptions, and musl under the MIT license).
 - FFmpeg 9.0.2 (libavformat, libavcodec, libavutil): not in this repository. Its source release, configured for the
   MP4 demuxer and the H.264 and AAC decoders only (deps/build_ffmpeg.sh), is built into a shared library of its own,
   which you can replace with your own build: libmhguffmpeg.so in the APK, mhguffmpeg.dll beside MHGU.exe. GNU Lesser
