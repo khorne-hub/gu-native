@@ -51,8 +51,10 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 - El teclado del teléfono sirve para escribir el nombre de tu personaje, y los textos del menú de opciones con **Teclado del teléfono** (Enter acepta; Atrás oculta el teclado y deja lo escrito); las teclas del propio menú quedan para el mando
 - El menú de opciones se usa con el dedo y tiene el estilo visual del juego
 - **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
+- **Mandar todas las recompensas a la caja:** al terminar una misión, la opción del juego de enviar a la caja de objetos manda todas las recompensas de una vez, como en los juegos más nuevos; lo que no entra en la caja queda en la lista. Apagado por defecto: en el engranaje, **Juego**, **Mandar todas las recompensas a la caja**. Idea de Alfonso
+- **Un acceso directo con tu propia imagen:** en el engranaje, **Opciones del menú**, **Acceso directo con tu imagen** pone el juego en tu pantalla de inicio con la imagen y el nombre que elijas. El ícono propio de la app queda como está
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)
-- Importa tu partida desde un emulador, desde otro dispositivo o desde el juego de PC, y expórtala para llevarla ahí: mira [Partidas](#partidas)
+- Importa tu partida desde un emulador, desde otro dispositivo o desde el juego de PC, y expórtala para llevarla ahí; trae las misiones de evento que ya tienes; ten tu partida en la nube: mira [Partidas](#partidas)
 - El juego se pausa solo cuando sales de la app, y mientras el menú de opciones está abierto si juegas solo
 - Vibración al tocar los botones y vibración del juego en el teléfono, con o sin mando
 
@@ -255,6 +257,53 @@ sincronización guardó dos versiones de la partida o si otro dispositivo tiene 
 qué hacer. Si al guardar no se puede llegar a la carpeta, esa partida queda en el dispositivo y el próximo arranque te
 pregunta cuál conservar.
 
+#### Importar DLC y misiones de evento
+
+El menú **Descargas** del juego no llega a su servidor desde esta app, así que las descargas (misiones de evento y de
+desafío, packs de objetos, Felynes) vienen de una partida que ya las tenga: la tuya, de un emulador o de una copia de tu
+consola. La app no incluye ni descarga ninguna: las traes tú, bajo tu responsabilidad.
+
+1. Busca el archivo `system` de esa partida (Ryujinx: clic derecho en el juego, **Open User Save Directory**; yuzu y sus
+   sucesores: clic derecho en el juego, **Open Save Data Location**) y cópialo a tu dispositivo, por ejemplo a una carpeta
+   `Download/MHGU descargas`.
+2. En el juego, ve al engranaje, **Opciones del menú**, **Importar DLC y misiones de evento**, **Elegir carpeta**, y elige esa
+   carpeta. La app revisa el archivo y te dice cuántas misiones de evento y de desafío tiene.
+3. Toca **Importar y reiniciar**. Primero tu partida se copia a `save_backups`; el juego se reinicia y tu partida recibe las
+   descargas.
+
+- Tus cazadores y todo lo demás de tu partida quedan como están: solo entran las descargas, y solo a una partida que todavía
+  no tenga ninguna propia. Una partida que ya tiene algunas conserva las suyas, y la app te lo avisa.
+- **Contenido extra** (engranaje, **Opciones del menú**) tiene que estar activado, como viene.
+- Los archivos de DLC propios del juego (`DLC.dlcp`) no sirven de esta forma: el juego solo los toma con su menú
+  **Descargas**, que necesita sus servicios en línea.
+
+#### Tener tu partida en la nube (Google Drive y similares)
+
+La app no tiene una nube propia, y no le hace falta: **Carpeta de partidas** funciona con cualquier app que mantenga una
+carpeta del teléfono igual a una carpeta de tu nube. Paso a paso, con Google Drive:
+
+1. Instala una app de sincronización que mantenga igual una carpeta del teléfono y una de Google Drive en los dos sentidos
+   (sincronización bidireccional), por ejemplo **FolderSync** o **Autosync for Google Drive**. La app de Google Drive por sí
+   sola no sincroniza carpetas del teléfono.
+2. Con el administrador de archivos del teléfono, crea una carpeta para tus partidas, por ejemplo `Partidas` en la memoria del
+   teléfono (no dentro de `Android/data`).
+3. En el juego, guarda. Después ve al engranaje, **Opciones del menú**, **Carpeta de partidas**, y elige esa carpeta. El juego
+   se reinicia, y tu partida queda en una carpeta `MHGU save` dentro de ella.
+4. En la app de sincronización, une esa carpeta con una carpeta nueva de tu Google Drive. Elige sincronización
+   **bidireccional**, que sincronice cuando cambian los archivos (o cada pocos minutos), y deja apagada toda opción que borre o
+   mueva los archivos después de sincronizar. Deja que termine la primera sincronización: `MHGU save` aparece en tu Drive.
+5. En tu otro teléfono o tablet: instala esta app y la de sincronización, une la misma carpeta de Google Drive con una carpeta
+   de ahí, y espera a que baje `MHGU save`. Después, en el juego, **Carpeta de partidas**, y elige esa carpeta: el juego usa
+   la partida que está ahí.
+6. Desde entonces, caza en un dispositivo a la vez, y antes de abrir el juego en el otro, fíjate que la app de sincronización
+   haya terminado en los dos.
+
+Si alguna vez la app de sincronización guarda dos versiones de la partida, o el otro dispositivo todavía tiene el juego
+abierto, el juego te lo dice al arrancar y te deja elegir; la partida que no se queda va a `save_backups`. MH4U para Android
+guarda su partida de la misma forma (`MH4U save`), así una sola carpeta sincronizada sirve para las dos. El juego de PC
+todavía no tiene **Carpeta de partidas**: lleva la partida entre el teléfono y la PC con **Exportar partida** e **Importar
+partida** (mira [Pasar una partida entre Android y PC](#pasar-una-partida-entre-android-y-pc)).
+
 ### Trucos y mods
 
 - **Trucos:** archivos `.txt` en el formato de Atmosphere, para la versión 1.4.0 (su id de compilación es `FB08F1D20FD1204F`). En el engranaje, **Trucos**, **Agregar trucos**, elige el archivo y activa cada uno en esa misma página. Entran apagados.
@@ -414,6 +463,7 @@ MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo 
 |---|---|
 | Ajustes, la posición de los controles táctiles y del HUD, el mapeo de mandos, el registro | `Android/data/com.mhgu.recomp/files`: `mhgurecomp.ini`, `touch_layout.txt`, `gamepad_mappings.txt`, `log.txt` (el de la sesión anterior: `log_prev.txt`) |
 | Partidas | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`, o la carpeta que elegiste en **Carpeta de partidas**. La partida que reemplaza una importación queda en `save_backups`, en `MHGURecomp` |
+| Misiones de evento y descargas que importaste | `Android/data/com.mhgu.recomp/files/MHGURecomp/bonus` (la partida de la que vienen) |
 | Trucos y mods que agregues | Las carpetas `cheats` y `mods` de tu carpeta del juego |
 
 ### Actualizar a una versión nueva
@@ -530,6 +580,7 @@ copia, en el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1).
 - **El menú de opciones (F1)** se usa con el mouse, el teclado o un mando, en español o en inglés. Esc, B o un clic afuera
   cierran cada ventana
 - **Beber y comer más rápido:** los mismos dos trucos opcionales que en el teléfono, apagados, en **F1**, **Trucos**
+- **Mandar todas las recompensas a la caja:** como en el teléfono, apagado, en **F1**, **Juego**. Idea de Alfonso
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods-1)
 - Importa tu partida desde un emulador o desde la app de Android, y expórtala para llevarla ahí: mira [Partidas](#partidas-1)
 - El juego se detiene mientras su ventana está minimizada, y sigue donde estaba cuando la vuelves a abrir (**F1**,
@@ -760,6 +811,10 @@ Desde **F1**, **Opciones del menú**:
 - **Exportar partida:** primero guarda en el juego, después elige una carpeta, y ahí se crea una carpeta `MHGU_save_...` con
   `system` y `system_backup`. Para llevarla a un emulador, guarda una copia de lo que haya en su carpeta de partidas y copia
   los dos archivos. Para llevarla al teléfono, copia `system` y usa **Importar partida** ahí.
+- **Misiones de evento y descargas:** pon el archivo `system` de una partida que las tenga (la tuya, de un emulador o de una
+  copia de tu consola) en una carpeta llamada `bonus` junto a `MHGU.exe`. En su próximo arranque el juego copia sus descargas
+  a tu partida, solo si tu partida todavía no tiene ninguna propia (con **Contenido extra** activado, como viene). Exporta tu
+  partida antes para tener una copia. El juego no incluye ninguna: las traes tú, bajo tu responsabilidad.
 
 ### Trucos y mods
 
@@ -875,6 +930,7 @@ Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliot
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias, con el aviso legal, también están en la app: engranaje, **Créditos y licencias**, **Licencias**. En PC: **F1**, **Créditos y licencias**, **Licencias**, y la carpeta `licenses` junto a `MHGU.exe`.
 
 El chat, las claves de sala (el generador de la clave de emparejamiento) y los perfiles de controles siguen los diseños de tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
+Ideas de la comunidad: Alfonso, mandar todas las recompensas a la caja de una vez.
 
 Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
 Android de la misma forma.

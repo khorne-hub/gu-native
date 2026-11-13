@@ -930,6 +930,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(sync_small_monsters);
     SAME(bonus_content);
     SAME(village_in_hub);
+    SAME(send_all_rewards);
     SAME(mouse_sensitivity);
     SAME(touch_controls);
     SAME(touch_hud);
@@ -2363,6 +2364,54 @@ void scale_row(std::vector<Row> &r) {
     r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer; the HUD and the text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D models in the menus get no anti-aliasing.");
 #endif
 }
+// The language of the menu's texts (as tr), for the rows below that carry their own English and Spanish
+const char *en_es(const char *en, const char *es) { return (s.editing ? s.draft.language : config_language()) == 1 ? es : en; }
+
+// S43, Alfonso's idea: "Send to the Item Box" on the quest's rewards sends every reward at once (runtime/hle/rewards.c;
+// MH4U for Android has the same option, name and texts). Off: one reward an A, as the game does.
+void rewards_rows(std::vector<Row> &r) {
+    header(r, "rewards.header", en_es("After a quest", "Al terminar una misión"));
+    add_bool(r, "rewards.all", en_es("Send all to the box", "Enviar todo a la caja"),
+             &s.draft.send_all_rewards, ini("SendAllRewards"));
+    r.back().help = en_es("At the end of a quest, the game's Send to the Item Box sends every reward at once, as in the newer "
+                          "games. What doesn't fit in the box stays in the list. Off: one at a time, as the game does it. "
+                          "Alfonso's idea.",
+                          "Al terminar una misión, la opción del juego de enviar a la caja de objetos manda todas las "
+                          "recompensas de una vez, como en los juegos más nuevos. Lo que no entra en la caja queda en la "
+                          "lista. Apagado: de a una, como lo hace el juego. Idea de Alfonso.");
+}
+
+// S37: the player's own DLC and event quests (Android: android/.../ExtraImportActivity.java, a save with downloads as the
+// bonus content; MH4U for Android has the same row and screen)
+void extra_import_row(std::vector<Row> &r) {
+    action(r, "save.extra", en_es("Import DLC and event quests", "Importar DLC y misiones de evento"),
+           []() { ui_request_activity("showExtraImport"); });
+    r.back().help = en_es("Brings the event quests and downloads you already have, inside a save from an emulator or a "
+                          "backup of your console. Your hunters stay. The app includes none: you bring your own, at your "
+                          "own risk.",
+                          "Trae las misiones de evento y descargas que ya tienes, dentro de una partida de un emulador o de "
+                          "una copia de tu consola. Tus cazadores quedan. La app no incluye ninguna: las traes tú, bajo tu "
+                          "responsabilidad.");
+}
+
+// S56: a shortcut on the phone's home screen with an image the player picks (android/.../ShortcutActivity.java; the
+// same row and screen in MH4U for Android)
+void shortcut_row(std::vector<Row> &r) {
+    action(r, "app.shortcut", en_es("Home screen shortcut", "Acceso directo en el inicio"),
+           []() { ui_request_activity("showShortcut"); });
+    r.back().help = en_es("Puts a shortcut to the game on your home screen, with a picture you choose from your phone and "
+                          "the name you want. The app's own icon stays as it is.",
+                          "Pone un acceso directo al juego en la pantalla de inicio, con una imagen que elijas de tu teléfono "
+                          "y el nombre que quieras. El ícono propio de la app queda como está.");
+}
+void reset_rewards() { s.draft.send_all_rewards = config_defaults().send_all_rewards; }
+// The qol group's places (MENU.md 3.3, 3.5, 3.6): Send all under After a quest on Gameplay; the import on DLC and event
+// quests and the shortcut on System (Android: a desktop's has no such screens, its README says where the files go)
+MENU_ENTRY("gameplay", 70, rewards_rows, reset_rewards);
+#ifdef __ANDROID__
+MENU_ENTRY("mods/dlc", 10, extra_import_row);
+MENU_ENTRY("system", 75, shortcut_row);
+#endif
 // ---------------------------------------------------------------- the pages and their entries (MENU.md)
 // Each option of the menu, as an entry on its page; the pages one level down, each with its row's place on the page
 // above. Other options join with a MENU_ENTRY of their own (MENU.md: the places kept for 1.0's)

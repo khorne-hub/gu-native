@@ -85,6 +85,18 @@
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
             android:screenOrientation="sensorLandscape"
             android:exported="false" />
+        <!-- Settings -> Import DLC and event quests (S37): a save with downloads becomes the bonus content -->
+        <activity android:name=".ExtraImportActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+        <!-- Settings -> Shortcut with your image (S56): a pinned shortcut with the player's picture -->
+        <activity android:name=".ShortcutActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:excludeFromRecents="true"
+            android:exported="false" />
 
         <!-- Compartir el registro: en su propio proceso, que sigue vivo cuando el del juego se cerró por un error.
              exported: el atajo del ícono (res/xml/shortcuts.xml) lo abre el launcher, y hay launchers que lo abren como

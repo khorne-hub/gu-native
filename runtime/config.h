@@ -172,6 +172,8 @@ typedef struct {
     char ryu_passphrase[64];  // [Multiplayer] RyujinxPassphrase: a private game's (Ryujinx-xxxxxxxx); "" public
     int xroom_host;           // [Multiplayer] RoomHost: this app hosts the room (runtime/net/xroomhost.c) and joins it
     int xroom_host_port;      // [Multiplayer] RoomHostPort: its UDP port; 0 the rooms' usual 24872
+    int send_all_rewards;     // [Quest Rewards] SendAllRewards: choosing Send to the Item Box at a quest's rewards sends
+                              // every reward that fits at once (runtime/hle/rewards.c); off, one at a time as the game does
 } Config;
 // The crossplay settings as the network threads read them (config_live_crossplay)
 typedef struct {
@@ -313,6 +315,7 @@ int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
 int config_live_grass(void);            // [Performance] Grass
 int config_live_reverb(void);           // [Audio] Reverb
+int config_live_send_all_rewards(void); // [Quest Rewards] SendAllRewards (runtime/hle/rewards.c)
 void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, Grass, FPS; not saved)
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key
 int config_live_online_notice(void);  // [Multiplayer] OnlineNoticeShown

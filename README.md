@@ -51,8 +51,10 @@ Talk with other players and ask for help in the community's [Discord](https://di
 - Your phone's keyboard works for typing your character's name, and in the settings menu's text with **Phone keyboard** (Enter accepts; Back hides the keyboard and keeps what you typed); the menu's own keys stay for a controller
 - The settings menu works by touch and matches the game's look
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
+- **Send all rewards to the box:** at the end of a quest, the game's **Send to the Item Box** sends every reward at once, as in the newer games; what doesn't fit in the box stays in the list. Off by default: under the gear, **Gameplay**, **Send all rewards to the box**. Alfonso's idea
+- **A shortcut with your own picture:** under the gear, **Menu Options**, **Shortcut with your image** puts the game on your home screen with a picture and a name you choose. The app's own icon stays as it is
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
-- Import your save from an emulator, another device or the PC game, and export it to take it there: see [Saves](#saves)
+- Import your save from an emulator, another device or the PC game, and export it to take it there; bring the event quests you already have; keep your save in the cloud: see [Saves](#saves)
 - The game pauses by itself when you leave the app, and while the settings menu is open if you play alone
 - Vibration on button taps, and the game's rumble on your phone, with or without a controller
 
@@ -251,6 +253,51 @@ When the game starts it checks the folder. If it can't reach it, if it is empty 
 versions of the save, or if another device has the game open, it says so and lets you choose what to do. If the folder
 can't be reached at a save, that save stays on the device, and the next start asks which one to keep.
 
+#### Import DLC and event quests
+
+The game's **Download** menu can't reach its server from this app, so the downloads (event and challenge quests, item packs,
+Palicos) come from a save that already has them: your own, from an emulator or a backup of your console. The app includes
+none and downloads none: you bring your own, at your own risk.
+
+1. Find that save's file named `system` (Ryujinx: right-click the game, **Open User Save Directory**; yuzu and its
+   successors: right-click the game, **Open Save Data Location**) and copy it to your device, for example to a folder
+   `Download/MHGU downloads`.
+2. In the game, go to the gear, **Menu Options**, **Import DLC and event quests**, **Choose a folder**, and choose that folder.
+   The app checks the file and tells you how many event and challenge quests it has.
+3. Tap **Import and restart**. Your save is copied to `save_backups` first; the game restarts, and your save takes the
+   downloads.
+
+- Your hunters and everything else in your save stay as they are: only the downloads go in, and only into a save that has
+  none of its own yet. A save that already has some keeps its own, and the app tells you so.
+- **Bonus content** (gear, **Menu Options**) must be on, as it is by default.
+- The game's own DLC files (`DLC.dlcp`) can't be used this way: the game only takes them through its **Download** menu, which
+  needs its online services.
+
+#### Keep your save in the cloud (Google Drive and the like)
+
+The app has no cloud of its own, and it doesn't need one: **Save folder** works with any app that keeps a folder of your
+phone the same as a folder in your cloud. Step by step, with Google Drive:
+
+1. Install a sync app that keeps a phone folder and a Google Drive folder the same both ways (two-way sync), for example
+   **FolderSync** or **Autosync for Google Drive**. Google Drive's own app doesn't keep phone folders in sync.
+2. With your phone's file manager, make a folder for your saves, for example `Saves` in the phone's storage (not inside
+   `Android/data`).
+3. In the game, save. Then go to the gear, **Menu Options**, **Save folder**, and choose that folder. The game restarts, and
+   your save is in a folder `MHGU save` inside it.
+4. In the sync app, pair that folder with a new folder in your Google Drive. Choose **two-way** sync, syncing when files
+   change (or every few minutes), and leave off any option that deletes or moves files after syncing. Let the first sync
+   finish: `MHGU save` shows up in your Drive.
+5. On your other phone or tablet: install this app and the sync app, pair the same Google Drive folder with a folder there,
+   and wait until `MHGU save` has come down. Then in the game, **Save folder**, and choose that folder: the game uses the
+   save that is in it.
+6. From then on, hunt on one device at a time, and before you open the game on the other one, check that the sync app has
+   finished on both.
+
+If the sync app ever keeps two versions of the save, or the other device still has the game open, the game says so at its
+start and lets you choose; the save not kept goes to `save_backups`. MH4U for Android keeps its save the same way
+(`MH4U save`), so one synced folder can hold both. The PC game has no **Save folder** yet: take the save between the phone
+and the PC with **Export save** and **Import save** (see [Move a save between Android and PC](#move-a-save-between-android-and-pc)).
+
 ### Cheats and mods
 
 - **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). Under the gear, **Cheats**, **Add cheats**, pick the file, and turn each one on in that same page. They start off.
@@ -407,6 +454,7 @@ one is based on. They haven't been fully tested on Android yet.
 |---|---|
 | Settings, the touch layout and the HUD's, controller mappings, the log | `Android/data/com.mhgu.recomp/files`: `mhgurecomp.ini`, `touch_layout.txt`, `gamepad_mappings.txt`, `log.txt` (the session before: `log_prev.txt`) |
 | Saves | `Android/data/com.mhgu.recomp/files/MHGURecomp/save`, or the folder you chose in **Save folder**. The save an import replaces goes to `save_backups`, in `MHGURecomp` |
+| Event quests and downloads you imported | `Android/data/com.mhgu.recomp/files/MHGURecomp/bonus` (the save they come from) |
 | Cheats and mods you add | Your game folder's `cheats` and `mods` |
 
 ### Update to a new version
@@ -518,6 +566,7 @@ The download has the program only: the game code (`mhgugame.dll` and `mhgugame.i
 - **The settings menu (F1)** works with the mouse, the keyboard or a controller, in English or Spanish. Esc, B or a click
   outside closes each window
 - **Faster drinking and eating:** the same two optional cheats as on the phone, off, under **F1**, **Cheats**
+- **Send all rewards to the box:** as on the phone, off, under **F1**, **Gameplay**. Alfonso's idea
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods-1)
 - Import your save from an emulator or the Android app, and export it to take it there: see [Saves](#saves-1)
 - The game stops while its window is minimized, and goes on where it was when you bring it back (**F1**, **Menu Options**,
@@ -743,6 +792,10 @@ From **F1**, **Menu Options**:
 - **Export save:** save in the game first, then choose a folder, and a `MHGU_save_...` folder with `system` and
   `system_backup` is made in it. To take it to an emulator, keep a copy of what is in its save folder and copy both files in.
   To take it to the phone, copy `system` to it and use **Import save** there.
+- **Event quests and downloads:** put the `system` file of a save that has them (your own, from an emulator or a backup of
+  your console) in a folder named `bonus` beside `MHGU.exe`. At its next start the game copies its downloads into your save,
+  only if your save has none of its own yet (**Bonus content** on, as it is by default). Export your save first to keep a
+  copy. The game includes none: you bring your own, at your own risk.
 
 ### Cheats and mods
 
@@ -855,6 +908,7 @@ Based on the open-source MHGURecomp project (MIT license) and the libraries list
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Their licenses, with the legal notice, are also in the app: gear button, **Credits & Licenses**, **Licenses**. On PC: **F1**, **Credits & Licenses**, **Licenses**, and the `licenses` folder beside `MHGU.exe`.
 
 The chat, the room keys (the matchmaking key's generator) and the control profiles follow the designs of tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
+Ideas from the community: Alfonso, sending all the rewards to the box at once.
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
 Android the same way.

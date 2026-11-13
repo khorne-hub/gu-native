@@ -17,6 +17,9 @@ void ui_request_import(int kind);  // the import screen (Android's ImportActivit
 // The layout editor's Add pictures (runtime/touch.cpp): Android's PicturesActivity, a desktop's file dialog
 // (pc_import_pictures), which copy the player's pictures into the layout profiles' images folder
 void ui_request_pictures(void);
+// Android: a static void method of GameActivity, by name ("showExtraImport", "showShortcut"), called on the host thread
+// as the requests above; a desktop: nothing
+void ui_request_activity(const char *method);
 #ifdef __ANDROID__
 void ui_request_gpu_driver(void);
 bool vk_gpu_adreno(void);          // (nvn/vulkan/device.c)

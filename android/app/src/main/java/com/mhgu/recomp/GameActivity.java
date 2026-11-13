@@ -297,6 +297,18 @@ public class GameActivity extends SDLActivity {
         if (activity != null) activity.startActivity(new Intent(activity, SaveImportActivity.class));
     }
 
+    /** Settings -> Import DLC and event quests (S37): runtime/ui.c ui_request_activity. */
+    public static void showExtraImport() {
+        SDLActivity activity = mSingleton;
+        if (activity != null) activity.startActivity(new Intent(activity, ExtraImportActivity.class));
+    }
+
+    /** Settings -> Shortcut with your image (S56): runtime/ui.c ui_request_activity. */
+    public static void showShortcut() {
+        SDLActivity activity = mSingleton;
+        if (activity != null) activity.startActivity(new Intent(activity, ShortcutActivity.class));
+    }
+
     /** Ajustes -> Carpeta de partidas. */
     public static void showSaveFolder() {
         SDLActivity activity = mSingleton;
