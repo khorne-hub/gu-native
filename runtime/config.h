@@ -114,7 +114,7 @@ typedef struct {
     int touch_hud;            // [Touch] MoveHUD: the HUD moves out of the thumbs' way while they show (nvn/vulkan/exec.c)
     float touch_camera;       // [Touch] CameraSpeed: the camera's turn for a drag (1: about 90 degrees a screen height)
     float touch_opacity;      // [Touch] Opacity: of the controls, 0.2 .. 1
-    int render_scale;         // [Display] RenderScale: RenderResolution Auto's 3D size, percent of the screen's (25..100)
+    int render_scale;         // [Display] RenderScale: RenderResolution Auto's 3D size, percent of the screen's (10..100)
     int touch_vibration;      // [Touch] Vibration: a short tick when a touch control is pressed (runtime/haptics.c)
     int phone_rumble;         // [Controls] PhoneRumble: the game's rumble on the phone's vibrator too (runtime/haptics.c)
     int show_stats;           // [Performance] ShowStats: the frame rate and the phone's temperature on screen (perfstats);
@@ -157,6 +157,7 @@ typedef struct {
     int gyro_aim;             // [Controls] GyroAim: aiming a bow or a bowgun, turning the phone (or a controller with a gyro)
                               // turns the aim too, from where it was as the aim began (runtime/host_input.c gyro_update)
     float gyro_sensitivity;   // [Controls] GyroSensitivity: the aim's turn for a turn of the phone (GYRO_SENS_MIN..MAX)
+    int effects;              // [Performance] Effects: 0 the game's particle effects are not drawn (runtime/hle/effects.c)
 } Config;
 // The remembered lists (Config's ldn_recent_*: n entries of `width` bytes, the last first, no empty one between): add puts
 // a value at the front once (nocase: compared as host names are; an empty one is nothing), the last one dropped when it
@@ -170,6 +171,8 @@ void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
 // LDN_SERVERS: the menu's short list, the default first ("Custom..." types any other, Off is none).
 #define LDN_DEFAULT_SERVER "hunterhubid-gu-hub.duckdns.org"
 #define LDN_SERVERS {LDN_DEFAULT_SERVER}
+#define RENDER_SCALE_MIN 10  // [Display] RenderScale's least: any percent from it to 100 (the menu's 3D resolution; config.c
+                             // keeps the 3D picture 320x180 at least)
 #define LOW_END_SCALE 40  // what the menu's Low-end mode sets: RenderScale, FPS
 #define LOW_END_FPS 30
 // [Performance] FPS: the most a phone takes; a desktop also takes more, up to FPS_UNLIMITED ("Unlimited" in the file
@@ -291,6 +294,7 @@ int config_live_pause_menu(void);       // [Application] PauseInMenu
 int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
 int config_live_grass(void);            // [Performance] Grass
+int config_live_effects(void);          // [Performance] Effects
 int config_live_reverb(void);           // [Audio] Reverb
 void config_live_test(const Config *c);  // (config.c: a test run's overrides of Shadows, Bloom, Grass, FPS; not saved)
 void config_live_ldn(char *server, size_t server_size, char *key, size_t key_size);  // [Multiplayer] Server, Key

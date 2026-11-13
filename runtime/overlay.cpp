@@ -571,6 +571,7 @@ static void romfs_notice(uint64_t now) {
     LOG("[overlay] notice: the game's files look incomplete (%s GB, %d empty)\n", size, empty);
 }
 
+static void draw_plate(const std::string &title, const std::string &text, float alpha, float scale);
 static void draw_notice(uint64_t now, float scale) {
     std::string title, text;
     uint64_t at;
@@ -580,7 +581,56 @@ static void draw_notice(uint64_t now, float scale) {
         title = g_notice_title, text = g_notice_text, at = g_notice_ns;
     }
     float age = now > at ? (now - at) / 1e9f : 0.f;  // (posted since now was read: just up)
-    float alpha = std::clamp(std::min(age / .15f, (NOTICE_NS / 1e9f - age) / .5f), 0.f, 1.f);
+    draw_plate(title, text, std::clamp(std::min(age / .15f, (NOTICE_NS / 1e9f - age) / .5f), 0.f, 1.f), scale);
+}
+
+// The start's shader builds (exec.c vk_shader_progress; 1.0's S30), on the notice's plate while no notice is up: once
+// they have taken SHADER_PLATE_NS (a warm cache is done within a second or two and shows nothing) and while they last
+// - a first start, an update that changed the translator, a cleared cache, a phone whose driver cache was lost - so the
+// player knows why models come late and the first areas stutter; "Shaders built" for a moment once they are done.
+// Updated at most 4 times a second (the counts move every frame)
+extern "C" bool vk_shader_progress(int *done, int *total);
+static const uint64_t SHADER_PLATE_NS = 3000000000ull, SHADER_DONE_NS = 2500000000ull;
+static bool shader_plate(uint64_t now, std::string &title, std::string &text, float &alpha) {
+    static uint64_t first, shown, done_at, read_at;
+    static bool busy, finished;
+    static int done, total;
+    if (finished) return false;
+    if (now - read_at >= 250000000ull) busy = vk_shader_progress(&done, &total), read_at = now;
+    if (!first) first = now;
+    int lang = config_language();
+    if (busy) {
+        if (now - first < SHADER_PLATE_NS || total <= 0) return false;
+        if (!shown) {
+            shown = now;
+            LOG("[overlay] the shader plate: %d of %d built %.1f s after the overlay's first frame\n", done, total,
+                (now - first) / 1e9);
+        }
+        char line[160];
+        snprintf(line, sizeof line, lang == 1 ? "%d de %d (%d %%): los modelos y efectos pueden aparecer tarde hasta que terminen"
+                                              : "%d of %d (%d%%): models and effects may show late until they are done",
+                 done, total, total ? done * 100 / total : 0);
+        title = lang == 1 ? "Armando shaders" : "Building shaders", text = line;
+        alpha = std::clamp((now - shown) / 3e8f, 0.f, 1.f);
+        return true;
+    }
+    if (!shown) {  // (done before the plate was due: nothing to say)
+        if (now - first >= SHADER_PLATE_NS) finished = true;
+        return false;
+    }
+    if (!done_at) done_at = now, LOG("[overlay] the shader plate: done, %.1f s after it showed\n", (now - shown) / 1e9);
+    if (now - done_at >= SHADER_DONE_NS) {
+        finished = true;
+        return false;
+    }
+    title = lang == 1 ? "Shaders armados" : "Shaders built";
+    text = lang == 1 ? "Todo listo." : "All done.";
+    alpha = std::clamp((SHADER_DONE_NS - (now - done_at)) / 5e8f, 0.f, 1.f);
+    return true;
+}
+
+// A notice's plate (draw_notice, shader_plate): a title over a text, at the top in the middle, under the FPS plate
+static void draw_plate(const std::string &title, const std::string &text, float alpha, float scale) {
     auto color = [alpha](float r, float g, float b, float a) {
         return ImGui::ColorConvertFloat4ToU32(ImVec4(r, g, b, a * alpha));
     };
@@ -773,13 +823,16 @@ static void frame_once(void *cpu) {
     romfs_notice(now);
     if (g_modal_open) notice_hold(now);
     bool notice = notice_due(now);
+    std::string plate_title, plate_text;
+    float plate_alpha = 0;
+    bool plate = !notice && shader_plate(now, plate_title, plate_text, plate_alpha);
     char line[256];
     bool chat = chat_composing(line, sizeof line);
     ImGuiIO &io = ImGui::GetIO();
     bool touch = touch_drawn();  // (hidden, the settings button still shows)
     bool stats = perfstats_visible();  // ([Performance] ShowStats: runtime/perfstats.cpp)
     bool fading = settings_panel_fading();  // (the settings menu closed a moment ago: fading out, taking no input)
-    if (!open && !free_render && !notice && !chat && !touch && !stats && !credits && !fading) {  // (nothing to draw)
+    if (!open && !free_render && !notice && !plate && !chat && !touch && !stats && !credits && !fading) {  // (nothing to draw)
         std::lock_guard<std::mutex> l(g_snap_lock);
         if (g_snap.Valid) snap_clear(), g_snap_seq++;
         apply_input(io);  // (keep the queue short)
@@ -793,7 +846,7 @@ static void frame_once(void *cpu) {
     // theirs moving, nothing they show changed) is not built again: the render thread draws the copy it has (g_snap), as
     // it does every frame. Once a second it is built anyway. =2, a check: such frames are built, compared with the copy
     // (snap_same) and a difference logged
-    bool alone = touch && !open && !free_render && !notice && !chat && !stats && !credits && !fading && !g_modal_open &&
+    bool alone = touch && !open && !free_render && !notice && !plate && !chat && !stats && !credits && !fading && !g_modal_open &&
                  !g_settings_open && !g_forge_open && !settings_panel_confirming();
     bool same = g_perf_overlay_reuse && alone && g_reuse_last && g_snap.Valid && w == g_reuse_w && h == g_reuse_h &&
                 now - g_reuse_built_ns < 1000000000ull && touch_draw_unchanged((float)w, (float)h);
@@ -868,6 +921,7 @@ static void frame_once(void *cpu) {
     }
     forge_imgui_run(cpu, FORGE_IMGUI_FREE_RENDER);
     if (notice && !g_modal_open) draw_notice(now, scale);  // (not over the thank-you: it waits, notice_hold)
+    if (plate && !g_modal_open && !g_settings_open) draw_plate(plate_title, plate_text, plate_alpha, scale);
     if (chat && !g_modal_open) draw_chat(line, now, scale);
     if (stats) perfstats_draw((float)w, (float)h);  // (under the touch controls, on the same background list)
     if (touch) touch_draw((float)w, (float)h);  // (the touch controls: runtime/touch.cpp)

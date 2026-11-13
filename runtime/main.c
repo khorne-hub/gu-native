@@ -17,6 +17,7 @@
 #include "app_actions.h"
 #include "net/discord.h"
 #include "savefolder.h"
+#include "cache_clear.h"
 #ifdef __ANDROID__
 static void game_lib_failed(const char *why);
 #endif
@@ -76,6 +77,7 @@ static void boot(const char *root) {
     villagehub_init();  // (Village quests at the Hub / Pub counter: runtime/hle/villagehub.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     grass_init();  // ([Performance] Grass: the game's grass unit left out while Off: runtime/hle/grass.c)
+    effects_init();  // ([Performance] Effects: the game's particle effects left out while Off: runtime/hle/effects.c)
     guimark_init();  // (the HUD's markers over the world shown below 1280x720 too: runtime/hle/guimark.c)
     limiter_init();  // (MHGU_PERF_LIMITER: the frame limiter sleeps instead of turning on the clock: runtime/hle/limiter.c)
     inflate_init();  // (zlib's inflate_fast as host code, for loading: runtime/hle/inflate.c)
@@ -323,6 +325,7 @@ int main(int argc, char **argv) {
     rt_log_start();  // (Windows: from here the log's own thread writes it, runtime/logwriter.c)
     hitch_init();  // ((debug) MHGU_HITCHLOG=1: before the game's threads start, runtime/hitchlog.c)
     if (given) LOG("MHGU Recomp %s\n", MHGU_VERSION);  // (standalone: log.txt's first line, written above)
+    cache_clear_at_start();  // (the menu's Clear shader cache: before the renderer or the mods read any of it)
 #if defined(__ANDROID__) || defined(_WIN32)
     void plat_log_device(void);  // (the phone; Windows: how this run treats its threads)
     plat_log_device();

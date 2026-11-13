@@ -212,6 +212,19 @@ static void own_bytes(const Dir *d, int depth, bool movie, uint64_t *all, uint64
         own_bytes(d->dirs[i], depth + 1, movie || (depth == 1 && !strcasecmp(d->dirs[i]->name, "movie")), all, movies);
 }
 
+// (a mod's files, before it is merged) all of them and its textures (.tex: the game's own format, the one texture packs
+// replace; 1.0's S26): how many and their bytes, for the log. A texture pack's memory is the player's call: drawn, each
+// texture takes GPU memory as its own format does (BC on a Mali decoded on the CPU to 4-8 times its size, textures.c)
+static void mod_bytes(const Dir *d, int *files, uint64_t *bytes, int *tex, uint64_t *tex_bytes) {
+    for (int i = 0; i < d->nfiles; i++) {
+        const char *n = d->files[i]->name;
+        size_t len = strlen(n);
+        (*files)++, *bytes += d->files[i]->size;
+        if (len > 4 && !strcasecmp(n + len - 4, ".tex")) (*tex)++, *tex_bytes += d->files[i]->size;
+    }
+    for (int i = 0; i < d->ndirs; i++) mod_bytes(d->dirs[i], files, bytes, tex, tex_bytes);
+}
+
 static bool build(RomfsImage *im, const char *base_dir, const char *const *overlays, int noverlays, bool game) {
     int unread0 = g_unread;
     Dir *root = scan(base_dir, "", 0);
@@ -222,8 +235,14 @@ static bool build(RomfsImage *im, const char *base_dir, const char *const *overl
     for (int i = 0; i < noverlays; i++) {
         Dir *o = scan(overlays[i], "", 0);
         if (!o) continue;
+        int files = 0, tex = 0;
+        uint64_t bytes = 0, tex_bytes = 0;
+        mod_bytes(o, &files, &bytes, &tex, &tex_bytes);
         int n = merge(root, o);
-        LOG("[romfs] mod %s: %d files\n", overlays[i], n);
+        LOG("[romfs] mod %s: %d files (%.1f MB)", overlays[i], n, bytes / 1048576.0);
+        if (tex) LOG(", %d of them textures (%.1f MB as files; the GPU memory they take grows as they are drawn: the [mem] lines)",
+                     tex, tex_bytes / 1048576.0);
+        LOG("\n");
     }
     sort_tree(root);
     Lists l = {0};

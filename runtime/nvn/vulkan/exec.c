@@ -1252,6 +1252,7 @@ typedef struct {
     // (the log's "caught up" line: when the builds queued at the start are done; 1 watching, 2 still being queued)
     int busy, watch;
     uint64_t watch_t0, watch_jobs;
+    int queued;  // (jobs in the two lists: vk_shader_progress)
 } JobQueue;
 static JobQueue compile_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 0};
 static JobQueue translate_q = {NULL, NULL, NULL, NULL, PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, false, 1};
@@ -1356,6 +1357,7 @@ static void *worker(void *a) {
         pthread_mutex_lock(&q->lock);
         while (!q->head && !q->lhead) pthread_cond_wait(&q->cond, &q->lock);
         Job *j;
+        q->queued--;
         if (q->head) {
             j = q->head;
             q->head = j->next;
@@ -1402,6 +1404,7 @@ static void enqueue(JobQueue *q, bool low, void (*fn)(void *), void *arg) {
     Job **head = low ? &q->lhead : &q->head, **tail = low ? &q->ltail : &q->tail;
     if (*tail) (*tail)->next = j; else *head = j;
     *tail = j;
+    q->queued++;
     pthread_cond_signal(&q->cond);
     pthread_mutex_unlock(&q->lock);
 }
@@ -3812,6 +3815,23 @@ static void prewarm_done(void) {
     LOG("[shader] prewarm: %llu programs translated, %llu already cached, %llu failed, %.1f s after the first one\n",
         (unsigned long long)atomic_load(&pw_total_new), (unsigned long long)atomic_load(&pw_total_known),
         (unsigned long long)atomic_load(&stat_pw_failed), (plat_now_ns() - pw_t0) / 1e9);
+}
+
+// The start's shader builds, for the overlay's plate (overlay.cpp shader_plate, 1.0's S30): true while the builds queued
+// at the start (the programs and pipelines of earlier runs, from the program cache) or the prewarm's translations (the
+// game's programs not in the cache yet: a first start, an update that changed the translator, a cleared cache) are not
+// done; `done` of `total` so far (the total grows while they are still being queued). Any thread.
+bool vk_shader_progress(int *done, int *total) {
+    pthread_mutex_lock(&compile_q.lock);
+    bool start = compile_q.watch != 0;
+    uint64_t c_done = start ? compile_q.watch_jobs : 0;
+    int c_left = start ? compile_q.queued + compile_q.busy : 0;
+    pthread_mutex_unlock(&compile_q.lock);
+    uint64_t pw_left = atomic_load(&stat_pw_left);
+    uint64_t pw_done = pw_left ? atomic_load(&pw_total_new) + atomic_load(&pw_total_known) + atomic_load(&stat_pw_failed) : 0;
+    *done = (int)(c_done + pw_done);
+    *total = (int)(c_done + (uint64_t)c_left + pw_done + pw_left);
+    return start || pw_left;
 }
 
 // (workers, low list) the SPIR-V into cache/spirv; then the sources go and the program is dormant, unless a draw

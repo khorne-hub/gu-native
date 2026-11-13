@@ -4,6 +4,7 @@
 #include "settings_locale.h"
 #include "settings_icons.h"
 #include "app_actions.h"
+#include "cache_clear.h"
 #include "cheats.h"
 #include "overlay.h"
 #include "padmap.h"
@@ -156,6 +157,9 @@ std::atomic<int> captured_key{-1};
 // (the draft's language while the menu edits it; before the menu first opens - the credits at the start - the saved one:
 // the draft is still empty then, and the credits came out in English on a Spanish system)
 const char *tr(const char *text) { return settings_text(s.editing ? s.draft.language : config_language(), text); }
+// (a row's own words in English and Spanish, kept beside the row: the 1.0 options' texts live with their rows, so each one
+// moves as a whole when the menu is arranged again)
+const char *en_es(const char *en, const char *es) { return (s.editing ? s.draft.language : config_language()) == 1 ? es : en; }
 std::string fmt(const char *text, ...) {
     char buffer[512];
     va_list args;
@@ -720,6 +724,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(shadows);
     SAME(bloom);
     SAME(grass);
+    SAME(effects);
     SAME(reverb);
     SAME(adreno_fix);
     SAME(fps);
@@ -1491,11 +1496,13 @@ void reset_section() {
         SDL_strlcpy(c.gpu, f.gpu, sizeof c.gpu);
 #ifdef __ANDROID__
         c.render_scale = f.render_scale;
+        c.render_w = f.render_w, c.render_h = f.render_h;  // (a phone's exact size is the 3D resolution's too)
 #endif
         c.low_end = f.low_end;
         c.shadows = f.shadows;
         c.bloom = f.bloom;
         c.grass = f.grass;
+        c.effects = f.effects;
         c.reverb = f.reverb;
         c.adreno_fix = f.adreno_fix;
         c.fsr = f.fsr;
@@ -1944,29 +1951,132 @@ void mods_rows(std::vector<Row> &r) {
         mods.scan.reset();
     });
 }
-// The 3D resolution (RenderScale, Auto: the 3D picture in percent of the screen's; the nearest of the presets; with FSR its
-// quality sets the 3D size). A phone's is in Graphics & Audio by Low-end mode and the frame rate, as in the MH4U port; a
-// desktop's in Display, by its Render resolution
+// The 3D resolution (RenderScale, Auto: the 3D picture in percent of the screen's; with FSR its quality sets the 3D size). A
+// phone's is in Graphics & Audio by Low-end mode and the frame rate, as in the MH4U port; a desktop's in Display, by its
+// Render resolution. Any percent from RENDER_SCALE_MIN to 100: left / right one percent, a tap the usual ones (gu-native
+// #204, 4u-native #51: 20 %, 55-60 %); a phone's list also has an exact size (RenderResolution, its Width and Height rows
+// under this one; a desktop has them as Render resolution Custom). A percent not among them, as the file may have it, shows
+// as it is
 void scale_row(std::vector<Row> &r) {
-    const Config &c = s.draft;
-    if ((c.fsr && !c.low_end) || c.render_w)
+    Config &c = s.draft;
+    if (c.fsr && !c.low_end)
         return;
-    static const int scales[] = {100, 90, 80, 75, 66, 50, 40, 33, 25};
-    int pick = 0;
-    for (int i = 1; i < (int)std::size(scales); i++)
-        if (std::abs(scales[i] - c.render_scale) < std::abs(scales[pick] - c.render_scale))
-            pick = i;
-    add_choice(
-        r, "render.scale", "3D resolution", pick, {"100%", "90%", "80%", "75%", "66%", "50%", "40%", "33%", "25%"},
-        [](int v) { s.draft.render_scale = scales[v]; }, ini("RenderScale"));
-    if (scales[pick] != c.render_scale)  // (another value set in the file: shown as it is)
-        r.back().value = std::to_string(c.render_scale) + "%";
+#ifndef __ANDROID__
+    if (c.render_w)
+        return;
+#endif
+    static const int presets[] = {100, 90, 80, 75, 66, 60, 55, 50, 40, 33, 25, 20};
+    const int n = (int)std::size(presets);
+    // (the screen held landscape: the size a percent comes to, about, before the picture's shape; config.c has the exact one)
+    const int sw = std::max(g_config.width, g_config.height), sh = std::min(g_config.width, g_config.height);
+    Row row;
+    row.id = "render.scale";
+    row.title = tr("3D resolution");
+    keyed(row, ini("RenderScale"));
+    if (c.render_w) {  // (a phone's exact size)
+        row.value = std::string(en_es("Exact", "Exacta")) + " (" + std::to_string(c.render_w) + "x" + std::to_string(c.render_h) + ")";
+    } else {
+        row.value = std::to_string(c.render_scale) + "%";
+        if (sw > 0 && c.render_scale < 100)
+            row.value += " (" + std::to_string(sw * c.render_scale / 100 & ~1) + "x" + std::to_string(sh * c.render_scale / 100 & ~1) + ")";
+        row.number = true;
+        row.adjust = [](int d) { s.draft.render_scale = std::clamp(s.draft.render_scale + d, RENDER_SCALE_MIN, 100); };
+    }
+    Row copy = row;
+    row.menu = true;
+    row.activate = [copy, n, sw, sh]() {
+        std::vector<std::string> names;
+        int now = -1;
+        for (int i = 0; i < n; i++) {
+            names.push_back(std::to_string(presets[i]) + "%");
+            if (!s.draft.render_w && presets[i] == s.draft.render_scale) now = i;
+        }
 #ifdef __ANDROID__
-    r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer.");
+        names.push_back(en_es("Exact size", "Tamaño exacto"));
+        if (s.draft.render_w) now = n;
+#endif
+        choices(copy, names, now, [n, sw, sh](int v) {
+            Config &d = s.draft;
+            if (v < n) {
+                d.render_scale = presets[v], d.render_w = d.render_h = 0;
+            } else if (!d.render_w) {  // (an exact size: from the percent's size, then its own rows)
+                d.render_w = std::max(320, sw * d.render_scale / 100 & ~1);
+                d.render_h = std::max(180, sh * d.render_scale / 100 & ~1);
+            }
+        });
+        if (now < 0) {  // (another percent: the list starts at the one below it)
+            int below = n - 1;
+            for (int i = 0; i < n; i++)
+                if (presets[i] <= s.draft.render_scale) { below = i; break; }
+            focus("choice." + std::to_string(below));
+        }
+    };
+#ifdef __ANDROID__  // (S22: why the HUD softens with it; config.c, fsr.c: Low-end mode's and FSR's HUD at the screen's size)
+    row.help = en_es(
+        "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a tap offers "
+        "the usual ones and an exact size. Lower is faster and softer. The HUD and the text are drawn at this size too, so "
+        "they soften with it, unless Low-end mode or FSR is on: drawing them at the screen's full size over a smaller 3D "
+        "picture costs a weak phone's GPU more than it gains.",
+        "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un toque "
+        "ofrece los habituales y un tamaño exacto. Más bajo es más rápido y más suave. El HUD y los textos se dibujan a este "
+        "tamaño también, así que se suavizan con él, salvo con el modo gama baja o FSR: dibujarlos al tamaño completo de la "
+        "pantalla sobre una imagen 3D más chica le cuesta a la GPU de un teléfono débil más de lo que gana.");
 #else  // (config.c: below 100, the HUD at the screen's size over the smaller picture, fsr.c's plain scaling; the menus'
        // models drawn after its start get none of the anti-aliasing, as with FSR: nvn/vulkan/exec.c models_aa)
-    r.back().help = tr("The size of the 3D picture, in percent of the screen's. Lower is faster and softer; the HUD and the text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D models in the menus get no anti-aliasing.");
+    row.help = en_es(
+        "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a click "
+        "offers the usual ones (Render resolution Custom sets an exact size). Lower is faster and softer; the HUD and the "
+        "text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D "
+        "models in the menus get no anti-aliasing.",
+        "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un clic "
+        "ofrece los habituales (Resolución de renderizado Personalizada fija un tamaño exacto). Más bajo es más rápido y más "
+        "suave; el HUD y los textos siguen nítidos a resolución completa. En una GPU débil es lo que más acelera el juego. "
+        "Por debajo de 100%, los modelos 3D de los menús no tienen antialiasing.");
 #endif
+    r.push_back(std::move(row));
+#ifdef __ANDROID__
+    if (c.render_w) {  // (RenderResolution: config.c fits it to the picture's shape, at most the screen's)
+        number(r, "render.width", en_es("Width", "Ancho"), &c.render_w, 320, std::max(320, sw), 16, ini("RenderResolution"));
+        number(r, "render.height", en_es("Height", "Alto"), &c.render_h, 180, std::max(180, sh), 8, ini("RenderResolution"));
+    }
+#endif
+}
+// Clear shader cache (runtime/cache_clear.c, 1.0's S30): a tap leaves the mark the next start deletes the shader cache
+// by, before anything reads it; another tap takes it back. Nothing to Save: the mark is the setting. The size is read
+// again at most every 5 s (the SPIR-V folder holds thousands of files)
+void cache_clear_row(std::vector<Row> &r) {
+    static uint64_t bytes;
+    static Uint64 read_at;
+    const Uint64 now = SDL_GetTicks();
+    if (!read_at || now - read_at > 5000) bytes = cache_clear_bytes(), read_at = now;
+    action(r, "cache.clear", en_es("Clear shader cache", "Borrar la caché de shaders"), []() {
+        cache_clear_request(!cache_clear_pending());
+        read_at = 0;
+    });
+    char mb[32];
+    snprintf(mb, sizeof mb, "%.0f MB", bytes / 1048576.0);
+    r.back().value = cache_clear_pending() ? en_es("At the next start", "Al próximo inicio") : mb;
+    r.back().help = en_es(
+        "Deletes the shaders the game built and kept (its program, pipeline and SPIR-V caches and the GPU driver's own) at "
+        "the next start, before the game reads them: for a picture that shows something wrong after a GPU driver update "
+        "or a crash. That start builds every shader again: it takes longer, and the first areas may stutter or show models "
+        "late until they are built. A second tap, before the game starts again, keeps the cache.",
+        "Borra los shaders que el juego armó y guardó (sus cachés de programas, de pipelines y de SPIR-V, y la del driver "
+        "de la GPU) en el próximo inicio, antes de que el juego los lea: para una imagen que muestra algo mal después de "
+        "actualizar el driver de la GPU o de un cierre. Ese inicio vuelve a armar todos los shaders: tarda más, y las "
+        "primeras zonas pueden tironear o mostrar modelos tarde hasta que estén armados. Un segundo toque, antes de que "
+        "el juego vuelva a empezar, conserva la caché.");
+}
+// [Performance] Effects (runtime/hle/effects.c): the game's particle effects, drawn or not, at once
+void effects_row(std::vector<Row> &r) {
+    Config &c = s.draft;
+    add_bool(r, "effects", en_es("Effects", "Efectos"), &c.effects, ini("Effects"));
+    r.back().help = en_es(
+        "The game's particle effects: hits, sparks, fire, breath, dust, rain, the glow of the Hunter Arts. Off: faster where "
+        "there are many of them on a weak phone or GPU, but the effects that warn of a monster's attack go too. It applies at once.",
+        "Los efectos de partículas del juego: golpes, chispas, fuego, alientos, polvo, lluvia, el brillo de las Artes de caza. "
+        "Apagados: más rápido donde hay muchos, en un teléfono o una GPU débil, pero también desaparecen los efectos que avisan "
+        "del ataque de un monstruo. Se aplica al momento.");
 }
 std::vector<Row> main_rows() {
     std::vector<Row> r;
@@ -2224,6 +2334,7 @@ std::vector<Row> main_rows() {
             r.back().value = tr("No limit");
         add_bool(r, "shadows", "Shadows", &c.shadows, ini("Shadows"));
         add_bool(r, "grass", "Grass", &c.grass, ini("Grass"));
+        effects_row(r);
         add_bool(r, "bloom", "Bloom and depth of field", &c.bloom, ini("Bloom"));
         if (c.fsr && !c.low_end) {  // (FSR finds the start of the HUD from these passes: lowend_skipped)
             r.back().enabled = false;
@@ -2312,6 +2423,7 @@ std::vector<Row> main_rows() {
             r.back().help = tr("Adreno only, at your own risk: load a Vulkan driver of your own. By default the system's is used.");
         }
 #endif
+        cache_clear_row(r);
         break;
     case CONTROLS_PAGE: {
         // (a phone's: the touch controls first, then the controller's, under headers, with the MH4U port's names; the
