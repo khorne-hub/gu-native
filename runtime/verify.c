@@ -499,6 +499,16 @@ static void *run(void *arg) {
     bool have_exefs = stat(exefs, &st) == 0 && S_ISDIR(st.st_mode), have_romfs = stat(romfs, &st) == 0 && S_ISDIR(st.st_mode);
     if (have_exefs) walk(&k, exefs, "exefs", 0);
     if (have_romfs) walk(&k, romfs, "romfs", 0);
+    if (atomic_load(&g_cancel)) {  // (cancelled while listing: the list is partial, so nothing is told about the files)
+        LOG("[verify] cancelled while listing the files\n");
+        add(&r, VL_INFO, "Cancelled while the files were being listed: nothing was checked.", NULL, NULL);
+        publish(&r, VERIFY_CANCELLED, 0);
+        for (int i = 0; i < k.nh; i++) free(k.h[i].rel), free(k.h[i].host);
+        for (int i = 0; i < k.nunread; i++) free(k.unread[i]);
+        free(k.h), free(k.unread), free(k.text), free(k.w), free(k.slot), free(k.lower);
+        atomic_store(&g_running, 0);
+        return NULL;
+    }
     int romfs_have = 0;
     for (int i = 0; i < k.nh; i++) {
         Have *h = &k.h[i];

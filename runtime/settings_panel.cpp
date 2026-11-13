@@ -3510,7 +3510,8 @@ void verify_rows(std::vector<Row> &r) {
         action(r, "verify.back", tr("Back"), []() { pop(); });
         return;
     }
-    if (s.focus == "verify.cancel") s.focus = "verify.again";  // (it ended under the cursor: the report stays at its top)
+    if (s.focus == "verify.cancel")  // (it ended under the cursor: the report stays at its top)
+        s.focus = "verify.again", s.focus_request = false;
     std::vector<VerifyLine> lines(std::max(verify_lines(nullptr, 0), 1));
     lines.resize(std::min((int)lines.size(), verify_lines(lines.data(), (int)lines.size())));
     header(r, "verify.verdict", v.stage == VERIFY_CANCELLED ? tr("Check cancelled")

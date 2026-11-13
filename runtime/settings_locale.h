@@ -803,6 +803,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"What to do", "Qué hacer"},
         {"The full list is in the log: System › Your game › Share log.", "La lista completa está en el registro: Sistema › Tu partida › Compartir registro."},
         {"Check again", "Volver a comprobar"},
+        {"Cancelled while the files were being listed: nothing was checked.", "Cancelada mientras se listaban los archivos: no se comprobó nada."},
         {"The report is in System › Your game › Verify game files.", "El informe está en Sistema › Tu partida › Verificar archivos del juego."},
         {"· and %s more", "· y %s más"},
         {"The list of version 1.4.0's files is missing from the app (game_files.txt): install the app again.",
