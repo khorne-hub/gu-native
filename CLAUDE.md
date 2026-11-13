@@ -436,6 +436,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - Adreno 630 on Android 10 (driver 1.1.87): SIGSEGV in `vulkan.sdm845.so+1dd318`, from `vkCmdClearAttachments`. Drivers under 1.1.128 clear with draws
   (`clears_drawn`, `MHGU_CLEAR_FORCE=1` tests it anywhere). Adreno with Vulkan 1.1: below 720 lines and without MSAA the 3D picture repeats in a grid, so
   `msaa_floor` keeps 2x unless `[Performance] AdrenoFix = Off` (an Adreno 610 on 1.1.128 looked dark and flickered with it). Its cause is unknown.
+  The one picture of it (#12: Adreno 710, 1.1.128, 894x402, Low-end off) shows the whole scene shrunk into tiles of about 160x128 of the
+  3D picture's pixels, the HUD right: the size of a tiler's bins, a lead for whoever has such a phone. On Android a 3D picture 704 to
+  719 lines tall is made 720 (`config.c`, any GPU): 66% of a 1080-line screen gave 1582x712, which got the 2x for those 8 lines
+  (a Galaxy M55's Adreno 644: 15-20 FPS, against 30 at 1600x720 with no MSAA; #190).
 - On the Adreno 616 and 630 drivers of Android 10 (1.1.87) D32_SFLOAT_S8_UINT can't be sampled or copied into (one of the two), and D24S8
   lacked something asked of it (blits, most likely). Up to 0.1.8 DEPTH24_STENCIL8 became D32S8 there and `create_image` then made the
   game's depth buffer RGBA8 ("format 130 (nvn 0x35) not supported: RGBA8 instead"): the device was lost at the first 3D scene after the
@@ -500,7 +504,20 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   backend, which looks them up itself, gets the same through `vk_device_proc_addr`). Not on the
   render thread: 0.1.8 did that, and the start built every saved program and pipeline before its first picture, a black screen on a
   Helio G35 (#157). `MHGU_VK_POWERVR=1` gives any GPU what a PowerVR gets (this, no prewarm, VMA as Vulkan 1.0). The log's `[shader]
-  the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s).
+  the builds queued at the start are done` line says how long the start's builds took (Moto g06, warm caches: 1849 in 2.6 s) and,
+  where the driver has VK_EXT_pipeline_creation_feedback, how many of the pipelines its cache had; the start's `[vk] the driver's
+  pipeline cache: N KB from the last run` says what was read. Players' Mali phones on the Moto's own driver took 84.5 s (#199, Helio G85)
+  and 86.8 s (Discord, Unisoc T7250, whose session before had ended in a crash) there: their driver cache was cold or incomplete.
+  `cache/vk_pipelines.bin` used to be written only in the background and at exit, and a run that ended otherwise (a crash, a lost
+  device, the process killed; perhaps a write cut short by a quick swipe from Recents: not seen) kept nothing of it. A compile worker
+  now also writes it once the start's builds are done and then at most every 2 minutes while 64 or more new pipelines came
+  (`pcache_autosave`, exec.c), and the render thread queues that save when a burst ended inside the 2 minutes (`pcache_tick`: the
+  workers only look after a job, and a town's and a quest's pipelines, built in the minute after the start's were kept, waited for
+  the next build). The PC, a killed run: 0 of 933 from the cache at the next start, with the autosave 933 of 933. The Moto g06
+  (MHGU_HOME with the program cache but no driver cache, quest 101, killed each time): the start's 152 pipelines 15.6 s, then 0.2 s
+  from the 1663 KB kept; the quest's pipelines lost without `pcache_tick` (next start 178 of 308 from the cache, 16.4 s), kept
+  with it (3313 KB 2 minutes in, next start 308 of 308, 0.4 s). A save asks the driver again with a quarter more and 1 MB of room
+  (64 KB before) and logs what it wrote.
   A crash inside the compiler itself (#100: a GE8322's SIGSEGV in `libufwriter.so`, on the worker in `build_pipeline`, while
   the game waited in the settings) adds to the crash report the program of the build under way (`building_note` through
   `rt_fault_note`: "this thread was building a pipeline in the GPU driver: the program of code <vertex> and <fragment>"),

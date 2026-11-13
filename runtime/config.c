@@ -1525,6 +1525,17 @@ void config_load(void) {
             LOG("[config] RenderScale %d%% would be below 320x180: using %d%%\n", g_config.render_scale, s);
         }
         fit_aspect(tw * s / 100, th * s / 100, aspect, &w, &h);
+#ifdef __ANDROID__
+        // (a 3D picture a few lines under 720 is 720 lines tall instead, the game's own HUD canvas height: 66% of a
+        // 1080-line screen gave 1582x712, and an Adreno on a Vulkan 1.1 driver got AdrenoFix's 2x MSAA for those 8 lines
+        // (device.c msaa_floor: under 720 lines): 15-20 FPS on a Galaxy M55's Adreno 644 against 30 at 1600x720,
+        // gu-native #190. At most 2.3% more pixels, on every GPU)
+        if (s < 100 && h >= 720 - 16 && h < 720 && th > 720) {
+            int sw = w, sh = h;
+            fit_aspect(tw * 720 / th, 720, aspect, &w, &h);
+            if (h != 720) w = sw, h = sh;  // (the picture's shape gave another height: as it was)
+        }
+#endif
         if (s < 100) LOG("[config] RenderScale %d%%: the 3D picture at %dx%d (screen %dx%d)\n", s, w, h, tw, th);
 #ifdef __ANDROID__
         if (g_config.low_end && !g_config.fsr && s < 100) {
