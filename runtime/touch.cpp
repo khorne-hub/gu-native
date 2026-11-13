@@ -217,16 +217,18 @@ const Def DEFS[C_COUNT] = {
     // each other (the MH4U port's place, from its arc). Hunts only: in a town it is in the editor alone
     {"lock_on", "Lock-on", I_LOCKON, "", 0, true, .43f, .58f, .045f},
     // the emulator-style layout: A, B, X and Y in a diamond under the right thumb, the d-pad below the stick on the left,
-    // the shoulders at the screen's edges (as tabs, the inner pair above), Minus and Plus inward of them, the sticks'
-    // clicks by the stick and below the diamond (the place of an emulator's right stick: a drag anywhere turns the camera)
+    // the shoulders by the screen's edges (as tabs, the inner pair above and inward), Minus and Plus inward of them, the
+    // sticks' clicks by the stick and below the diamond (the place of an emulator's right stick: a drag anywhere turns
+    // the camera). The shoulders clear the HUD at any shape of screen: the right pair under the minimap (on a 4:3 screen
+    // the minimap reaches .37 of the height down the right edge), ZL right of the party's names
     {"emu_a", "A", I_LETTER, "A", B(BTN_A), true, .14f, .34f, .058f},
     {"emu_b", "B", I_LETTER, "B", B(BTN_B), true, .26f, .22f, .058f},
     {"emu_x", "X", I_LETTER, "X", B(BTN_X), true, .26f, .46f, .058f},
     {"emu_y", "Y", I_LETTER, "Y", B(BTN_Y), true, .38f, .34f, .058f},
     {"emu_l", "L", I_LETTER, "L", B(BTN_L), false, .17f, .62f, .05f},
-    {"emu_r", "R", I_LETTER, "R", B(BTN_R), true, .17f, .62f, .05f},
-    {"emu_zl", "ZL", I_LETTER, "ZL", B(BTN_ZL), false, .17f, .76f, .05f},
-    {"emu_zr", "ZR", I_LETTER, "ZR", B(BTN_ZR), true, .17f, .76f, .05f},
+    {"emu_r", "R", I_LETTER, "R", B(BTN_R), true, .075f, .53f, .05f},
+    {"emu_zl", "ZL", I_LETTER, "ZL", B(BTN_ZL), false, .29f, .66f, .05f},
+    {"emu_zr", "ZR", I_LETTER, "ZR", B(BTN_ZR), true, .19f, .57f, .05f},
     {"emu_plus", "Plus  +", I_LETTER, "+", B(BTN_PLUS), true, .42f, .66f, .042f},
     {"emu_minus", "Minus  -", I_LETTER, "-", B(BTN_MINUS), false, .42f, .66f, .042f},
     {"emu_dpad", "D-pad", I_DPAD, "", 0, false, .50f, .17f, .105f},
