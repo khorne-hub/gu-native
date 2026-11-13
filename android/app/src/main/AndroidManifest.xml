@@ -46,12 +46,16 @@
         <!-- Modo de rendimiento de juego de Android 12+ -->
         <meta-data android:name="android.game_mode_config" android:resource="@xml/game_mode_config" />
 
+        <!-- resizeableActivity: una ventana que cambia de tamaño (Samsung DeX maximizada, pantalla dividida, un plegable
+             abierto) se vuelve a dibujar a su tamaño nuevo (la swapchain se rehace al tamaño nuevo de la superficie y la
+             imagen conserva su forma adentro, nvn/vulkan/device.c; la capa táctil lee el tamaño de la ventana cada vez);
+             sin esto DeX reiniciaba el proceso del juego para cambiarle el tamaño, como en el port del MH4U (4u-native #40) -->
         <activity android:name=".GameActivity"
             android:label="@string/app_name"
             android:alwaysRetainTaskState="true"
             android:launchMode="singleInstance"
             android:screenOrientation="sensorLandscape"
-            android:resizeableActivity="false"
+            android:resizeableActivity="true"
             android:configChanges="layoutDirection|locale|grammaticalGender|fontScale|fontWeightAdjustment|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation|density"
             android:preferMinimalPostProcessing="true"
             android:exported="true">
