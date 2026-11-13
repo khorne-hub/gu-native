@@ -860,18 +860,29 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   last picture again (`vk_present_again`, once the game's own presents stopped 50 ms ago), with the guest clock held and the
   presenting, vsync and audio threads waiting (`vi_menu_hold`, `vi_pause_wait`), as in the background. MH4U for Android does the
   same with its clock (`android_main.cpp`, `[Interface] PauseInMenu`).
-- The two ports look and read alike (0.1.9's parity pass): the menu's tabs in the same order and names (Graphics & Audio,
-  Display, Controls, Gameplay, Multiplayer, Mods, Cheats, Menu Options, Credits & Licenses: `GFX_PAGE`... in
-  `settings_panel.cpp`), a phone's 3D resolution by Low-end mode and the frame rate (`scale_row`; a desktop's stays in
-  Display by its Render resolution), the Touch controls / Controller and Your game / The app headers, Menu colours on
-  phones too (listed Hunter, Gold, Blue; the ini keeps `THEME_*`), one FPS preset list (30, 60, 90, 120, 144, 240), the
-  titles in the phone's Noto Serif (`overlay.cpp`'s second font, `title_font`; a desktop has its one font), Credits &
-  Licenses as lines between the rows (`note`), a chevron on a row that goes on, the hunt buttons at half while a menu of
-  the game's is open and those under the menu pad's tabs faded out with it (`under_mpad`), the hunt's d-pad (ShowDpad)
-  too wherever it is, the menu pad taking its place (`hit` skips it meanwhile; 4u-native #25), the picked row's help on
-  Buttons on the screen as on the tabs (`list_and_help`), the item bar's arrows on by
-  default, one each side of the bar, as large as the room beside it allows (`item_arrow`; MH4U's `place_raw` has the
-  same rule), and the same Spanish words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name,
-  a text or a default changed in one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`,
-  `settings_locale.h`, `touch.cpp`).
+- The two ports look and read alike (0.1.9's parity pass, 1.0's menu): the menu's sections in the same order and names,
+  a phone's 3D resolution by Low-end mode and the frame rate (`scale_row`; a desktop's while its Render resolution is
+  Auto), the Touch controls / Controller pages and Your game / The app, Menu colours on phones too (listed Hunter, Gold,
+  Blue; the ini keeps `THEME_*`), one FPS preset list (30, 60, 90, 120, 144, 240), the titles in the phone's Noto Serif
+  (`overlay.cpp`'s second font, `title_font`; a desktop has its one font), Credits & Licenses as lines between the rows
+  (`note`), a chevron on a row that goes on, the hunt buttons at half while a menu of the game's is open and those under
+  the menu pad's tabs faded out with it (`under_mpad`), the hunt's d-pad (ShowDpad) too wherever it is, the menu pad
+  taking its place (`hit` skips it meanwhile; 4u-native #25), the item bar's arrows on by default, one each side of the
+  bar, as large as the room beside it allows (`item_arrow`; MH4U's `place_raw` has the same rule), and the same Spanish
+  words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name, a text or a default changed in
+  one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`, `settings_locale.h`, `touch.cpp`).
+- The menu of 1.0 (`E:/claude_trabajo/v1.0/MENU.md` has every row's place, its English and Spanish): six sections in the
+  column at the left, each with its mark (`section_icon`: Controls, Graphics & Audio, Gameplay, Multiplayer, Mods &
+  Cheats, System), and Credits & Licenses as a smaller plate under them (MH4U's GPL additional terms name that page).
+  A section's page holds its basic rows; a row with an arrow opens a page one level down (`View::Page`, `State::at`:
+  Touch controls, Controller, Keyboard and mouse, Picture and sound, Screen and HUD (the Display tab of 0.1.9),
+  Advanced, Monster health, Local network, In the hub, Mods, Cheats, This menu, Your game...). Every option is an entry:
+  `MENU_ENTRY(page, order, rows, reset, shown)` adds its rows to a page at an order (the old rows use multiples of 10),
+  puts its options back for Reset ("Reset this section": every page of it; "Reset this page": that one) and can hide
+  itself; `MENU_PAGE(id, title, parent, order, shown, link)` makes a page, whose row shows only once something on it
+  does (the places kept for 1.0's options are pages with nothing on them yet). No paragraphs on a page: a row's help is
+  its "?" at the right (`help_seal`), opened under the row (`help_box`) by a tap, Y (the left face button) or H; a
+  desktop's mouse-and-keyboard layout keeps the help of the row pointed at over its guides. A strip at the foot says the
+  last save's outcome and the restart mark and, with a controller, its buttons (`guide_button`, in the touch controls'
+  style). No option's key, value or default changed with it, only its place.
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.
