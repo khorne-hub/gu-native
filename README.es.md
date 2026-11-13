@@ -163,9 +163,9 @@ también está en el engranaje, **Opciones del menú**, **Crear el código del j
   Las dos son software libre, se comprueban antes de usarse, y nunca se descarga nada del juego.
 - Necesita unos 2 GB libres mientras trabaja; al terminar quedan solo las herramientas (unos 200 MB), y **Borrar las
   herramientas** también las quita.
-- Tarda desde unos 20 minutos en un teléfono reciente de gama alta hasta unas horas en uno de gama baja. Sigue con la
-  pantalla apagada o en otra app, con su avance en una notificación, y si se corta (el teléfono se reinicia, se cierra la
-  app) sigue desde donde quedó.
+- Tarda unos 10 minutos en un teléfono reciente de gama alta (medido en un Galaxy S25) y hasta unas 2 horas en uno de
+  gama baja. Sigue con la pantalla apagada o en otra app, con su avance en una notificación, y si se corta (el teléfono
+  se reinicia, se cierra la app) sigue desde donde quedó.
 - El teléfono se calienta: déjalo cargando, sin funda si puedes. Caliente, va más despacio; muy caliente, espera hasta que
   se enfría.
 

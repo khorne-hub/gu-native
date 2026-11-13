@@ -285,9 +285,9 @@ public class BuilderActivity extends Activity {
                           + "borra lo temporal y quedan las herramientas (" + mb(BuilderTools.INSTALLED_SIZE) + ").\n"
                         : "• Space: it needs " + mb(need) + " free while it builds (there are " + mb(free) + "). When it ends the "
                           + "temporary files go and the tools stay (" + mb(BuilderTools.INSTALLED_SIZE) + ").\n");
-            t.append(es ? "• Tiempo: de 20 minutos a 3 horas según el teléfono (es más grande que el de MH4U). Sigue con la "
+            t.append(es ? "• Tiempo: de 10 minutos a unas 2 horas según el teléfono. Sigue con la "
                           + "pantalla apagada y, si se corta, sigue desde donde quedó.\n"
-                        : "• Time: 20 minutes to 3 hours depending on the phone (it is bigger than MH4U's). It goes on with the "
+                        : "• Time: 10 minutes to about 2 hours depending on the phone. It goes on with the "
                           + "screen off and, if it is cut, it goes on from where it stopped.\n");
             t.append(es ? "• El teléfono se calienta: déjalo cargando, sin funda si puedes. Caliente, va más despacio; muy caliente, "
                           + "se pausa solo hasta que se enfría."

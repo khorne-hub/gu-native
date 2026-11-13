@@ -1973,7 +1973,7 @@ void scale_row(std::vector<Row> &r) {
 void game_code_rows(std::vector<Row>& r) {
 #ifdef __ANDROID__
     action(r, "game.build", tr("Build the game code"), []() { ui_request_builder(); });
-    r.back().help = tr("Makes the game code (libmhgugame.so) on this phone, from your own exefs in the game folder. No PC needed. The first time it downloads the tools (about 100 MB). It takes 20 minutes to 3 hours depending on the phone and goes on in the background; the game starts again to use it.");
+    r.back().help = tr("Makes the game code (libmhgugame.so) on this phone, from your own exefs in the game folder. No PC needed. The first time it downloads the tools (about 100 MB). It takes 10 minutes to about 2 hours depending on the phone and goes on in the background; the game starts again to use it.");
 #else
     (void)r;
 #endif
