@@ -312,6 +312,12 @@ public class GameActivity extends SDLActivity {
         if (activity != null) activity.startActivity(new Intent(activity, ImportActivity.class).putExtra(ImportActivity.KIND, kind));
     }
 
+    /** The layout editor's Picture -> Add pictures (runtime/touch.cpp request_pictures): the buttons' own pictures. */
+    public static void importPictures() {
+        SDLActivity activity = mSingleton;
+        if (activity != null) activity.startActivity(new Intent(activity, PicturesActivity.class));
+    }
+
     public static void showSaveExport() {
         SDLActivity activity = mSingleton;
         if (activity != null) activity.startActivity(new Intent(activity, SaveExportActivity.class));

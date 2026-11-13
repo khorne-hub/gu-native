@@ -26,6 +26,7 @@
 #include "rt.h"
 #include "settings_locale.h"
 #include "settings_panel.h"
+#include "touch.h"  // (touch_pictures_dir: the layout editor's pictures)
 #include "unzip.h"
 
 #define SAVE_SIZE 5159100  // (a save's system file, and the mark at +0x14 that every one of this game has: as Android)
@@ -747,6 +748,34 @@ void pc_import_mod(void) {
     static SDL_DialogFileFilter filters[1];  // (kept until the dialog answers)
     filters[0] = (SDL_DialogFileFilter){T("Mods (.zip)"), "zip"};
     SDL_ShowOpenFileDialog(mod_picked, NULL, ui_window(), filters, 1, NULL, false);
+}
+
+// ---- the layout editor's Add pictures: the player's own pictures for the touch buttons (PNG or BMP, which the runtime
+// reads; Android's PicturesActivity takes JPG and WebP too, made PNG) copied into the layout profiles' images folder,
+// where the editor's window lists them (it reads the folder again while it is open). Their own responsibility
+static void SDLCALL pictures_picked(void *ud, const char *const *list, int filter) {
+    (void)ud, (void)filter;
+    if (!list || !list[0]) return;
+    char native[1100], dir[1100], to[1400], name[300];
+    touch_pictures_dir(native, sizeof native);
+    if (!plat_path_to_utf8(native, dir, sizeof dir)) snprintf(dir, sizeof dir, "%s", native);
+    SDL_CreateDirectory(dir);
+    int files = 0;
+    for (int i = 0; list[i]; i++) {
+        safe_name(base_name(list[i]), name, 44);
+        snprintf(to, sizeof to, "%s/%s", dir, name);
+        if (!SDL_CopyFile(list[i], to)) {
+            notice("Add pictures", SDL_GetError());
+            continue;
+        }
+        files++;
+    }
+    LOG("[pc] %d pictures copied into %s\n", files, dir);
+}
+void pc_import_pictures(void) {
+    static SDL_DialogFileFilter filters[1];  // (kept until the dialog answers)
+    filters[0] = (SDL_DialogFileFilter){T("Pictures (.png, .bmp)"), "png;bmp"};
+    SDL_ShowOpenFileDialog(pictures_picked, NULL, ui_window(), filters, 1, NULL, true);
 }
 
 // ---- removing a mod (the Mods tab): mods/_remove.txt hides it at once (mods_installed leaves out what it names), its

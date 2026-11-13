@@ -874,4 +874,34 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   same rule), and the same Spanish words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name,
   a text or a default changed in one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`,
   `settings_locale.h`, `touch.cpp`).
+- 1.0's layout group (`runtime/touch.cpp`; the MH4U port's `app_native/touch.cpp` the same, names, files and texts):
+  - Control profiles (S12, after tabarong's design, credited in the README and Credits & Licenses): 10 slots, each a whole
+    layout of either kind, as `profile_01.txt`..`profile_10.txt` (touch_layout.txt's lines) in `layout profiles/` of the save
+    folder chosen (`savefolder_chosen`), else of the working folder; the pictures in its `images/`. touch_layout.txt stays the
+    layout in use with a `profile <n>` line; the editor's Save writes both (`profile_store`). A touch_layout.txt without that
+    line (made before 1.0) is copied byte for byte into profile 1 (another one empty if profile 1 holds a different layout:
+    a save folder two devices share) and the line is appended (`profiles_migrate`); no touch_layout.txt and a profile 1 in the
+    folder: that one is played (a reinstall). A save folder chosen later gets the app folder's profiles copied once
+    (`profiles_adopt`). The editor's Profile button opens its window (Load, Save here, New of either kind, Delete; a second tap
+    confirms a replace or an empty), the settings' Controls a page (`View::Profiles`, `touch_profile_*`: Use, Save the
+    current layout here, New, Edit, Clear, at once). The desktop's HUD editor has the same window.
+  - Emulator-style layout (S09, `Layout.kind` = `KIND_EMU`, `layout_kind 1`): `C_EA`..`C_ER3`, each the game's button alone
+    (`DEFS[].buttons`, no special case), in the port's own button look; the stick, settings, Lock-on, item arrows and
+    combined buttons shared (their emu places: `EMU_PLACES`). No menu pad, no ranged layout (`ranged_layout` false). Each
+    control but the settings button can be hidden in its editor (`Layout.off`, `hidden <key>`; `hideable`): the port's own
+    layout keeps the settings' Show* (no per-control Hide there: S23).
+  - Held buttons (S13, `Layout.hold`, `hold <key>`): the editor's Hold switch on a picked button (`holdable`: not the pill,
+    band, stick, d-pads, menu pad, arrows, settings, Lock-on or aim); in play a tap latches what it presses (`State.latched`,
+    `latch_btn`, ORed in `recompute_held`), lit with a closed padlock, the next tap lets go; all let go with the controls
+    hidden, the editor, the background, or the control leaving the screen (Run in a menu, the ranged layout's).
+  - Pictures (S06): the port keeps its one button style; `image <key> <file>` puts a player's picture on a round button
+    (`image_ok`), its letter's badge kept. Read with SDL's PNG/BMP loader, at most 256 px, as ImGui user textures
+    (`pic_texture`: `RegisterUserTexture`, `GetTexRef`, uploaded by the overlay with the font). Added by the editor's Add
+    pictures or the settings' Button images: Android's `PicturesActivity` (any picture Android decodes, made PNG at 256 px),
+    a desktop's file dialog (`pc_import_pictures`, PNG and BMP).
+  - The FPS counter (S24): picked and dragged in both editors (`SEL_FPS`, `fps_counter x y` in the layout: its middle in
+    screen fractions), drawn there by `perfstats_draw` (`touch_fps_place`); `perfstats_bottom` is 0 when it isn't at the top.
+  - Floating stick (S07, `[Touch] FloatingStick`, `TB_FLOAT_STICK`, off): a thumb within 2.6 stick radii (0.3 screen heights
+    at least) of the stick's place brings its base there (`stick_reach`, `lock_geo` for the sprint lock); never the whole
+    left half (the owner's call).
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.

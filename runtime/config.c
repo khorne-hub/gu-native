@@ -382,6 +382,11 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "ShowLockOn = On\n"
     "\n"
+    "; On: the movement stick comes to where your thumb lands near it, and goes back to its place when you lift it. Off:\n"
+    "; it stays where it is\n"
+    "; Default: Off\n"
+    "FloatingStick = Off\n"
+    "\n"
     "; L and the target button (ZL) were turned on once for the lock-on (up to 0.1.9.2 a long press on L turned it on and\n"
     "; off; the target button moves it to another monster). Written by the app; Off, a file of an older version (where\n"
     "; both were off by default) gets them on at the next start\n"
@@ -843,6 +848,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "StickRun", touch_show[TB_STICK_RUN], false),
     ON_OFF("Touch", "GuardSlide", touch_show[TB_GUARD_SLIDE], false),
     ON_OFF("Touch", "ShowLockOn", touch_show[TB_LOCKON], false),
+    ON_OFF("Touch", "FloatingStick", touch_show[TB_FLOAT_STICK], false),
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}

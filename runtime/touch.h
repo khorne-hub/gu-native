@@ -95,6 +95,24 @@ bool touch_hud_zone(int part, float display_w, float display_h, float rect[4]);
 // (any thread) a part's frame as last drawn, a finger on it or not (the minimap, the status), in display pixels, while
 // it is drawn and not hidden: x0, y0, x1, y1
 bool touch_hud_part_rect(int part, float display_w, float display_h, float rect[4]);
+// The control profiles from the settings menu (settings_panel.cpp, its Control profiles page): the profile in use (1 to
+// 10); what slot n holds (-1 nothing, 0 the port's own layout, 1 an emulator-style one); and, at once, the layout in use
+// and its files written as the layout editor's Save does: slot n's layout in use, the layout in use saved into slot n (it
+// is that profile from then on), a new layout of a kind in slot n and in use, slot n emptied (not the one in use).
+// false: it couldn't be (no such file, the save folder not reached, an editor open)
+int touch_profile_active(void);
+int touch_profile_kind(int n);
+bool touch_profile_use(int n);
+bool touch_profile_store(int n);
+bool touch_profile_new(int n, int kind);
+bool touch_profile_clear(int n);
+// The layout profiles' images folder, where the players' own pictures for the buttons go (the runtime's spelling of a
+// path; runtime/pc_actions.c copies them in)
+void touch_pictures_dir(char *out, size_t size);
+// (game thread, runtime/perfstats.cpp) The FPS counter's plate, pw x ph display pixels, where the layout in use has it
+// (moved in the layout editor, kept in the layout and its profile): its top left, on the screen whole; false (x0, y0
+// untouched) while it is at its own place
+bool touch_fps_place(float display_w, float display_h, float pw, float ph, float *x0, float *y0);
 
 #ifdef __cplusplus
 }

@@ -57,7 +57,14 @@
 #include <mutex>
 #include <string>
 
+#include <dirent.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>  // (_mkdir)
+#endif
+
 #include "imgui.h"
+#include "imgui_internal.h"  // (ImGui::RegisterUserTexture: the players' pictures on the buttons)
 
 #include "config.h"
 extern "C" {
@@ -70,10 +77,14 @@ int weapon_drawn(void);  // (hle/weapon.c: 1 the weapon out, 0 sheathed, -1 not 
 #include "hle/mousecam.h"
 #include "hle/mousemenu.h"  // (menu_pages_zl: the pair the game turns its pages with; menu_cursor_age: a menu takes input)
 SDL_Window *ui_window(void);
+bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platform.h: the save folder's path, as fopen takes it)
 }
+#include "app_actions.h"  // (ui_request_pictures: the layout editor's Add pictures)
 #include "haptics.h"  // (a short tick on the phone when a control is pressed)
 #include "logwriter.h"  // (rt_logf: Windows queues the line, the log's own thread writes it)
 #include "overlay.h"
+#include "perfstats.h"  // (perfstats_rect: the FPS counter's plate, which the editor moves)
+#include "savefolder.h"  // (savefolder_chosen: the layout profiles' folder)
 #include "settings_locale.h"
 #include "settings_panel.h"  // (SETTINGS_VIEW_GAME_TEXT: the keyboard plate's)
 #include "textinput.h"
@@ -106,6 +117,10 @@ enum Ctl {
     C_ITEML, C_ITEMR,                                                                      // (the item bar's arrows)
     C_RUNLOCK,                                                                             // (the sprint lock's circle)
     C_LOCKON,                                                                              // (the port's Lock-on button)
+    // the emulator-style layout's (a profile of that kind, Layout.kind: every one presses its button of the game's and
+    // nothing else, as an emulator's pad on the screen; the stick, the settings and Lock-on buttons, the item bar's
+    // arrows and the combined buttons are the same controls in both kinds)
+    C_EA, C_EB, C_EX, C_EY, C_EL, C_ER, C_EZL, C_EZR, C_EPLUS, C_EMINUS, C_EDPAD, C_EL3, C_ER3,
     C_STICK,                                                                               // (laid out: touch_layout.txt)
     C_ML, C_MR,          // (the menu pad's: its page tabs above it, as a controller's shoulders, placed from it;
     C_MZL, C_MZR,        // the other pair above them, when [Touch] ShowMenuZL / ZR say so; Minus below it, with the
@@ -198,6 +213,22 @@ const Def DEFS[C_COUNT] = {
     // tap turns the lock-on (lock_set). On the right thumb's arc above Y and left of L, as far from both as they are from
     // each other (the MH4U port's place, from its arc). Hunts only: in a town it is in the editor alone
     {"lock_on", "Lock-on", I_LOCKON, "", 0, true, .43f, .58f, .045f},
+    // the emulator-style layout: A, B, X and Y in a diamond under the right thumb, the d-pad below the stick on the left,
+    // the shoulders at the screen's edges (as tabs, the inner pair above), Minus and Plus inward of them, the sticks'
+    // clicks by the stick and below the diamond (the place of an emulator's right stick: a drag anywhere turns the camera)
+    {"emu_a", "A", I_LETTER, "A", B(BTN_A), true, .14f, .34f, .058f},
+    {"emu_b", "B", I_LETTER, "B", B(BTN_B), true, .26f, .22f, .058f},
+    {"emu_x", "X", I_LETTER, "X", B(BTN_X), true, .26f, .46f, .058f},
+    {"emu_y", "Y", I_LETTER, "Y", B(BTN_Y), true, .38f, .34f, .058f},
+    {"emu_l", "L", I_LETTER, "L", B(BTN_L), false, .17f, .62f, .05f},
+    {"emu_r", "R", I_LETTER, "R", B(BTN_R), true, .17f, .62f, .05f},
+    {"emu_zl", "ZL", I_LETTER, "ZL", B(BTN_ZL), false, .17f, .76f, .05f},
+    {"emu_zr", "ZR", I_LETTER, "ZR", B(BTN_ZR), true, .17f, .76f, .05f},
+    {"emu_plus", "Plus  +", I_LETTER, "+", B(BTN_PLUS), true, .42f, .66f, .042f},
+    {"emu_minus", "Minus  -", I_LETTER, "-", B(BTN_MINUS), false, .42f, .66f, .042f},
+    {"emu_dpad", "D-pad", I_DPAD, "", 0, false, .50f, .17f, .105f},
+    {"emu_l3", "Left stick click", I_LETTER, "L3", B(BTN_LSTICK), false, .50f, .40f, .042f},
+    {"emu_r3", "Right stick click", I_LETTER, "R3", B(BTN_RSTICK), true, .40f, .12f, .042f},
     {"stick", "Movement", I_STICK, "", 0, false, .29f, .27f, .115f},
     // the menu pad's (x, y unused: place(); what the tabs press: the game's option, mpad_buttons)
     {"ml", "L", I_LETTER, "L", B(BTN_L), true, 0, 0, .040f},  // (the shoulders: tabs in the item box, the shops)
@@ -210,10 +241,19 @@ const Def DEFS[C_COUNT] = {
 // Minus), or both
 enum { STYLE_PILL, STYLE_SEPARATE, STYLE_CORNER, STYLE_COUNT };  // how the attacks and the guard are laid out
 std::atomic<int> g_style{STYLE_PILL};                            // (Layout.style, for every thread)
+// A layout's kind (Layout.kind, layout_kind in the file): the port's own (the attack pill, the menu pad, the layout for
+// bows and bowguns, the buttons the settings' Show* put on the screen) or the emulator-style one (A, B, X, Y in a diamond,
+// the shoulders, Plus, Minus and the d-pad, each the game's button alone, each shown or hidden in the editor). Any of the
+// ten profiles holds either (the profiles, below)
+enum { KIND_OURS, KIND_EMU, KIND_COUNT };
+std::atomic<int> g_kind{KIND_OURS};   // (Layout.kind, for every thread)
+std::atomic<uint64_t> g_off{0};       // (Layout.off: the emulator-style controls hidden in its editor, a bit each)
+bool emu_ctl(int i) { return i >= C_EA && i <= C_ER3; }
 std::atomic<int> g_ranged{0};     // WEAPON_* of the hunter while the layout for it applies (touch_input), else 0
 std::atomic<int> g_bow_type{0};   // the game's Bow Controls: 0 X draws, 1 R draws
 std::atomic<int> g_edit_set{-1};  // the editor's: which layout it shows, 0 the usual one, 1 the ranged one; -1 not open
 bool ranged_layout() {
+    if (g_kind.load() == KIND_EMU) return false;  // (the emulator-style layout: the same for every weapon)
     int set = g_edit_set.load();
     return set >= 0 ? set == 1 : g_ranged.load() != 0;
 }
@@ -250,7 +290,7 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
 }
 bool is_combo(int i) { return i >= C_COMBO && i <= C_COMBO_END; }
 bool is_tab(int i) { return i == C_ML || i == C_MR || i == C_MZL || i == C_MZR; }  // (the menu pad's shoulders, as tabs)
-bool is_dpad(int i) { return i == C_HDPAD; }
+bool is_dpad(int i) { return i == C_HDPAD || i == C_EDPAD; }
 bool of_mpad(int i) { return i == C_MPAD || is_tab(i) || i == C_MMINUS; }  // (the menu pad's group)
 bool mpad_shown(void);  // (a menu window drawn lately, the pad's fade not over: below, with the menu's test)
 bool mpad_ready(void);  // (and it has come in enough to take a finger)
@@ -261,17 +301,36 @@ bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the pag
 }
 std::atomic<bool> g_menu_town;  // (the menu opened in a town: its ZL stays while the menu is open, touch_input)
 std::atomic<bool> g_in_quest;   // (a hunter of a quest is there, weapon_hunter: touch_input, each update)
+// (the Lock-on button: with the lock-on allowed, in a quest - not in a town, nor on the title, the intro or the character's
+// making, where nothing is locked on; the MH4U port's the same)
+bool lockon_here(bool menu) {
+    return config_live_lock_on() && g_in_quest.load() && plat_now_ns() - g_town_ns >= 500 * 1000000ull &&
+           !(menu && g_menu_town.load());
+}
+// A control the emulator-style layout's editor can hide (Layout.off): any of its own but the settings button, the way back
+// to the settings ([Touch] Show* hide the port's own layout's, in the settings: its editor has no Hide for those)
+bool hideable(int i) {
+    return g_kind.load() == KIND_EMU && i != C_SETTINGS && (emu_ctl(i) || i == C_STICK || i == C_LOCKON || is_combo(i));
+}
+// The emulator-style layout: its own buttons, the stick, the settings and Lock-on buttons, the combined buttons, each but
+// the settings button unless its editor hid it; in a menu of the game's nothing changes (its d-pad is always there: no
+// menu pad, no layout for bows and bowguns)
+bool emu_mode(int i, bool menu) {
+    if (i != C_SETTINGS && (g_off.load() >> i & 1)) return false;
+    if (emu_ctl(i) || i == C_SETTINGS || i == C_STICK) return true;
+    if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
+    if (i == C_LOCKON) return lockon_here(menu) && config_live_touch_show(TB_LOCKON);
+    return false;
+}
 bool in_mode(int i, bool menu) {
+    if (g_kind.load() == KIND_EMU) return emu_mode(i, menu);
+    if (emu_ctl(i)) return false;  // (the emulator-style layout's alone)
     // (the run button: with StickRun Off, in a hunt and in towns, either layout, never in a menu - R turns its pages;
     // what a hunt can do without is off until asked for: [Touch] Show*)
     if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
     if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
     if (i == C_RUNLOCK) return false;                // (drawn and armed with the stick: control, on_lock_circle)
-    // (the Lock-on button: with the lock-on allowed, in a quest - not in a town, nor on the title, the intro or the
-    // character's making, where nothing is locked on; the MH4U port's the same)
-    if (i == C_LOCKON && (!config_live_lock_on() || !g_in_quest.load() || plat_now_ns() - g_town_ns < 500 * 1000000ull ||
-                          (menu && g_menu_town.load())))
-        return false;
+    if (i == C_LOCKON && !lockon_here(menu)) return false;
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -296,6 +355,13 @@ bool in_mode(int i, bool menu) {
 // in the layout editor: what shows in a hunt or in a menu (Plus with ShowPlus off too, and the menu pad: placed there,
 // whether a menu is open or not; its tabs and Minus go with it)
 bool in_editor(int i) {
+    if (g_kind.load() == KIND_EMU) {  // (the emulator-style layout's: the hidden ones too, faded, for its Show)
+        if (emu_ctl(i) || i == C_STICK || i == C_SETTINGS) return true;
+        if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
+        if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
+        if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);
+        return is_combo(i) && config_live_touch_combo(i - C_COMBO) != 0;
+    }
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
     if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
@@ -362,10 +428,21 @@ struct HudVals {
     float dx, dy, k, alpha;
     bool hidden;
 };
+const int IMAGE_NAME = 48;  // (a picture's file name, Layout.image)
+const int PROFILES_N = 10;  // the layout profiles (below)
 struct Layout {
     float x[C_COUNT], y[C_COUNT], scale[C_COUNT];
     int style;                               // STYLE_*
     HudVals hud[HUD_PROFILES][HP_COUNT];     // (HUD_TOUCH: hud_<key> in the file; HUD_PLAIN: pc_hud_<key>)
+    int kind;                                // KIND_*: layout_kind in the file (none: the port's own)
+    int profile;                             // the profile it is, 1..PROFILES_N (profile in touch_layout.txt; none: 1)
+    bool profile_line;                       // (the file named it: one without was made before the profiles)
+    uint64_t off;                            // the emulator-style layout's controls hidden in its editor (hidden <key>)
+    uint64_t hold;                           // controls that stay pressed: a tap presses, the next lets go (hold <key>)
+    float fps_x, fps_y;                      // the FPS counter's middle, in the screen's width and height; < 0 its own
+                                             // place, at the top (fps_counter in the file)
+    char image[C_COUNT][IMAGE_NAME];         // the player's own picture on a control: a file in the profiles' images
+                                             // folder (image <key> <file>); "" none
 };
 // The layout editor's panel: its middle where the player dragged it (fractions of the screen's width from the left and
 // of its height from the top; below 0 its usual place, a little above the middle) and its size (EPANEL_MIN to 100 %).
@@ -384,14 +461,26 @@ const char *const HUD_NAME[HP_COUNT] = {"Item bar", "Hunter Arts", "Target camer
 HudVals hud_default(void) { return {0.0f, 0.0f, 1.0f, 1.0f, false}; }
 // (the item bar with the touch controls: a finger picks and uses the items on it, and swipes it: never hidden there)
 bool hud_hide_ok(int prof, int part) { return !(prof == HUD_TOUCH && part == HP_ITEMS); }
-Layout defaults(void) {
+// The emulator-style layout's own places for the controls both kinds have (DEFS has the port's): the stick a little
+// higher, over the d-pad; the settings button between the stick and the shoulders; the Lock-on button above the diamond
+const struct { int c; float x, y; } EMU_PLACES[] = {{C_STICK, .27f, .42f}, {C_SETTINGS, .065f, .50f}, {C_LOCKON, .45f, .54f}};
+void def_place(int kind, int i, float *x, float *y) {
+    *x = DEFS[i].x, *y = DEFS[i].y;
+    if (kind == KIND_EMU)
+        for (const auto &e : EMU_PLACES)
+            if (e.c == i) *x = e.x, *y = e.y;
+}
+Layout defaults(int kind = KIND_OURS) {
     Layout l = {};
-    for (int i = 0; i < C_COUNT; i++) l.x[i] = DEFS[i].x, l.y[i] = DEFS[i].y, l.scale[i] = 1.0f;  // (the pad's group: unused)
+    for (int i = 0; i < C_COUNT; i++) def_place(kind, i, &l.x[i], &l.y[i]), l.scale[i] = 1.0f;  // (the pad's group: unused)
     for (auto &prof : l.hud)
         for (HudVals &v : prof) v = hud_default();
+    l.kind = kind, l.profile = 1, l.fps_x = l.fps_y = -1.0f;
     return l;
 }
-void publish_hud(const Layout &l) {  // (to the render thread)
+std::atomic<float> g_fps_x{-1.0f}, g_fps_y{-1.0f};  // (Layout.fps_x / fps_y, for the game thread: touch_fps_place)
+void publish_hud(const Layout &l) {  // (to the render thread; the kind and what it hides, the FPS counter's place, to all)
+    g_kind = l.kind, g_off = l.off, g_fps_x = l.fps_x, g_fps_y = l.fps_y;
     for (int p = 0; p < HUD_PROFILES; p++)
         for (int k = 0; k < HP_COUNT; k++) {
             const HudVals &v = l.hud[p][k];
@@ -400,15 +489,61 @@ void publish_hud(const Layout &l) {  // (to the render thread)
         }
 }
 const char *LAYOUT_FILE = "touch_layout.txt";  // (the working folder: the app's, beside mhgurecomp.ini)
-
-bool load_layout(Layout *l, EditPanel *ep) {
-    *l = defaults(), *ep = EditPanel{};
-    FILE *f = fopen(LAYOUT_FILE, "r");
+// A control by its key in the file (C_LAID: the laid-out ones); -1 none
+int ctl_by_key(const char *key) {
+    for (int i = 0; i < C_LAID; i++)
+        if (!strcmp(key, DEFS[i].key)) return i;
+    return -1;
+}
+// A file's text, whole (false: it can't be read)
+bool read_text(const char *path, std::string *out) {
+    out->clear();
+    FILE *f = fopen(path, "rb");
     if (!f) return false;
-    char line[160], key[32];
+    char buf[1024];
+    for (size_t n; (n = fread(buf, 1, sizeof buf, f)) > 0;) out->append(buf, n);
+    fclose(f);
+    return true;
+}
+
+// A layout from its text (touch_layout.txt's, or a profile's: the same lines). Its kind first, whose defaults the lines
+// then change; the editor's panel only where ep is given (a profile's file has none: loading one leaves it where it is)
+void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
+    int kind = KIND_OURS;
+    for (size_t at = text.find("layout_kind "); at != std::string::npos; at = text.find("layout_kind ", at + 1))
+        if (at == 0 || text[at - 1] == '\n') kind = std::clamp(atoi(text.c_str() + at + 12), 0, KIND_COUNT - 1);
+    *l = defaults(kind);
+    if (ep) *ep = EditPanel{};
+    char key[32], name[64];
     float x, y, s, alpha;
     int hidden;
-    while (fgets(line, sizeof line, f)) {
+    for (size_t at = 0, end; at < text.size(); at = end + 1) {
+        end = text.find('\n', at);
+        if (end == std::string::npos) end = text.size();
+        std::string ls = text.substr(at, end - at);
+        if (!ls.empty() && ls.back() == '\r') ls.pop_back();
+        const char *line = ls.c_str();
+        // (the lines of 1.0's profiles with a control's key as their word: a file read by an older version skips them)
+        if (sscanf(line, "%31s %63s", key, name) == 2) {
+            int c = ctl_by_key(name);
+            if (!strcmp(key, "hidden") && c >= 0) { l->off |= 1ull << c; continue; }
+            if (!strcmp(key, "hold") && c >= 0) { l->hold |= 1ull << c; continue; }
+            if (!strcmp(key, "image") && c >= 0) {  // (image <key> <file>: the name, to the line's end)
+                const char *f = strstr(line, name) + strlen(name);
+                while (*f == ' ' || *f == '\t') f++;
+                if (*f && !strchr(f, '/') && !strchr(f, '\\')) snprintf(l->image[c], IMAGE_NAME, "%s", f);
+                continue;
+            }
+        }
+        if (sscanf(line, "%31s %f", key, &x) == 2 && !strcmp(key, "profile")) {
+            if (x >= 1 && x <= PROFILES_N) l->profile = (int)x, l->profile_line = true;
+            continue;
+        }
+        if (sscanf(line, "%31s %f %f", key, &x, &y) == 3 && !strcmp(key, "fps_counter")) {
+            bool ok = x >= 0 && x <= 1 && y >= 0 && y <= 1;
+            l->fps_x = ok ? x : -1.0f, l->fps_y = ok ? y : -1.0f;
+            continue;
+        }
         // (a HUD part's line: offset, size, then opacity and hidden, which files older than them lack: hud_<key> dx dy 1
         // with the touch controls, pc_hud_<key> dx dy size without)
         int n = sscanf(line, "%31s %f %f %f %f %d", key, &x, &y, &s, &alpha, &hidden);
@@ -418,9 +553,9 @@ bool load_layout(Layout *l, EditPanel *ep) {
                 l->x[i] = x, l->y[i] = y, l->scale[i] = s;
         for (int p = 0; p < HUD_PROFILES; p++)
             for (int k = 0; k < HP_COUNT; k++) {
-                char name[32];
-                snprintf(name, sizeof name, "%shud_%s", p == HUD_PLAIN ? "pc_" : "", HUD_KEY[k]);
-                if (strcmp(key, name) || fabsf(x) > HUD_DX_MAX || fabsf(y) > HUD_DY_MAX || s < HUD_SIZE_MIN || s > HUD_SIZE_MAX) continue;
+                char hname[32];
+                snprintf(hname, sizeof hname, "%shud_%s", p == HUD_PLAIN ? "pc_" : "", HUD_KEY[k]);
+                if (strcmp(key, hname) || fabsf(x) > HUD_DX_MAX || fabsf(y) > HUD_DY_MAX || s < HUD_SIZE_MIN || s > HUD_SIZE_MAX) continue;
                 HudVals &v = l->hud[p][k];
                 v.dx = x, v.dy = y, v.k = s;
                 v.alpha = n >= 5 && alpha >= .2f && alpha <= 1.0f ? alpha : 1.0f;
@@ -428,16 +563,24 @@ bool load_layout(Layout *l, EditPanel *ep) {
             }
         if (!strcmp(key, "attack_style") && x >= 0 && x < STYLE_COUNT) l->style = (int)x;
         bool usual = x < 0 && y < 0, placed = x >= 0 && x <= 1 && y >= 0 && y <= 1;
-        if (!strcmp(key, "editor_panel") && (usual || placed) && s >= EPANEL_MIN && s <= 1.0f)
+        if (ep && !strcmp(key, "editor_panel") && (usual || placed) && s >= EPANEL_MIN && s <= 1.0f)
             ep->x = usual ? -1.0f : x, ep->y = usual ? -1.0f : y, ep->k = s;
     }
-    fclose(f);
-    return true;
+    if (l->kind != KIND_EMU) l->off = 0;  // (the port's own layout hides by the settings' Show*)
 }
+bool load_layout_file(const char *path, Layout *l, EditPanel *ep) {
+    std::string text;
+    bool ok = read_text(path, &text);
+    parse_layout(ok ? text : std::string(), l, ep);
+    return ok;
+}
+bool load_layout(Layout *l, EditPanel *ep) { return load_layout_file(LAYOUT_FILE, l, ep); }
 
-void save_layout(const Layout &l, const EditPanel &ep) {
-    FILE *f = fopen(LAYOUT_FILE, "w");
-    if (!f) { rt_logf("[touch] could not save %s\n", LAYOUT_FILE); return; }
+// A layout into a file (touch_layout.txt, with the editor's panel; a profile's, without: ep null). false: it couldn't be
+// written
+bool save_layout_file(const char *path, const Layout &l, const EditPanel *ep) {
+    FILE *f = fopen(path, "w");
+    if (!f) { rt_logf("[touch] could not save %s\n", path); return false; }
     fprintf(f, "# touch controls: name, centre (screen heights from its edge and the bottom), size\n");
     for (int i = 0; i < C_LAID; i++) fprintf(f, "%s %.4f %.4f %.3f\n", DEFS[i].key, l.x[i], l.y[i], l.scale[i]);
     fprintf(f, "# the game's HUD parts with the touch controls: name, offset from their place (the game's 1280x720 units), size, "
@@ -452,12 +595,29 @@ void save_layout(const Layout &l, const EditPanel &ep) {
         const HudVals &v = l.hud[HUD_PLAIN][k];
         fprintf(f, "pc_hud_%s %.1f %.1f %.2f %.2f %d\n", HUD_KEY[k], v.dx, v.dy, v.k, v.alpha, (int)v.hidden);
     }
-    char line[80];
-    epanel_line(line, ep);
-    fprintf(f, "%s%s", EPANEL_NOTE, line);
-    fclose(f);
-    rt_logf("[touch] layout saved (%s)\n", LAYOUT_FILE);
+    fprintf(f, "# the layout's kind (0 the port's own, 1 emulator-style), its profile (1 to %d), the FPS counter's middle (in "
+               "the screen's width and height; -1 -1 its own place)\n", PROFILES_N);
+    fprintf(f, "layout_kind %d\nprofile %d\nfps_counter %.4f %.4f\n", l.kind, l.profile, l.fps_x, l.fps_y);
+    fprintf(f, "# controls hidden (emulator-style), held by a tap (hold), with the player's own picture (image <key> <file>)\n");
+    for (int i = 0; i < C_LAID; i++) {
+        if (l.kind == KIND_EMU && (l.off >> i & 1)) fprintf(f, "hidden %s\n", DEFS[i].key);
+        if (l.hold >> i & 1) fprintf(f, "hold %s\n", DEFS[i].key);
+        if (l.image[i][0]) fprintf(f, "image %s %s\n", DEFS[i].key, l.image[i]);
+    }
+    if (ep) {
+        char line[80];
+        epanel_line(line, *ep);
+        fprintf(f, "%s%s", EPANEL_NOTE, line);
+    }
+    bool ok = !ferror(f);
+    ok = fclose(f) == 0 && ok;
+    if (!ok) rt_logf("[touch] could not save %s\n", path);
+    return ok;
 }
+void save_layout(const Layout &l, const EditPanel &ep) {
+    if (save_layout_file(LAYOUT_FILE, l, &ep)) rt_logf("[touch] layout saved (%s, profile %d)\n", LAYOUT_FILE, l.profile);
+}
+
 // The panel's line alone into the file, the rest of it as it is: Cancel keeps where the panel was put but not the
 // controls' or the HUD's places, so that a player who never saved a layout still has none (a file with the panel only:
 // the loader takes the defaults for the rest, a later version's new ones too)
@@ -487,6 +647,113 @@ void save_panel(const EditPanel &ep) {
     fputs(now.c_str(), f);
     fclose(f);
     rt_logf("[touch] layout editor: its panel saved alone (%s%s)\n", LAYOUT_FILE, was.empty() ? ", the rest the defaults" : "");
+}
+
+// ---- the layout profiles: ten numbered slots, each a whole layout of either kind (the port's own or the emulator-style
+// one: the controls, the HUD's parts in both arrangements, the FPS counter's place, the buttons held by a tap, the
+// pictures), after tabarong's design for MHGU (Control and HUD layout presets: numbered slots in the editor, kept in the
+// save folder, an overwrite asked for twice). The same in the MH4U port's touch.cpp: names, files, texts.
+// Kept as profile_01.txt .. profile_10.txt, in touch_layout.txt's lines, in the "layout profiles" folder of the save
+// folder the player chose (Settings -> Save folder: they go with the saves to the player's other devices and stay when
+// the app is uninstalled), else of the app's folder; the players' pictures in its images folder. touch_layout.txt stays
+// the layout in use, with the profile it is ("profile <n>"); the editor's Save writes both. A touch_layout.txt from before
+// the profiles (no profile line) is copied into profile 1 as it is, byte for byte, the first time
+const char *const PROFILES_FOLDER = "layout profiles";
+// The profiles' folder, in the runtime's spelling; chosen: it is the save folder's (false: the app's)
+std::string profiles_dir(bool *chosen = nullptr) {
+    const char *c = savefolder_chosen();
+    char native[1024];
+    bool in_save = c && *c && plat_path_from_utf8(c, native, sizeof native);
+    if (chosen) *chosen = in_save;
+    return in_save ? std::string(native) + "/" + PROFILES_FOLDER : std::string(PROFILES_FOLDER);
+}
+std::string profile_path(int n) {
+    char name[32];
+    snprintf(name, sizeof name, "/profile_%02d.txt", n);
+    return profiles_dir() + name;
+}
+std::string images_dir() { return profiles_dir() + "/images"; }
+bool is_file(const std::string &p) {
+    struct stat st;
+    return stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode);
+}
+bool is_folder(const std::string &p) {
+    struct stat st;
+    return stat(p.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+}
+bool make_folder(const std::string &p) {
+    if (is_folder(p)) return true;
+#ifdef _WIN32
+    return _mkdir(p.c_str()) == 0 || is_folder(p);
+#else
+    return mkdir(p.c_str(), 0775) == 0 || is_folder(p);
+#endif
+}
+bool write_text(const std::string &path, const std::string &text) {
+    FILE *f = fopen(path.c_str(), "wb");
+    if (!f) return false;
+    bool ok = fwrite(text.data(), 1, text.size(), f) == text.size();
+    ok = fclose(f) == 0 && ok;
+    return ok;
+}
+bool copy_file(const std::string &from, const std::string &to) {
+    std::string t;
+    return read_text(from.c_str(), &t) && write_text(to, t);
+}
+// What a profile holds: nothing (false), else its kind
+bool profile_info(int n, int *kind) {
+    std::string t;
+    if (!read_text(profile_path(n).c_str(), &t)) return false;
+    Layout l;
+    parse_layout(t, &l, nullptr);
+    *kind = l.kind;
+    return true;
+}
+// (the start) A save folder chosen after the profiles were made in the app's folder: they go with it, the first time
+// (copied: the app's stay as they were)
+void profiles_adopt(void) {
+    bool chosen;
+    std::string dir = profiles_dir(&chosen);
+    if (!chosen || is_folder(dir) || !is_folder(PROFILES_FOLDER)) return;
+    if (!make_folder(dir)) { rt_logf("[touch] profiles: the save folder's %s can't be made\n", dir.c_str()); return; }
+    int n = 0;
+    for (int i = 1; i <= PROFILES_N; i++) {
+        char name[32];
+        snprintf(name, sizeof name, "/profile_%02d.txt", i);
+        if (is_file(std::string(PROFILES_FOLDER) + name)) n += copy_file(std::string(PROFILES_FOLDER) + name, dir + name);
+    }
+    if (DIR *d = opendir((std::string(PROFILES_FOLDER) + "/images").c_str())) {
+        make_folder(dir + "/images");
+        while (dirent *e = readdir(d))
+            if (e->d_name[0] != '.') copy_file(std::string(PROFILES_FOLDER) + "/images/" + e->d_name, dir + "/images/" + e->d_name);
+        closedir(d);
+    }
+    rt_logf("[touch] profiles: %d copied from the app's folder into the save folder's\n", n);
+}
+// (the start) A touch_layout.txt made before the profiles (no profile line): copied as it is into profile 1 - into the
+// first empty one where profile 1 holds another layout already (a save folder another device shares) -, and the profile
+// line added at its end, the rest of it untouched. Not reachable now: the next start tries again
+void profiles_migrate(Layout &l) {
+    if (l.profile_line) return;
+    std::string dir = profiles_dir(), text, other;
+    if (!read_text(LAYOUT_FILE, &text)) return;
+    if (!make_folder(dir)) { rt_logf("[touch] profiles: %s can't be made: the layout stays as it is for now\n", dir.c_str()); return; }
+    int n = 1;
+    if (read_text(profile_path(1).c_str(), &other) && other != text) {
+        n = 0;
+        for (int i = 2; i <= PROFILES_N && !n; i++)
+            if (!is_file(profile_path(i))) n = i;
+        if (!n) { rt_logf("[touch] profiles: all ten hold a layout: the one in use stays out of them\n"); return; }
+    }
+    if (!is_file(profile_path(n)) && !write_text(profile_path(n), text)) {
+        rt_logf("[touch] profiles: %s can't be written\n", profile_path(n).c_str());
+        return;
+    }
+    char line[32];
+    snprintf(line, sizeof line, "%sprofile %d\n", !text.empty() && text.back() != '\n' ? "\n" : "", n);
+    if (FILE *f = fopen(LAYOUT_FILE, "ab")) fputs(line, f), fclose(f);
+    l.profile = n, l.profile_line = true;
+    rt_logf("[touch] profiles: the layout in use copied as it is into profile %d (%s)\n", n, dir.c_str());
 }
 
 struct Geo {
@@ -969,6 +1236,8 @@ struct Pulse {
     bool checked;
     int ctl, part;                  // a tap of the menu pad's group: which one, its direction (-1: no such tap)
 };
+const int IMG_MAX = 60;  // (the pictures the editor's window lists)
+struct ImgName { char n[IMAGE_NAME]; };
 struct State {
     Finger f[10];
     uint64_t bow_leave, bow_leave_until;  // a bow's aim held and let go: its button pressed again to leave the aiming
@@ -1043,6 +1312,24 @@ struct State {
     int rep_btn;                    // ...its - or + that sized it last (-1 none), when, and where it was then
     uint64_t rep_ns;
     Rect rep_at;
+    // the buttons held by a tap (Layout.hold): those down now, a bit each, and what each presses (as its tap had it)
+    uint64_t latched;
+    uint64_t latch_btn[C_COUNT];
+    int open_slot;                  // the profile in use as the editor opened (Layout.profile: the one it edits)
+    // the profiles' window over the editor (its Profile button): the slot picked, an action asked to be tapped again
+    // (PA_*, -1 none), the window's button held down (lit), what each slot holds, the line that says what happened
+    bool prof_open;
+    int prof_pick, prof_arm, prof_btn;
+    bool prof_used[PROFILES_N];
+    int prof_kind[PROFILES_N];
+    char prof_say[200];
+    // the pictures' window (its Image button): the files of the images folder, the page shown, its button held down
+    bool img_open;
+    int img_n, img_page, img_btn;
+    ImgName img_names[IMG_MAX];
+    uint64_t img_scan_ns;
+    char note[200];                 // a line under the editor's panel until note_until (a profile's action)
+    uint64_t note_until;
 #ifndef __ANDROID__
     // The HUD editor: open, asked for; the panel's button held down, the part being dragged (HP_*; -1 none); the
     // pointer (window pixels); the drag's start: the pointer, the part's offset and its frame; the finger that is the
@@ -1107,12 +1394,19 @@ void run_clear_of_band(Layout &l) {
 void ensure_loaded(State &s) {
     if (s.loaded) return;
     s.loaded = true, s.sel = -1;
+    profiles_adopt();
     bool had = load_layout(&s.layout, &s.epanel);
+    const char *from = had ? LAYOUT_FILE : "the defaults";
+    if (had) profiles_migrate(s.layout);  // (made before the profiles: into profile 1, as it is)
+    // (none in use here, and a profile 1 in the save folder: the app installed again, or another device's; played with)
+    else if (is_file(profile_path(1)) && load_layout_file(profile_path(1).c_str(), &s.layout, nullptr))
+        s.layout.profile = 1, from = "profile 1 (the profiles' folder)";
     run_clear_of_band(s.layout);
     s.saved = s.layout;
     publish_hud(s.layout);
     g_style = s.layout.style;
-    rt_logf("[touch] layout: %s\n", had ? LAYOUT_FILE : "the defaults");
+    rt_logf("[touch] layout: %s, profile %d, %s\n", from, s.layout.profile,
+            s.layout.kind == KIND_EMU ? "emulator-style" : "the port's own");
 }
 
 // (menu: the menu's own, dropped as it closes; fresh: a press that starts (logged at its first update); ctl, part:
@@ -1211,11 +1505,27 @@ void pin_arrow(State &s, int i) {
 }
 
 // The stick is fixed at its place (the layout's: the editor moves it); a thumb on its base or a little past its rim
-// takes it, not on the item bar
+// takes it, not on the item bar. The floating stick ([Touch] FloatingStick, off by default): a thumb that lands near it,
+// within FLOAT_REACH of its place (a circle round it, never the whole left half of the screen: the owner's call), brings
+// the stick there, its base under the thumb; lifted, it goes back to its place. The rim's run and the sprint lock's
+// circle go with it (lock_geo). The same in the MH4U port's touch.cpp
+const float FLOAT_REACH = 2.6f, FLOAT_MIN = .3f;  // (the stick's radii from its place, and at least so many screen heights)
+bool floating_stick(void) { return config_live_touch_show(TB_FLOAT_STICK) != 0; }
+float stick_reach(const Geo &g, float h) {
+    return floating_stick() ? std::max(FLOAT_REACH * g.r, FLOAT_MIN * h) : std::max(1.45f * g.r, .17f * h);
+}
 bool in_stick_zone(const State &s, float x, float y, const Rect &item) {
     Geo g = place(s.layout, C_STICK, s.w, s.h);
     if (item.in(x, y)) return false;
-    return hypotf(x - g.c.x, y - g.c.y) < std::max(1.45f * g.r, .17f * s.h);
+    return hypotf(x - g.c.x, y - g.c.y) < stick_reach(g, s.h);
+}
+// The sprint lock's circle where it is now: placed in the editor, where it was put; else above the stick - the floating
+// stick's while it is held or its run goes on, wherever it came (w, h: the screen the state's pixels are of)
+Geo lock_geo(const Layout &l, const State &s, float w, float h) {
+    Geo lg = place(l, C_RUNLOCK, w, h);
+    if (floating_stick() && !arrow_placed(l, C_RUNLOCK) && (s.stick_on || s.run_lock) && !s.edit)
+        lg.c = lock_spot(s.bx, s.by, DEFS[C_STICK].r * l.scale[C_STICK] * h, h);
+    return lg;
 }
 
 void stick_to(State &s, float x, float y) {  // (the knob under the thumb, kept inside the rim)
@@ -1241,7 +1551,7 @@ void run_end(State &s, const char *why) {
 // The thumb at (x, y) is on the lock circle, past the rim (a stick placed high has the circle clamped near it)
 bool on_lock_circle(const State &s, float x, float y) {
     float r = DEFS[C_STICK].r * s.layout.scale[C_STICK] * s.h;
-    Geo lg = place(s.layout, C_RUNLOCK, s.w, s.h);  // (where it is: above the stick, or where the editor put it)
+    Geo lg = lock_geo(s.layout, s, s.w, s.h);  // (where it is: above the stick, or where the editor put it)
     return hypotf(x - s.bx, y - s.by) > r && hypotf(x - lg.c.x, y - lg.c.y) < LOCK_GRAB / LOCK_R * lg.r;
 }
 // A thumb from Guard keeps R as it slides ([Touch] GuardSlide): with the weapon out, no menu of the game's open
@@ -1289,7 +1599,18 @@ void recompute_held(State &s) {  // (the menu pad's go by s.pad_held: touch_inpu
     s.held = 0;
     for (Finger &f : s.f)
         if (f.kind == F_BUTTON && !f.done && !of_mpad(f.ctl)) s.held |= finger_buttons(f);
+    for (int i = 0; i < C_COUNT; i++)  // (the buttons a tap holds down, Layout.hold)
+        if (s.latched >> i & 1) s.held |= s.latch_btn[i];
     s.tapped |= s.held;
+}
+// The buttons a tap held down, let go (why: for the log): the controls hidden or edited, the app in the background, a
+// profile changed; one alone where it is no longer on the screen (touch_input)
+void unlatch(State &s, uint64_t which, const char *why) {
+    if (!(s.latched & which)) return;
+    for (int i = 0; i < C_COUNT; i++)
+        if (which >> i & 1) s.latch_btn[i] = 0;
+    s.latched &= ~which;
+    rt_logf("[touch] held buttons let go (%s)\n", why);
 }
 
 // Every finger let go of, nothing held or waiting (the app to the background, an editor opened): no old direction of
@@ -1299,6 +1620,7 @@ void drop_fingers(State &s) {
     for (Pulse &p : s.pulse) p.until = 0;
     s.stick_on = false, s.held = s.pad_held = s.tapped = 0, s.stick_part = 0, s.pinch = false;
     run_end(s, "every finger let go of");
+    unlatch(s, ~0ull, "every finger let go of");
     s.bar_open = false;
 }
 
@@ -1361,34 +1683,59 @@ void to_menu(const SDL_Event *e) {
     }
 }
 
+int g_language;  // the settings menu's (touch_draw, each frame): the editor's texts in it
+const char *T(const char *english) { return settings_text(g_language, english); }
+
+// The buttons a tap holds down (Layout.hold) can be: those that press the game's buttons for as long as they are down -
+// not the attacks' pill or band (a part each), the stick, the d-pads, the menu pad, the arrows (steps), the settings
+// and Lock-on buttons, nor the aim (its tap is the scope or a bow's aiming mode, which stay by themselves). The MH4U
+// port's the same
+bool holdable(int i) {
+    if (i < 0 || i >= C_LAID) return false;
+    return !(i == C_ATTACK || i == C_CORNER || i == C_STICK || is_dpad(i) || i == C_MPAD || i == C_SETTINGS || i == C_LOCKON ||
+             i == C_ITEML || i == C_ITEMR || i == C_RUNLOCK || i == C_AMMO_UP || i == C_AMMO_DOWN || i == C_RAIM);
+}
+// A picture of the player's (Layout.image) can be on any round button: not on the pill or the band, the stick, the
+// d-pads, the menu pad or the sprint lock's circle
+bool image_ok(int i) {
+    return i >= 0 && i < C_LAID && !(i == C_ATTACK || i == C_CORNER || i == C_STICK || is_dpad(i) || i == C_MPAD || i == C_RUNLOCK);
+}
+
 // ---- the layout editor: the touch controls and the game's HUD. A panel in two rows: what is picked (smaller, bigger,
-// hide or show a part, back to its default) and the rest (the melee or ranged layout, the attacks' style, which HUD it
-// shows - the touch controls' or, while MoveHUD is On, the one without them -, defaults, cancel, save). Drag a control or
-// a part to move it, pinch (a second finger anywhere) or the panel's - / + to size it. The panel itself goes where its
-// title strip is dragged (a grip at each end of it), and is as small as EPANEL_MIN: picked there, a pinch or its - / +
-// size it, so that it leaves free what is being placed
-enum { E_SMALLER, E_BIGGER, E_HIDE, E_RESET, E_SET, E_STYLE, E_PROF, E_DEFAULTS, E_CANCEL, E_SAVE, E_COUNT };
+// hide or show a part - or a control of the emulator-style layout -, back to its default, held by a tap, a picture of
+// the player's) and the rest (the profile, the melee or ranged layout, the attacks' style, which HUD it shows - the touch
+// controls' or, while MoveHUD is On, the one without them -, defaults, cancel, save). Drag a control or a part to move
+// it, pinch (a second finger anywhere) or the panel's - / + to size it; the FPS counter, while it shows, drags too. The
+// panel itself goes where its title strip is dragged (a grip at each end of it), and is as small as EPANEL_MIN: picked
+// there, a pinch or its - / + size it, so that it leaves free what is being placed
+enum { E_SMALLER, E_BIGGER, E_HIDE, E_RESET, E_HOLD, E_IMAGE, E_PROFILES, E_SET, E_STYLE, E_PROF, E_DEFAULTS, E_CANCEL, E_SAVE, E_COUNT };
+const int E_ROW2 = E_PROFILES;  // (the second row's first)
 const int SEL_PANEL = -2;  // (s.sel / a finger's ctl: the editor's panel, picked by its title strip)
+const int SEL_FPS = -3;    // (...the FPS counter's plate)
 const uint64_t PANEL_REPEAT = 700 * MS;  // (taps on its - or + this close together: one button's, State::rep_btn)
 bool grabbed(int ctl) { return ctl >= 0 || ctl == SEL_PANEL; }  // (a finger's ctl: something it moves)
 void panel_dims(float w, float h, float k, float *pw, float *ph) { *pw = std::min(w * .94f, 1.9f * h) * k, *ph = .28f * h * k; }
 // The panel, its buttons and its title strip (grab: where a finger picks and drags it), on the screen whole; its measure
-// (the screen's height at 100 %, smaller with it)
+// (the screen's height at 100 %, smaller with it). The emulator-style layout has no melee or ranged layout and no
+// attacks' style: their buttons are left out
 float editor_panel(const EditPanel &ep, float w, float h, Rect *panel, Rect btn[E_COUNT], Rect *grab = nullptr) {
     float k = std::clamp(ep.k, EPANEL_MIN, 1.0f), u = k * h, pw, ph;
     panel_dims(w, h, k, &pw, &ph);
     float x0 = ep.x < 0 ? (w - pw) * .5f : ep.x * w - pw * .5f, y0 = ep.y < 0 ? (h - ph) * .4f : ep.y * h - ph * .5f;
     x0 = std::clamp(x0, 0.0f, std::max(0.0f, w - pw)), y0 = std::clamp(y0, 0.0f, std::max(0.0f, h - ph));
     *panel = {x0, y0, x0 + pw, y0 + ph, true};
-    float gap = .012f * u, bh = .082f * u, r1 = y0 + .1f * u, r2 = r1 + bh + gap, bw = (pw - gap * 5) / 4;
+    float gap = .012f * u, bh = .082f * u, r1 = y0 + .1f * u, r2 = r1 + bh + gap, bw = (pw - gap * (E_ROW2 + 1)) / E_ROW2;
     if (grab) *grab = {x0, y0, x0 + pw, r1 - gap * .5f, true};
-    for (int i = 0; i < E_SET; i++) btn[i] = {x0 + gap + i * (bw + gap), r1, x0 + gap + i * (bw + gap) + bw, r1 + bh, true};
+    for (int i = 0; i < E_ROW2; i++) btn[i] = {x0 + gap + i * (bw + gap), r1, x0 + gap + i * (bw + gap) + bw, r1 + bh, true};
     bool two = config_live_touch_hud() != 0;  // (MoveHUD Off: one HUD for all, no switch)
-    int n = two ? E_COUNT - E_SET : E_COUNT - E_SET - 1, j = 0;
+    bool emu = g_kind.load() == KIND_EMU;
+    auto shown = [&](int i) { return !(i == E_PROF && !two) && !((i == E_SET || i == E_STYLE) && emu); };
+    int n = 0, j = 0;
+    for (int i = E_ROW2; i < E_COUNT; i++) n += shown(i);
     bw = (pw - gap * (n + 1)) / n;
-    for (int i = E_SET; i < E_COUNT; i++) {
+    for (int i = E_ROW2; i < E_COUNT; i++) {
         btn[i] = {0, 0, 0, 0, false};
-        if (i == E_PROF && !two) continue;
+        if (!shown(i)) continue;
         btn[i] = {x0 + gap + j * (bw + gap), r2, x0 + gap + j * (bw + gap) + bw, r2 + bh, true};
         j++;
     }
@@ -1414,18 +1761,71 @@ void panel_resize(State &s, float to, float ax, float ay) {
     panel_move(s, 0, 0);
 }
 
+// A line under the editor's panel for a few seconds (what a profile's action did, once its window closed)
+void edit_note(State &s, const char *text) {
+    snprintf(s.note, sizeof s.note, "%s", text);
+    s.note_until = SDL_GetTicksNS() + 5000 * MS;
+}
+// The FPS counter's plate as it was last drawn (runtime/perfstats.cpp), in display pixels: the editor's frame for it,
+// while it shows
+bool fps_frame(float w, float h, Rect *r) {
+    float v[4];
+    if (!perfstats_rect(v) || w <= 0 || h <= 0) return false;
+    *r = {v[0], v[1], v[2], v[3], true};
+    return true;
+}
+// It dragged by (dx, dy) pixels, kept on the screen whole (from its own place the first time: where it shows)
+void fps_move(State &s, float dx, float dy) {
+    Rect r;
+    if (!fps_frame(s.w, s.h, &r)) return;
+    float hw = (r.x1 - r.x0) * .5f, hh = (r.y1 - r.y0) * .5f;
+    float cx = s.layout.fps_x >= 0 ? s.layout.fps_x * s.w : (r.x0 + r.x1) * .5f, cy = s.layout.fps_y >= 0 ? s.layout.fps_y * s.h : (r.y0 + r.y1) * .5f;
+    s.layout.fps_x = std::clamp(cx + dx, hw, std::max(hw, s.w - hw)) / s.w;
+    s.layout.fps_y = std::clamp(cy + dy, hh, std::max(hh, s.h - hh)) / s.h;
+    publish_hud(s.layout);
+}
+
+// A profile's layout is the one the editor edits now (loaded, or a new one): the HUD shown as it has it, the melee layout
+void slot_into_editor(State &s, int n, const Layout &l) {
+    s.layout = l;
+    s.layout.profile = n, s.layout.profile_line = true;
+    run_clear_of_band(s.layout);
+    publish_hud(s.layout);
+    g_style = s.layout.style;
+    if (s.edit) g_edit_set = 0;  // (the touch layout editor: the melee layout first)
+    s.sel = -1;
+    rt_logf("[touch] layout editor: profile %d (%s)\n", n, s.layout.kind == KIND_EMU ? "emulator-style" : "the port's own");
+}
+// The layout saved into its profile's file (the editor's Save; touch_layout.txt is the one in use). false: it couldn't be
+bool profile_store(const Layout &l) {
+    std::string dir = profiles_dir();
+    if (!make_folder(dir)) return false;
+    return save_layout_file(profile_path(l.profile).c_str(), l, nullptr);
+}
+
 void edit_begin(State &s) {
     s.edit = true, s.edit_request = false, s.sel = -1, s.pinch = false;
     g_edit_set = g_ranged.load() != 0;  // (the layout in use; the panel's button changes it)
     s.edit_prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;  // (the HUD in use with the touch controls)
     g_hud_edit_prof = s.edit_prof;
     s.saved = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
+    s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     drop_fingers(s);
-    rt_logf("[touch] layout editor\n");
+    rt_logf("[touch] layout editor (profile %d)\n", s.layout.profile);
 }
 void edit_end(State &s, bool keep) {
-    if (keep) save_layout(s.layout, s.epanel), s.saved = s.layout;
-    else s.layout = s.saved;
+    if (keep) {  // (the layout in use, and its profile's file: a save folder that can't be reached keeps only the first)
+        s.layout.profile_line = true;
+        save_layout(s.layout, s.epanel), s.saved = s.layout;
+        if (!profile_store(s.layout)) {
+            char t[200];
+            snprintf(t, sizeof t, T("The layout is in use, but profile %d couldn't be saved in its folder. Is the save folder there?"),
+                     s.layout.profile);
+            overlay_notice(T("Control profiles"), t);
+        }
+    } else {
+        s.layout = s.saved;
+    }
     if (s.epanel != s.epanel_open) {  // (the panel stays where it was put, and as big, Save or Cancel: Cancel its line alone)
         if (!keep) save_panel(s.epanel);
         rt_logf("[touch] layout editor: its panel at %.2f %.2f, %d%%\n", s.epanel.x, s.epanel.y, (int)lroundf(s.epanel.k * 100));
@@ -1434,7 +1834,195 @@ void edit_end(State &s, bool keep) {
     g_style = s.layout.style;
     g_edit_set = -1;
     g_hud_edit_prof = -1;
-    s.edit = false, s.sel = -1, s.pinch = false;
+    s.edit = false, s.sel = -1, s.pinch = false, s.prof_open = s.img_open = false;
+}
+
+// ---- the profiles' window, over the editor (its Profile button): the ten slots in two rows, what each holds, the one
+// in use and the one being edited; a slot picked, its buttons: Load it into the editor, Save the editor's layout in it
+// (the editor goes on with that one), a New layout of either kind in it, Delete it; Close. What replaces or empties a
+// profile asks for a second tap, as tabarong's overwrite does. Nothing is played with until the editor's Save
+enum { PA_LOAD, PA_SAVE, PA_NEW_OURS, PA_NEW_EMU, PA_DELETE, PA_CLOSE, PA_COUNT };
+// The window: its frame, the slots, its buttons, and where its line goes (y)
+void prof_window(float w, float h, Rect *win, Rect slot[PROFILES_N], Rect btn[PA_COUNT], float *say_y) {
+    float ww = std::min(w * .96f, 1.75f * h), wh = .74f * h, x0 = (w - ww) * .5f, y0 = (h - wh) * .5f;
+    *win = {x0, y0, x0 + ww, y0 + wh, true};
+    float gap = .016f * h, top = y0 + .095f * h, sw = (ww - gap * 6) / 5, sh = .2f * h;
+    for (int i = 0; i < PROFILES_N; i++) {
+        float sx = x0 + gap + (i % 5) * (sw + gap), sy = top + (i / 5) * (sh + gap);
+        slot[i] = {sx, sy, sx + sw, sy + sh, true};
+    }
+    *say_y = top + 2 * sh + gap + .045f * h;
+    float bh = .1f * h, by0 = y0 + wh - gap - bh, bw = (ww - gap * (PA_COUNT + 1)) / (float)PA_COUNT;
+    for (int i = 0; i < PA_COUNT; i++) btn[i] = {x0 + gap + i * (bw + gap), by0, x0 + gap + i * (bw + gap) + bw, by0 + bh, true};
+}
+void prof_refresh(State &s) {
+    for (int i = 0; i < PROFILES_N; i++) s.prof_used[i] = profile_info(i + 1, &s.prof_kind[i]);
+}
+void prof_say(State &s, const char *english, int n) { snprintf(s.prof_say, sizeof s.prof_say, T(english), n); }
+void prof_open(State &s) {
+    s.prof_open = true, s.img_open = false, s.prof_pick = s.layout.profile - 1, s.prof_arm = -1, s.prof_btn = -1;
+    prof_refresh(s);
+    bool chosen;
+    profiles_dir(&chosen);
+    snprintf(s.prof_say, sizeof s.prof_say, "%s",
+             T(chosen ? "Pick a profile. They are kept in your save folder, and go with it to your other devices."
+                      : "Pick a profile. Save in the editor plays with the one you are editing."));
+}
+void prof_action(State &s, int a) {
+    int n = s.prof_pick + 1;
+    bool used = s.prof_used[n - 1], again = s.prof_arm == a;
+    s.prof_arm = -1;
+    switch (a) {
+    case PA_CLOSE:
+        s.prof_open = false;
+        break;
+    case PA_LOAD: {
+        Layout l;
+        if (!used) prof_say(s, "Profile %d is empty: New makes a layout in it", n);
+        else if (n == s.layout.profile) prof_say(s, "You are editing profile %d already", n);
+        else if (!load_layout_file(profile_path(n).c_str(), &l, nullptr)) prof_say(s, "Profile %d can't be read. Is the save folder there?", n);
+        else {
+            slot_into_editor(s, n, l), s.prof_open = false;
+            char t[200];
+            snprintf(t, sizeof t, T("Profile %d loaded: Save plays with it, Cancel goes back"), n);
+            edit_note(s, t);
+        }
+        break;
+    }
+    case PA_SAVE: {
+        if (used && n != s.layout.profile && !again) {
+            s.prof_arm = a;
+            prof_say(s, "Profile %d holds a layout: tap Save here again to replace it", n);
+            break;
+        }
+        Layout l = s.layout;
+        l.profile = n, l.profile_line = true;
+        if (!make_folder(profiles_dir()) || !save_layout_file(profile_path(n).c_str(), l, nullptr)) {
+            prof_say(s, "Profile %d couldn't be saved. Is the save folder there?", n);
+            break;
+        }
+        s.layout.profile = n, s.layout.profile_line = true;
+        prof_refresh(s);
+        rt_logf("[touch] profiles: the editor's layout saved in profile %d\n", n);
+        prof_say(s, "Saved in profile %d, which the editor edits now: its Save plays with it", n);
+        break;
+    }
+    case PA_NEW_OURS:
+    case PA_NEW_EMU: {
+        if (used && !again) {
+            s.prof_arm = a;
+            prof_say(s, "Profile %d holds a layout: tap New again to start it over", n);
+            break;
+        }
+        Layout l = defaults(a == PA_NEW_EMU ? KIND_EMU : KIND_OURS);
+        slot_into_editor(s, n, l), s.prof_open = false;
+        char t[200];
+        snprintf(t, sizeof t, T("A new layout in profile %d: Save keeps it and plays with it"), n);
+        edit_note(s, t);
+        break;
+    }
+    case PA_DELETE:
+        if (!used) prof_say(s, "Profile %d is empty", n);
+        else if (n == s.open_slot || n == s.layout.profile) prof_say(s, "Profile %d is in use or being edited: it can't be emptied", n);
+        else if (!again) s.prof_arm = a, prof_say(s, "Tap Delete again to empty profile %d", n);
+        else if (remove(profile_path(n).c_str()) != 0) prof_say(s, "Profile %d couldn't be emptied", n);
+        else prof_refresh(s), prof_say(s, "Profile %d emptied", n), rt_logf("[touch] profiles: profile %d emptied\n", n);
+        break;
+    }
+}
+// A finger down while the window is open: a slot picks it, a button acts (lit while held); elsewhere nothing
+void prof_tap(State &s, float x, float y) {
+    Rect win, slot[PROFILES_N], btn[PA_COUNT];
+    float say_y;
+    prof_window(s.w, s.h, &win, slot, btn, &say_y);
+    for (int i = 0; i < PROFILES_N; i++)
+        if (slot[i].in(x, y)) {
+            if (s.prof_pick != i) s.prof_arm = -1;
+            s.prof_pick = i;
+            if (s.prof_used[i]) prof_say(s, s.prof_kind[i] == KIND_EMU ? "Profile %d: an emulator-style layout" : "Profile %d: a port layout", i + 1);
+            else prof_say(s, "Profile %d is empty", i + 1);
+            tap_due();
+            return;
+        }
+    for (int i = 0; i < PA_COUNT; i++)
+        if (btn[i].in(x, y)) {
+            s.prof_btn = i;
+            prof_action(s, i);
+            tap_due();
+            return;
+        }
+}
+
+// ---- the pictures' window (the editor's Image button, a round button picked): the pictures in the profiles' images
+// folder, a page of them; one tapped goes on the button. None takes it off; Add pictures opens the screen that copies
+// the player's own in (Android's ImportActivity, a desktop's file dialog: runtime/pc_actions.c); the folder is read again
+// while the window is open. The pictures are the player's own, and their responsibility
+enum { IA_NONE, IA_PREV, IA_NEXT, IA_ADD, IA_CLOSE, IA_COUNT };
+const int IMG_PAGE = 12;  // (two rows of six)
+void img_window(float w, float h, Rect *win, Rect tile[IMG_PAGE], Rect btn[IA_COUNT], float *say_y) {
+    float ww = std::min(w * .96f, 1.75f * h), wh = .74f * h, x0 = (w - ww) * .5f, y0 = (h - wh) * .5f;
+    *win = {x0, y0, x0 + ww, y0 + wh, true};
+    float gap = .016f * h, top = y0 + .095f * h, tw = (ww - gap * 7) / 6, th = .2f * h;
+    for (int i = 0; i < IMG_PAGE; i++) {
+        float tx = x0 + gap + (i % 6) * (tw + gap), ty = top + (i / 6) * (th + gap);
+        tile[i] = {tx, ty, tx + tw, ty + th, true};
+    }
+    *say_y = top + 2 * th + gap + .045f * h;
+    float bh = .1f * h, by0 = y0 + wh - gap - bh, bw = (ww - gap * (IA_COUNT + 1)) / (float)IA_COUNT;
+    for (int i = 0; i < IA_COUNT; i++) btn[i] = {x0 + gap + i * (bw + gap), by0, x0 + gap + i * (bw + gap) + bw, by0 + bh, true};
+}
+bool picture_file(const char *name) {  // (what the window lists: PNG and BMP, which SDL reads; the import makes PNG)
+    size_t n = strlen(name);
+    if (n < 5 || n >= (size_t)IMAGE_NAME || name[0] == '.') return false;
+    const char *e = name + n - 4;
+    return !SDL_strcasecmp(e, ".png") || !SDL_strcasecmp(e, ".bmp");
+}
+void img_scan(State &s) {
+    s.img_n = 0;
+    if (DIR *d = opendir(images_dir().c_str())) {
+        while (dirent *e = readdir(d))
+            if (picture_file(e->d_name) && s.img_n < IMG_MAX) snprintf(s.img_names[s.img_n++].n, IMAGE_NAME, "%s", e->d_name);
+        closedir(d);
+    }
+    std::sort(s.img_names, s.img_names + s.img_n, [](const ImgName &a, const ImgName &b) { return SDL_strcasecmp(a.n, b.n) < 0; });
+    int pages = std::max(1, (s.img_n + IMG_PAGE - 1) / IMG_PAGE);
+    s.img_page = std::clamp(s.img_page, 0, pages - 1);
+    s.img_scan_ns = SDL_GetTicksNS();
+}
+void img_open(State &s) {
+    s.img_open = true, s.prof_open = false, s.img_page = 0, s.img_btn = -1;
+    img_scan(s);
+    for (int i = 0; i < s.img_n; i++)  // (the page of the picture the button has)
+        if (s.sel >= 0 && s.sel < C_COUNT && !strcmp(s.img_names[i].n, s.layout.image[s.sel])) s.img_page = i / IMG_PAGE;
+}
+void request_pictures(void);  // (Add pictures: the platform's screen, below)
+void img_tap(State &s, float x, float y) {
+    Rect win, tile[IMG_PAGE], btn[IA_COUNT];
+    float say_y;
+    img_window(s.w, s.h, &win, tile, btn, &say_y);
+    int c = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
+    for (int i = 0; i < IMG_PAGE; i++) {
+        int k = s.img_page * IMG_PAGE + i;
+        if (k < s.img_n && tile[i].in(x, y) && c >= 0) {
+            snprintf(s.layout.image[c], IMAGE_NAME, "%s", s.img_names[k].n);
+            rt_logf("[touch] layout editor: a picture on %s (%s)\n", DEFS[c].key, s.img_names[k].n);
+            s.img_open = false;
+            tap_due();
+            return;
+        }
+    }
+    int pages = std::max(1, (s.img_n + IMG_PAGE - 1) / IMG_PAGE);
+    for (int i = 0; i < IA_COUNT; i++) {
+        if (!btn[i].in(x, y)) continue;
+        s.img_btn = i;
+        tap_due();
+        if (i == IA_NONE && c >= 0) s.layout.image[c][0] = 0, s.img_open = false;
+        else if (i == IA_PREV) s.img_page = (s.img_page + pages - 1) % pages;
+        else if (i == IA_NEXT) s.img_page = (s.img_page + 1) % pages;
+        else if (i == IA_ADD) make_folder(profiles_dir()), make_folder(images_dir()), request_pictures();
+        else if (i == IA_CLOSE) s.img_open = false;
+        return;
+    }
 }
 // The next way of laying out the attacks. What the corner band would cover goes inside its bend; leaving it, back to
 // where it was when the editor opened
@@ -1544,16 +2132,32 @@ void edit_button(State &s, int i) {
         }
         break;
     }
-    case E_HIDE:  // (not the item bar with the touch controls: hud_hide_ok)
+    case E_HIDE:  // (not the item bar with the touch controls: hud_hide_ok; a control of the emulator-style layout's)
         if (part >= 0 && hud_hide_ok(s.edit_prof, part)) {
             s.layout.hud[s.edit_prof][part].hidden = !s.layout.hud[s.edit_prof][part].hidden;
+            publish_hud(s.layout);
+        } else if (c >= 0 && hideable(c)) {
+            s.layout.off ^= 1ull << c;
             publish_hud(s.layout);
         }
         break;
     case E_RESET:
         if (part >= 0) s.layout.hud[s.edit_prof][part] = hud_default(), publish_hud(s.layout);
-        else if (c >= 0) s.layout.x[c] = DEFS[c].x, s.layout.y[c] = DEFS[c].y, s.layout.scale[c] = 1.0f;
+        else if (c >= 0) def_place(s.layout.kind, c, &s.layout.x[c], &s.layout.y[c]), s.layout.scale[c] = 1.0f;
         else if (s.sel == SEL_PANEL) s.epanel = EditPanel{};  // (the panel: its usual place and size)
+        else if (s.sel == SEL_FPS) s.layout.fps_x = s.layout.fps_y = -1.0f, publish_hud(s.layout);  // (its own place)
+        break;
+    case E_HOLD:  // (a tap holds it down, the next lets it go: S13)
+        if (holdable(c)) {
+            s.layout.hold ^= 1ull << c;
+            rt_logf("[touch] layout editor: %s %s by a tap\n", DEFS[c].key, s.layout.hold >> c & 1 ? "held" : "no longer held");
+        }
+        break;
+    case E_IMAGE:
+        if (image_ok(c)) img_open(s);
+        break;
+    case E_PROFILES:
+        prof_open(s);
         break;
     case E_SET:
         if (!touch) break;
@@ -1568,9 +2172,9 @@ void edit_button(State &s, int i) {
         if (part < 0 && s.sel != SEL_PANEL) s.sel = -1;  // (a control: none in the HUD without them)
         rt_logf("[touch] layout editor: the HUD %s the touch controls\n", touch ? "without" : "with");
         break;
-    case E_DEFAULTS: {
+    case E_DEFAULTS: {  // (the kind's own: the profile stays the one it is)
         Layout was = s.layout;
-        if (touch) s.layout = defaults();
+        if (touch) s.layout = defaults(was.kind), s.layout.profile = was.profile, s.layout.profile_line = was.profile_line;
         for (int p = 0; p < HUD_PROFILES; p++)
             for (int k = 0; k < HP_COUNT; k++) s.layout.hud[p][k] = p == s.edit_prof ? hud_default() : was.hud[p][k];
         publish_hud(s.layout);
@@ -1590,6 +2194,12 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         if (!f) return;
         *f = {};
         f->id = e->tfinger.fingerID, f->x = f->x0 = x, f->y = f->y0 = y, f->ctl = -1;
+        if (s.prof_open || s.img_open) {  // (a window over the editor: its own, nothing under it)
+            f->kind = F_MENU, f->ctl = -1;
+            if (s.prof_open) prof_tap(s, x, y);
+            else img_tap(s, x, y);
+            return;
+        }
         Rect panel, btn[E_COUNT], grab;
         editor_panel(s.epanel, s.w, s.h, &panel, btn, &grab);
         // (taps in a row where the panel's - or + was press it again, though the panel it sizes slid at the screen's edge
@@ -1628,6 +2238,8 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves),
         // else the panel by its title strip's edge
         int c = edit_controls(s) ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
+        Rect fps;
+        if (c < 0 && fps_frame(s.w, s.h, &fps) && fps.in(x, y)) c = SEL_FPS;  // (the FPS counter, over the HUD's parts)
         if (c < 0) {
             int k = part_hit(s, x, y);
             if (k >= 0) c = ZONE_SEL + k;
@@ -1661,6 +2273,8 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
             }
         } else if (f->ctl == SEL_PANEL) {
             panel_move(s, dx, dy);
+        } else if (f->ctl == SEL_FPS) {
+            fps_move(s, dx, dy);
         } else if (f->ctl >= ZONE_SEL) {
             part_move(s, f->ctl - ZONE_SEL, dx, dy);
         } else if (f->ctl >= 0) {
@@ -1672,6 +2286,7 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         return;
     }
     if (f->kind == F_EDIT) s.pinch = false;
+    if (f->kind == F_MENU) s.prof_btn = s.img_btn = -1;  // (a window's button no longer held)
     f->kind = F_NONE;
 }
 
@@ -1681,9 +2296,11 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
 // Arts), in the HUD shown with the touch controls hidden (HUD_PLAIN: a keyboard, a controller; the touch editor's
 // HUD: controller), from where the game puts them. Framed and named as in the touch editor, where they are drawn or
 // where they would be (outside a hunt, hidden: part_frame); a part dragged moves, the wheel over it sizes it. A panel
-// in one row: what is picked (- / +, hide or show, back to its default), then defaults (every part), cancel and save;
-// Esc cancels
-enum { H_SMALLER, H_BIGGER, H_HIDE, H_RESET, H_DEFAULTS, H_CANCEL, H_SAVE, H_COUNT };
+// in one row: what is picked (- / +, hide or show, back to its default), then the layout profiles (the touch layout
+// editor's window: the same ten), defaults (every part), cancel and save; Esc cancels. The FPS counter, while it
+// shows, is picked and dragged as a part
+enum { H_SMALLER, H_BIGGER, H_HIDE, H_RESET, H_PROFILES, H_DEFAULTS, H_CANCEL, H_SAVE, H_COUNT };
+const int HUD_DRAG_FPS = 1000;  // (s.hud_drag: the FPS counter's plate)
 void hud_panel(float w, float h, Rect *panel, Rect btn[H_COUNT]) {
     float pw = std::min(w * .94f, 1.75f * h), ph = .2f * h, x0 = (w - pw) * .5f, y0 = (h - ph) * .4f;
     *panel = {x0, y0, x0 + pw, y0 + ph, true};
@@ -1691,7 +2308,7 @@ void hud_panel(float w, float h, Rect *panel, Rect btn[H_COUNT]) {
     float gap = .015f * h, split = 2.0f * gap, bw = (pw - gap * (H_COUNT + 1) - split) / H_COUNT;
     float by0 = y0 + ph * .5f, by1 = y0 + ph - gap;
     for (int i = 0; i < H_COUNT; i++) {
-        float bx = x0 + gap + i * (bw + gap) + (i >= H_DEFAULTS ? split : 0.0f);
+        float bx = x0 + gap + i * (bw + gap) + (i >= H_PROFILES ? split : 0.0f);
         btn[i] = {bx, by0, bx + bw, by1, true};
     }
 }
@@ -1736,6 +2353,7 @@ void hud_edit_begin(State &s) {
         return;
     }
     s.hud_edit = true, s.sel = -1, s.hud_btn = s.hud_drag = -1, s.hud_fingered = false;
+    s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     // (the HUD without the touch controls, shown live as it is edited: part_size and part_pickup go by edit_prof)
     s.edit_prof = HUD_PLAIN, g_hud_edit_prof = HUD_PLAIN;
     s.saved = s.layout;
@@ -1753,8 +2371,19 @@ void hud_edit_begin(State &s) {
     rt_logf("[touch] HUD editor\n");
 }
 void hud_edit_end(State &s, bool keep) {
-    if (keep) save_layout(s.layout, s.epanel), s.saved = s.layout;
-    else s.layout = s.saved;
+    if (keep) {  // (the layout in use and its profile, as the touch layout editor's Save)
+        s.layout.profile_line = true;
+        save_layout(s.layout, s.epanel), s.saved = s.layout;
+        if (!profile_store(s.layout)) {
+            char t[200];
+            snprintf(t, sizeof t, T("The layout is in use, but profile %d couldn't be saved in its folder. Is the save folder there?"),
+                     s.layout.profile);
+            overlay_notice(T("Control profiles"), t);
+        }
+    } else {
+        s.layout = s.saved;
+    }
+    s.prof_open = false;
     publish_hud(s.layout);
     g_hud_edit_prof = -1;
     s.hud_edit = false, s.sel = -1, s.hud_btn = s.hud_drag = -1;
@@ -1781,6 +2410,10 @@ void hud_button(State &s, int i) {
         break;
     case H_RESET:
         if (v) *v = hud_default(), publish_hud(s.layout);
+        else if (s.sel == SEL_FPS) s.layout.fps_x = s.layout.fps_y = -1.0f, publish_hud(s.layout);
+        break;
+    case H_PROFILES:
+        prof_open(s);
         break;
     case H_DEFAULTS:
         for (HudVals &d : s.layout.hud[HUD_PLAIN]) d = hud_default();
@@ -1794,12 +2427,21 @@ void hud_press(State &s, float x, float y) {
     Rect panel, btn[H_COUNT];
     hud_panel(s.w, s.h, &panel, btn);
     s.hud_btn = s.hud_drag = -1;
+    if (s.prof_open) {  // (the profiles' window over it: its own)
+        prof_tap(s, x, y);
+        return;
+    }
     for (int i = 0; i < H_COUNT; i++)
         if (btn[i].in(x, y)) {
             s.hud_btn = i;  // (lit while held)
             hud_button(s, i);
             return;
         }
+    Rect fps;  // (the FPS counter, over the parts)
+    if (!panel.in(x, y) && fps_frame(s.w, s.h, &fps) && fps.in(x, y)) {
+        s.sel = SEL_FPS, s.hud_drag = HUD_DRAG_FPS, s.hud_px = x, s.hud_py = y;
+        return;
+    }
     int k = hud_over(x, y, s.w, s.h);
     if (k < 0 && panel.in(x, y)) return;  // (the panel's face: nothing under it moves)
     s.sel = k >= 0 ? ZONE_SEL + k : -1;
@@ -1816,7 +2458,12 @@ void hud_press(State &s, float x, float y) {
 // touch layout editor, its frame kept on the picture (one already past an edge may come back; one wider or taller
 // than the picture, sized up: its middle)
 void hud_move(State &s, float x, float y) {
+    float was_x = s.hud_px, was_y = s.hud_py;
     s.hud_px = x, s.hud_py = y;
+    if (s.hud_drag == HUD_DRAG_FPS) {
+        fps_move(s, x - was_x, y - was_y);
+        return;
+    }
     if (s.hud_drag < 0) {
         hud_cursor(s.hud_btn < 0 && hud_over(x, y, s.w, s.h) >= 0);
         return;
@@ -1833,9 +2480,10 @@ void hud_move(State &s, float x, float y) {
     v.dy = std::clamp(s.hud_oy + dy * 720.0f / p.h / hud_vsqueeze(), -HUD_DY_MAX, HUD_DY_MAX);
     publish_hud(s.layout);
 }
-void hud_release(State &s) { s.hud_btn = s.hud_drag = -1; }
+void hud_release(State &s) { s.hud_btn = s.hud_drag = -1, s.prof_btn = -1; }
 void hud_wheel(State &s, float x, float y, int notches) {  // (over a part, or else the picked one: 5% a notch)
     if (!notches || s.hud_drag >= 0) return;  // (not while one is dragged: its frame at the drag's start holds)
+    if (s.prof_open) return;
     int k = hud_over(x, y, s.w, s.h);
     if (k < 0 && s.sel >= ZONE_SEL) k = s.sel - ZONE_SEL;
     if (k < 0) return;
@@ -1973,6 +2621,17 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
                 ammo_step(s, c == C_AMMO_UP ? 1 : -1), f->repeat_ns = now + 550 * MS;  // (held: more steps, touch_input)
             if (c == C_LOCKON) lock_set(s, !s.lock, "the Lock-on button");  // (as it lands; lit while held, presses nothing)
+            // (a button a tap holds down, Layout.hold: this tap holds it, what it presses now staying pressed after the
+            // finger lifts, lit; the next tap lets it go, and presses nothing more)
+            if ((s.layout.hold >> c & 1) && holdable(c)) {
+                if (s.latched >> c & 1) {
+                    unlatch(s, 1ull << c, DEFS[c].key);
+                    f->done = true;
+                } else {
+                    s.latched |= 1ull << c, s.latch_btn[c] = finger_buttons(*f);
+                    rt_logf("[touch] %s held by a tap (%llx)\n", DEFS[c].key, (unsigned long long)s.latch_btn[c]);
+                }
+            }
             if (!of_mpad(c)) tap_due();  // (the menu pad's group: as it presses, touch_input)
         } else if (s.menu && item.in(x, y)) {
             f->kind = F_CAMERA;  // (the item bar in a menu: a drag on it moves the cursor, as anywhere else)
@@ -1989,10 +2648,11 @@ extern "C" bool touch_event(const SDL_Event *e) {
             Geo g = place(s.layout, C_STICK, s.w, s.h);
             run_end(s, "the stick touched again");  // (a run going on by itself stops: this thumb drives now)
             s.stick_on = true, s.bx = g.c.x, s.by = g.c.y;
+            if (floating_stick()) s.bx = x, s.by = y;  // (the floating stick: its base under the thumb)
             stick_to(s, x, y);
             // (a new thumb may lock from wherever it landed, slid up into the circle again - not one that landed in it,
             // which a stick placed high has near)
-            Geo lg = place(s.layout, C_RUNLOCK, s.w, s.h);
+            Geo lg = lock_geo(s.layout, s, s.w, s.h);
             if (hypotf(x - lg.c.x, y - lg.c.y) >= LOCK_GRAB / LOCK_R * lg.r) s.run_armed = true;
         } else {
             f->kind = F_CAMERA;
@@ -2337,6 +2997,13 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
         }
     }
     g_touch_hud = visible && config_live_touch_hud();
+    // (the buttons a tap held down: let go with the controls hidden or edited; one alone once it is off the screen - the
+    // ranged layout's as the weapon goes, Run as a menu opens -, or no longer held by a tap; the pictures' window read
+    // again now and then, for the pictures being added)
+    if (s.latched && (!visible || s.edit)) unlatch(s, s.latched, !visible ? "the controls hidden" : "the editor"), recompute_held(s);
+    for (int i = 0; i < C_COUNT && s.latched; i++)
+        if ((s.latched >> i & 1) && (!in_mode(i, s.menu) || !(s.layout.hold >> i & 1))) unlatch(s, 1ull << i, DEFS[i].key), recompute_held(s);
+    if (s.edit && s.img_open && now - s.img_scan_ns > 1500 * MS) img_scan(s);
     // A long press on the item bar holds it open, its neighbouring items shown as while L is held, with nothing pressed
     // (L would turn the camera): a swipe meanwhile turns it, lifting closes it and uses no item (#109, as the MH4U port's)
     for (Finger &f : s.f)
@@ -2463,6 +3130,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     bool run_held = false;  // (the Run button)
     for (const Finger &f : s.f) run_held |= f.kind == F_BUTTON && !f.done && f.ctl == C_RUN;
+    run_held |= (s.latched >> C_RUN & 1) != 0;  // (held by a tap)
     bool want = s.run_lock || s.rim || (run_held && !stick_run && drawn != 1 && !s.menu);
     if (*buttons & B(BTN_X)) s.run_x_until = now + RUN_X_WAIT;
     s.run = want && now >= s.run_x_until;
@@ -3627,10 +4295,101 @@ void item_arrow_disc(ImDrawList *dl, Geo g, int d, bool lit, float a) {
     dl->AddTriangleFilled(ImVec2(g.c.x + d * ch, g.c.y), ImVec2(g.c.x - d * ch * .6f, g.c.y - ch), ImVec2(g.c.x - d * ch * .6f, g.c.y + ch),
                           fade(lit ? GLOW : INK, a));
 }
-void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
+// ---- the players' pictures on the buttons (Layout.image, S06: the port keeps its own look, and a player may put a
+// picture of their own on any round button, at their own responsibility): read from the profiles' images folder the
+// first time one is drawn (the game thread, inside the overlay's ImGui frame), at most PIC_SIDE pixels a side, kept as
+// ImGui textures the overlay's renderer uploads with the font's (runtime/overlay.cpp; the MH4U port's SDL renderer the
+// same way). A file that can't be read or isn't a PNG or a BMP is tried once and drawn as the button's own icon
+const int PIC_SIDE = 256, PIC_CACHE = 48;
+struct PicTex {
+    char name[IMAGE_NAME];
+    ImTextureData *tex;
+    uint64_t tried_ns;  // (not read: tried again after a while, a picture being copied in)
+};
+PicTex g_pics[PIC_CACHE];
+int g_npics;
+ImTextureData *pic_texture(const char *name) {
+    if (!name || !name[0]) return nullptr;
+    uint64_t now = SDL_GetTicksNS();
+    PicTex *found = nullptr;
+    for (int i = 0; i < g_npics && !found; i++)
+        if (!strcmp(g_pics[i].name, name)) found = &g_pics[i];
+    if (found && (found->tex || now - found->tried_ns < 3000000000ull)) return found->tex;
+    if (!found && g_npics >= PIC_CACHE) return nullptr;
+    PicTex &p = found ? *found : g_pics[g_npics++];
+    snprintf(p.name, sizeof p.name, "%s", name);
+    p.tex = nullptr, p.tried_ns = now;
+    std::string data;
+    if (!read_text((images_dir() + "/" + name).c_str(), &data) || data.empty()) {
+        if (!found) rt_logf("[touch] picture %s: not in %s\n", name, images_dir().c_str());
+        return nullptr;
+    }
+    SDL_Surface *src = SDL_LoadSurface_IO(SDL_IOFromConstMem(data.data(), data.size()), true);
+    if (!src) {
+        if (!found) rt_logf("[touch] picture %s can't be read: %s\n", name, SDL_GetError());
+        return nullptr;
+    }
+    int w = src->w, h = src->h;
+    float k = std::min(1.0f, (float)PIC_SIDE / (float)std::max(w, h));
+    SDL_Surface *rgba = SDL_ConvertSurface(src, SDL_PIXELFORMAT_RGBA32);
+    SDL_DestroySurface(src);
+    if (rgba && k < 1.0f) {
+        SDL_Surface *small = SDL_ScaleSurface(rgba, std::max(1, (int)(w * k)), std::max(1, (int)(h * k)), SDL_SCALEMODE_LINEAR);
+        SDL_DestroySurface(rgba);
+        rgba = small;
+    }
+    if (!rgba) {
+        if (!found) rt_logf("[touch] picture %s can't be converted: %s\n", name, SDL_GetError());
+        return nullptr;
+    }
+    ImTextureData *t = IM_NEW(ImTextureData)();
+    t->Create(ImTextureFormat_RGBA32, rgba->w, rgba->h);
+    t->UseColors = true;
+    for (int y = 0; y < rgba->h; y++) memcpy(t->Pixels + (size_t)y * rgba->w * 4, (const uint8_t *)rgba->pixels + (size_t)y * rgba->pitch, (size_t)rgba->w * 4);
+    rt_logf("[touch] picture %s: %dx%d, drawn at %dx%d\n", name, w, h, rgba->w, rgba->h);
+    SDL_DestroySurface(rgba);
+    ImGui::RegisterUserTexture(t);
+    p.tex = t;
+    return t;
+}
+// A picture in a circle of radius r (its middle square), or in a rectangle (r 0: the whole picture, fitted)
+void pic_in_circle(ImDrawList *dl, ImTextureData *t, ImVec2 c, float r, float a) {
+    float w = (float)t->Width, h = (float)t->Height, u0 = 0, v0 = 0, u1 = 1, v1 = 1;
+    if (w > h) u0 = (w - h) * .5f / w, u1 = 1 - u0;
+    else if (h > w) v0 = (h - w) * .5f / h, v1 = 1 - v0;
+    dl->AddImageRounded(t->GetTexRef(), ImVec2(c.x - r, c.y - r), ImVec2(c.x + r, c.y + r), ImVec2(u0, v0), ImVec2(u1, v1),
+                        fade(IM_COL32(255, 255, 255, 255), a), r);
+}
+void pic_in_rect(ImDrawList *dl, ImTextureData *t, const Rect &b, float a) {
+    float bw = b.x1 - b.x0, bh = b.y1 - b.y0, k = std::min(bw / (float)t->Width, bh / (float)t->Height);
+    float w = t->Width * k, h = t->Height * k, x0 = b.x0 + (bw - w) * .5f, y0 = b.y0 + (bh - h) * .5f;
+    dl->AddImage(t->GetTexRef(), ImVec2(x0, y0), ImVec2(x0 + w, y0 + h), ImVec2(0, 0), ImVec2(1, 1), fade(IM_COL32(255, 255, 255, 255), a));
+}
+// A button's picture of the player's, on its face (pressed or held, lit round it as the disc is), its letter's badge
+// over it: the button still says which of the game's buttons it is
+bool pic_face(ImDrawList *dl, ImFont *font, const Layout &l, int i, Geo g, bool lit, const char *letter, float a, float h) {
+    ImTextureData *t = image_ok(i) ? pic_texture(l.image[i]) : nullptr;
+    if (!t) return false;
+    float r = lit ? g.r * .95f : g.r;
+    disc(dl, g.c, r, lit, a);
+    pic_in_circle(dl, t, g.c, r * .84f, a);
+    if (lit) dl->AddCircle(g.c, r * .84f, fade(GLOW, a * .8f), 40, r * .07f);
+    if (letter && letter[0]) badge(dl, font, ImVec2(g.c.x + r * .7f, g.c.y + r * .7f), std::max(r * .3f, .021f * h), letter, a);
+    return true;
+}
+// The mark of a button a tap holds (Layout.hold): a small padlock at its upper left, closed and lit while it is held
+void hold_mark(ImDrawList *dl, Geo g, bool held, float a) {
+    ImVec2 c(g.c.x - g.r * .72f, g.c.y - g.r * .72f);
+    float s = std::max(g.r * .34f, 6.0f);
+    dl->AddCircleFilled(c, s * .62f, fade(IM_COL32(18, 12, 9, 255), a), 20);
+    dl->AddCircle(c, s * .62f, fade(held ? GLOW : GOLD, a), 20, s * .08f);
+    padlock(dl, ImVec2(c.x, c.y - s * .04f), s * .62f, held, fade(held ? GLOW : INK, a), fade(DEEP, a));
+}
+void control_face(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
     Geo g = place(l, i, w, h);
+    bool held = (s.latched >> i & 1) != 0;  // (a tap holds it down: lit)
     if (i == C_ITEML || i == C_ITEMR) {  // (the editor's: in a hunt they go with the item bar)
-        item_arrow_disc(dl, g, i == C_ITEML ? -1 : 1, false, a);
+        if (!pic_face(dl, font, l, i, g, false, "", a, h)) item_arrow_disc(dl, g, i == C_ITEML ? -1 : 1, false, a);
         return;
     }
     if (i == C_RUNLOCK) {  // (the editor's: in a hunt it shows as the thumb pushes toward it, with the stick)
@@ -3646,7 +4405,7 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
             // the thumb on it (armed) and locked
             // (toward the circle, wherever the editor put it: above the stick unless moved)
             float v = s.run_lock || s.run_over ? 1.0f : 0.0f;
-            Geo lg = place(l, C_RUNLOCK, w, h);
+            Geo lg = lock_geo(l, s, w, h);
             if (!s.run_lock && !s.run_over && s.run_can && s.stick_on) {
                 float ux = lg.c.x - s.bx, uy = lg.c.y - s.by, ud = std::max(1.0f, hypotf(ux, uy));
                 float dx = s.fx - s.bx, dy = s.fy - s.by, d = hypotf(dx, dy), up = d > 1.0f ? (dx * ux + dy * uy) / (d * ud) : 0.0f;
@@ -3685,10 +4444,12 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
             if (f.keep & B(BTN_R)) mask |= i == C_R ? 1 : i == C_CORNER && f.ctl == C_CORNER ? 4 : 0;  // (a guard kept)
         }
     if (of_mpad(i) && s.lit_ctl == i && SDL_GetTicksNS() < s.lit_until) mask |= i == C_MPAD ? s.lit_part : 1;  // (a tap)
+    if (held && !s.edit) mask |= 1;
     if (i == C_ATTACK) { pill(dl, font, g, mask, a); return; }
     if (i == C_MPAD) { menu_pad(dl, g, thumb, mask, a, thumb.x != g.c.x || thumb.y != g.c.y); return; }
     if (is_tab(i)) { tab(dl, font, g, i == C_ML || i == C_MZL, mpad_label(i), mask != 0, a); return; }
     if (i == C_CORNER) { corner_band(dl, font, g, mask, a); return; }
+    if ((i == C_HEAVY || i == C_LIGHT) && pic_face(dl, font, l, i, g, mask != 0, DEFS[i].letter, a, h)) return;
     if (i == C_HEAVY || i == C_LIGHT) {  // (a great sword, a small one, as on the pill)
         float r = mask ? g.r * .95f : g.r;
         disc(dl, g.c, r, mask != 0, a);
@@ -3712,6 +4473,7 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
         char label[32];
         if (is_combo(i)) combo_label(i, label, sizeof label);
         else snprintf(label, sizeof label, "%s", DEFS[i].letter);
+        if (pic_face(dl, font, l, i, g, mask != 0, label, a, h)) return;
         float r = mask ? g.r * .95f : g.r, fs = r * 1.05f;
         disc(dl, g.c, r, mask != 0, a);
         ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, label);
@@ -3735,11 +4497,19 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
                                           : i == C_L && !s.edit && camera_buttons() == B(BTN_ZL) ? "ZL" : DEFS[i].letter);
     if (is_ranged(i)) ranged_face(i, s.edit ? 1 : s.drawn, &ic, letter, sizeof letter);
     bool lit = mask || (i == C_LOCKON && s.lock && !s.edit);  // (the Lock-on button lit while the lock-on is on)
+    if (pic_face(dl, font, l, i, g, lit, strchr("v<>", letter[0]) && letter[0] ? "" : letter, a, h)) return;
     icon(dl, ic, g.c, i == C_RFIRE ? r * .94f : r, fade(lit ? GLOW : INK, a), fade(DEEP, a));
     float br = std::max(r * (i == C_RFIRE ? .22f : .3f), .021f * h);  // (the large one's as large as the others')
     ImVec2 bc(g.c.x + r * .7f, g.c.y + r * .7f);
     if (i == C_ZL && strchr("v<>", letter[0]) && letter[0]) badge_arrow(dl, bc, br, letter[0], a);  // (Type 2: the d-pad's)
     else if (i != C_MMINUS) badge(dl, font, bc, br, letter, a);  // (the small Minus: its glyph)
+}
+
+// A control, and over it the mark of a button a tap holds: in the editor, and while it is held
+void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, float h, const State &s, float a) {
+    control_face(dl, font, l, i, w, h, s, a);
+    bool held = (s.latched >> i & 1) != 0;
+    if ((l.hold >> i & 1) && holdable(i) && (s.edit || held)) hold_mark(dl, place(l, i, w, h), held && !s.edit, a);
 }
 
 // a plate in the game's window style: wine-dark, a black edge, red and green rules top and bottom
@@ -3770,9 +4540,6 @@ void dashed_rect(ImDrawList *dl, Rect r, ImU32 col, float t) {
         dl->AddLine(ImVec2(r.x1, y), ImVec2(r.x1, std::min(y + seg, r.y1)), col, t);
     }
 }
-
-int g_language;  // the settings menu's (touch_draw, each frame): the editor's texts in it
-const char *T(const char *english) { return settings_text(g_language, english); }
 
 // A control drawn by the editor: the layout's, or one of the menu pad's tabs or its Minus, which go with it
 bool editor_shows(int i) {
@@ -3933,6 +4700,95 @@ void panel_grips(const Rect &grab, float u, Rect g[2]) {
     g[1] = {grab.x1 - m - gw, g[0].y0, grab.x1 - m, g[0].y1, true};
 }
 
+// The windows over the editor (its Profile and Image buttons), in the game's window style: a plate, a serif title, the
+// tiles, a line saying what happened or what a second tap does, the buttons (lit while held)
+void window_frame(ImDrawList *dl, const Rect &win, float h, const char *title) {
+    dl->AddRectFilled(ImVec2(0, 0), ImVec2(ImGui::GetIO().DisplaySize.x, h), IM_COL32(0, 0, 0, 110));
+    plate(dl, win, .005f * h, 1.0f, false);
+    ImFont *serif = ImGui::GetIO().Fonts->Fonts.Size > 1 ? ImGui::GetIO().Fonts->Fonts[1] : ImGui::GetFont();
+    text_center(dl, serif, .045f * h, ImVec2((win.x0 + win.x1) * .5f, win.y0 + .05f * h), GLOW, title);
+}
+void window_line(ImDrawList *dl, ImFont *font, const Rect &win, float y, float h, const char *t, ImU32 col) {
+    float fs = .026f * h, room = (win.x1 - win.x0) * .94f, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x;
+    if (tw > room) fs *= room / tw;
+    text_center(dl, font, fs, ImVec2((win.x0 + win.x1) * .5f, y), col, t);
+}
+void window_button(ImDrawList *dl, ImFont *font, const Rect &b, float h, const char *t, bool lit, bool off, bool armed) {
+    plate(dl, b, .0035f * h, off ? .45f : 1.0f, lit && !off);
+    if (armed) dl->AddRect(ImVec2(b.x0 - .003f * h, b.y0 - .003f * h), ImVec2(b.x1 + .003f * h, b.y1 + .003f * h),
+                           fade(RED, .65f + .35f * sinf(SDL_GetTicksNS() / 1e9f * 6)), 0, 0, .005f * h);
+    button_text(dl, font, b, .03f * h, fade(armed ? GLOW : INK, off ? .45f : 1.0f), t);
+}
+void draw_profiles(ImDrawList *dl, ImFont *font, const State &s, float w, float h) {
+    Rect win, slot[PROFILES_N], btn[PA_COUNT];
+    float say_y;
+    prof_window(w, h, &win, slot, btn, &say_y);
+    window_frame(dl, win, h, T("Control profiles"));
+    for (int i = 0; i < PROFILES_N; i++) {
+        const Rect &r = slot[i];
+        bool pick = i == s.prof_pick, used = s.prof_used[i], use = i + 1 == s.open_slot, editing = i + 1 == s.layout.profile;
+        plate(dl, r, .0035f * h, used || editing ? 1.0f : .6f, pick);
+        if (pick) dl->AddRect(ImVec2(r.x0 - .004f * h, r.y0 - .004f * h), ImVec2(r.x1 + .004f * h, r.y1 + .004f * h),
+                              fade(GLOW, .65f + .35f * sinf(SDL_GetTicksNS() / 1e9f * 6)), 0, 0, .006f * h);
+        char num[8];
+        snprintf(num, sizeof num, "%d", i + 1);
+        float cx = (r.x0 + r.x1) * .5f, rh = r.y1 - r.y0;
+        text_center(dl, font, rh * .34f, ImVec2(cx, r.y0 + rh * .3f), pick ? GLOW : used || editing ? GOLD : fade(INK, .5f), num);
+        int kind = editing ? s.layout.kind : s.prof_kind[i];
+        const char *what = used || editing ? T(kind == KIND_EMU ? "Emulator layout" : "Port layout") : T("Empty");
+        float fs = rh * .13f, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, what).x, room = (r.x1 - r.x0) * .9f;
+        text_center(dl, font, tw > room ? fs * room / tw : fs, ImVec2(cx, r.y0 + rh * .63f), used || editing ? INK : fade(INK, .55f), what);
+        const char *tag = editing ? T("Editing") : use ? T("In use") : nullptr;
+        if (tag) {
+            float ts = rh * .12f, tww = font->CalcTextSizeA(ts, FLT_MAX, 0, tag).x;
+            if (tww > room) ts *= room / tww;
+            text_center(dl, font, ts, ImVec2(cx, r.y0 + rh * .84f), GLOW, tag);
+        }
+    }
+    window_line(dl, font, win, say_y, h, s.prof_say, s.prof_arm >= 0 ? GLOW : INK);
+    const char *const LABEL[PA_COUNT] = {"Load", "Save here", "New: port layout", "New: emulator layout", "Delete", "Close"};
+    int n = s.prof_pick + 1;
+    bool used = s.prof_used[s.prof_pick];
+    for (int i = 0; i < PA_COUNT; i++) {
+        bool off = (i == PA_LOAD && (!used || n == s.layout.profile)) || (i == PA_DELETE && (!used || n == s.open_slot || n == s.layout.profile));
+        window_button(dl, font, btn[i], h, T(LABEL[i]), s.prof_btn == i, off, s.prof_arm == i);
+    }
+}
+void draw_pictures(ImDrawList *dl, ImFont *font, const State &s, float w, float h) {
+    Rect win, tile[IMG_PAGE], btn[IA_COUNT];
+    float say_y;
+    img_window(w, h, &win, tile, btn, &say_y);
+    int c = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
+    char title[96];
+    snprintf(title, sizeof title, T("Picture for: %s"), c >= 0 ? (is_combo(c) ? T("Combined button") : T(DEFS[c].name)) : "");
+    window_frame(dl, win, h, title);
+    for (int i = 0; i < IMG_PAGE; i++) {
+        int k = s.img_page * IMG_PAGE + i;
+        const Rect &r = tile[i];
+        if (k >= s.img_n) {
+            plate(dl, r, .0035f * h, .35f, false);
+            continue;
+        }
+        bool on = c >= 0 && !strcmp(s.layout.image[c], s.img_names[k].n);
+        plate(dl, r, .0035f * h, 1.0f, on);
+        Rect in = {r.x0 + .012f * h, r.y0 + .012f * h, r.x1 - .012f * h, r.y1 - .04f * h, true};
+        if (ImTextureData *t = pic_texture(s.img_names[k].n)) pic_in_rect(dl, t, in, 1.0f);
+        else text_center(dl, font, .024f * h, ImVec2((r.x0 + r.x1) * .5f, (in.y0 + in.y1) * .5f), fade(INK, .6f), "?");
+        float fs = .018f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, s.img_names[k].n).x, room = (r.x1 - r.x0) * .92f;
+        text_center(dl, font, tw > room ? fs * room / tw : fs, ImVec2((r.x0 + r.x1) * .5f, r.y1 - .02f * h), on ? GLOW : INK, s.img_names[k].n);
+    }
+    char line[200];
+    int pages = std::max(1, (s.img_n + IMG_PAGE - 1) / IMG_PAGE);
+    if (!s.img_n) snprintf(line, sizeof line, "%s", T("No pictures yet: Add pictures copies yours in (PNG or JPG). They are your own responsibility."));
+    else snprintf(line, sizeof line, T("Page %d of %d. The pictures you add are your own responsibility."), s.img_page + 1, pages);
+    window_line(dl, font, win, say_y, h, line, INK);
+    const char *const LABEL[IA_COUNT] = {"No picture", "<", ">", "Add pictures", "Close"};
+    for (int i = 0; i < IA_COUNT; i++) {
+        bool off = (i == IA_NONE && (c < 0 || !s.layout.image[c][0])) || ((i == IA_PREV || i == IA_NEXT) && pages < 2);
+        window_button(dl, font, btn[i], h, T(LABEL[i]), s.img_btn == i, off, false);
+    }
+}
+
 // The editor: the game's HUD parts framed where they are (where they would be when they aren't drawn: outside a hunt,
 // hidden), named below them on a dark plate, the picked one pulsing with its size; the touch controls over them, with
 // their names (with the touch controls' HUD); a part and a control over each other both red; the panel, and a line under
@@ -3949,7 +4805,7 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     for (int k = 0; k < HP_COUNT; k++) fr[k] = part_frame(k, s.edit_prof, w, h, &live[k]), any_live |= live[k];
     // (a part shown on a control's place, where it isn't with the factory's places of both: a fresh layout warns of
     // nothing, the player's own move or size does)
-    Layout factory = defaults();
+    Layout factory = defaults(s.layout.kind);
     const float FACTORY[3] = {0.0f, 0.0f, 1.0f};
     for (int k = 0; k < HP_COUNT && touch; k++) {
         if (hud[k].hidden) continue;
@@ -3960,9 +4816,18 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
                 red_part[k] = red_ctl[i == C_MPAD || of_mpad(i) ? C_MPAD : i] = true;
     }
     draw_part_frames(dl, font, hud, s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1, -1, fr, live, red_part, panel, w, h);
+    // (the floating stick: how far from its place a thumb brings it, dashed)
+    if (touch && floating_stick() && in_editor(C_STICK)) {
+        Geo g = place(s.layout, C_STICK, w, h);
+        float reach = stick_reach(g, h);
+        for (int k = 0; k < 48; k += 2)
+            dl->PathArcTo(g.c, reach, k * PI / 24, (k + 1) * PI / 24, 4), dl->PathStroke(fade(GOLD, .55f), ImDrawFlags_None, .003f * h);
+        text_center(dl, font, .02f * h, ImVec2(g.c.x, std::max(g.c.y - reach - .02f * h, .02f * h)), fade(GOLD, .8f), T("Floating stick"), w);
+    }
     for (int i = 0; i < C_LAID && touch; i++) {
         if (!in_editor(i)) continue;  // (the controls no longer there stay in the file's order only)
-        control(dl, font, s.layout, i, w, h, s, 1.0f);
+        bool hid = hideable(i) && (s.layout.off >> i & 1);  // (the emulator-style layout's, hidden: faded)
+        control(dl, font, s.layout, i, w, h, s, hid ? .35f : 1.0f);
         if (i == C_MPAD)  // (its tabs and Minus with it, where it puts them)
             for (int j = C_ML; j <= C_MMINUS; j++)
                 if (mpad_member(j)) control(dl, font, s.layout, j, w, h, s, 1.0f);
@@ -4004,9 +4869,11 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
         }
         // its name below it, or above it near the bottom edge, or beside it in a column at an edge (the control below
         // would be under it); the selected one's size on the other side
-        char own[32];
+        char own[64];
         if (is_combo(i)) combo_label(i, own, sizeof own);
-        const char *t = is_combo(i) ? own : T(DEFS[i].name);
+        else snprintf(own, sizeof own, "%s", T(DEFS[i].name));
+        if (hid) snprintf(own + strlen(own), sizeof own - strlen(own), " %s", T("(hidden)"));
+        const char *t = own;
         float fs = .024f * h;
         ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, t);
         float side = DEFS[i].right ? -1.0f : 1.0f, tx = g.c.x + side * (g.r * 1.3f + ts.x * .5f);
@@ -4041,7 +4908,20 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
             text_center(dl, font, .03f * h, ImVec2(g.c.x, py), GLOW, pct, w);
         }
     }
+    Rect fps;  // (the FPS counter, while it shows: framed, named, picked like a part)
+    if (fps_frame(w, h, &fps)) {
+        bool sel = s.sel == SEL_FPS;
+        Rect f = {fps.x0 - .006f * h, fps.y0 - .006f * h, fps.x1 + .006f * h, fps.y1 + .006f * h, true};
+        dashed_rect(dl, f, sel ? fade(GLOW, .65f + .35f * sinf(SDL_GetTicksNS() / 1e9f * 6)) : IM_COL32(222, 186, 96, 210), (sel ? .005f : .0035f) * h);
+        float fs = .022f * h, ny = f.y1 + fs * .8f > h ? f.y0 - fs * .8f : f.y1 + fs * .8f;
+        ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, 0, T("FPS counter"));
+        ImVec2 c(std::clamp((f.x0 + f.x1) * .5f, ts.x * .5f + fs * .4f, w - ts.x * .5f - fs * .4f), ny);
+        dl->AddRectFilled(ImVec2(c.x - ts.x * .5f - fs * .35f, c.y - fs * .62f), ImVec2(c.x + ts.x * .5f + fs * .35f, c.y + fs * .62f),
+                          IM_COL32(28, 20, 15, 190), fs * .3f);
+        text_center(dl, font, fs, c, sel ? GLOW : INK, T("FPS counter"), w);
+    }
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1;
+    int ctl = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
     float line = .004f * u;
     plate(dl, panel, line, 1.0f, false);
     // (the panel picked: pulsing round it, its grips lit, its size by the right one)
@@ -4062,27 +4942,37 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
         text_center(dl, font, pf, ImVec2(grips[1].x0 - .012f * u - pw * .5f, panel.y0 + .045f * u), GLOW, pct);
     }
     const char *say = T(picked              ? "The panel: drag its title to move it  -  pinch or use - / + for its size"
+                        : s.sel == SEL_FPS  ? "The FPS counter: drag it to move it  -  Reset puts it back at the top"
                         : s.sel == C_MPAD   ? "Shows while a menu of the game's is open - drag to move, pinch or use - / + for its size"
                         : part >= 0 && hud[part].hidden ? "Hidden: Show brings it back"
+                        : ctl >= 0 && hideable(ctl) && (s.layout.off >> ctl & 1) ? "Hidden: Show brings it back"
                         : s.sel >= 0        ? "Drag to move  -  pinch or use - / + for its size"
                                             : "Tap a control or a part of the game's screen to pick it, drag it to move it");
     float ss = .022f * u, room = grips[1].x0 - grips[0].x1 - .024f * u, wide = font->CalcTextSizeA(ss, FLT_MAX, 0, say).x;
     if (wide > room) ss *= room / wide;  // (a narrow screen, a long sentence: on one line, smaller)
     text_center(dl, font, ss, ImVec2((panel.x0 + panel.x1) * .5f, panel.y0 + .078f * u), INK, say);
     static const char *const STYLE_LABEL[STYLE_COUNT] = {"Attacks: pill", "Attacks: buttons", "Attacks: corner"};
-    const char *const LABEL[E_COUNT] = {"-", "+", part >= 0 && hud[part].hidden ? "Show" : "Hide", "Reset",
+    bool shown_hidden = (part >= 0 && hud[part].hidden) || (ctl >= 0 && hideable(ctl) && (s.layout.off >> ctl & 1));
+    char prof_label[64];
+    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator" : "Profile %d: port"), s.layout.profile);
+    const char *const LABEL[E_COUNT] = {"-", "+", shown_hidden ? "Show" : "Hide", "Reset",
+                                        ctl >= 0 && (s.layout.hold >> ctl & 1) ? "Hold: On" : "Hold: Off", "Picture", prof_label,
                                         ranged_layout() ? "Layout: ranged" : "Layout: melee", STYLE_LABEL[s.layout.style],
                                         touch ? "HUD: touch" : "HUD: controller", "Defaults", "Cancel", "Save"};
     for (int i = 0; i < E_COUNT; i++) {
         if (!btn[i].ok) continue;
-        bool off = ((i == E_SMALLER || i == E_BIGGER || i == E_RESET) && s.sel < 0 && !picked) ||
-                   (i == E_HIDE && (part < 0 || !hud_hide_ok(s.edit_prof, part))) || ((i == E_SET || i == E_STYLE) && !touch) ||
+        bool off = ((i == E_SMALLER || i == E_BIGGER) && ((s.sel < 0 && !picked) || s.sel == SEL_FPS)) ||
+                   (i == E_RESET && s.sel < 0 && !picked && s.sel != SEL_FPS) ||
+                   (i == E_HIDE && !(part >= 0 && hud_hide_ok(s.edit_prof, part)) && !(ctl >= 0 && hideable(ctl))) ||
+                   (i == E_HOLD && !holdable(ctl)) || (i == E_IMAGE && !image_ok(ctl)) || ((i == E_SET || i == E_STYLE) && !touch) ||
                    (i == E_STYLE && ranged_layout());
         bool lit = false;
         for (const Finger &f : s.f)
             if (f.kind == F_MENU && f.ctl == i) lit = true;
         plate(dl, btn[i], line * .8f, off ? .45f : 1.0f, lit && !off);
-        button_text(dl, font, btn[i], (i < E_HIDE ? .05f : .028f) * u, fade(i == E_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
+        bool on = i == E_HOLD && ctl >= 0 && (s.layout.hold >> ctl & 1) && !off;  // (the switch on: lit)
+        button_text(dl, font, btn[i], (i < E_HIDE ? .05f : .028f) * u, fade(i == E_SAVE || on ? GLOW : INK, off ? .45f : 1.0f),
+                    i == E_PROFILES ? prof_label : T(LABEL[i]));
     }
     // (what the player should know: about the part picked first, else a hidden part a tap no longer works, else why the
     // frames show outside a hunt)
@@ -4092,8 +4982,9 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     else if (touch && part == HP_ARTS && hud[part].hidden) hidden_tap = part;
     if (!note && hidden_tap == HP_ARTS) note = "Hidden: no tap performs the Hunter Arts - the game's own buttons for them do";
     if (!note && !any_live && s.sel < 0) note = "Outside a hunt the frames show where each part goes";
-    if (note) {
-        const char *t = T(note);
+    bool told = SDL_GetTicksNS() < s.note_until;  // (what a profile's action did: before anything else, for a while)
+    if (told || note) {
+        const char *t = told ? s.note : T(note);
         float fs = .022f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, maxw = std::max((panel.x1 - panel.x0) * .96f, w * .6f);
         if (tw > maxw) fs *= maxw / tw, tw = maxw;
         ImVec2 c((panel.x0 + panel.x1) * .5f, panel.y1 + fs * 1.1f);  // (under the panel, above it at the bottom edge)
@@ -4103,6 +4994,8 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
                           IM_COL32(28, 20, 15, 215), fs * .3f);
         text_center(dl, font, fs, c, GOLD, t);
     }
+    if (s.prof_open) draw_profiles(dl, font, s, w, h);  // (a window over it: the profiles, the pictures)
+    else if (s.img_open) draw_pictures(dl, font, s, w, h);
 }
 
 #ifndef __ANDROID__
@@ -4158,6 +5051,14 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
     int part = s.sel >= ZONE_SEL ? s.sel - ZONE_SEL : -1;
     int over = s.hud_drag < 0 && s.hud_btn < 0 ? hud_over(s.hud_px, s.hud_py, w, h) : -1;
     draw_part_frames(dl, font, hud, part, over, fr, live, red, panel, w, h);
+    Rect fps;  // (the FPS counter, while it shows)
+    if (fps_frame(w, h, &fps)) {
+        bool sel = s.sel == SEL_FPS;
+        Rect f = {fps.x0 - .006f * h, fps.y0 - .006f * h, fps.x1 + .006f * h, fps.y1 + .006f * h, true};
+        dashed_rect(dl, f, sel ? fade(GLOW, .65f + .35f * sinf(SDL_GetTicksNS() / 1e9f * 6)) : IM_COL32(222, 186, 96, 210), (sel ? .005f : .0035f) * h);
+        float fs = .022f * h;
+        text_center(dl, font, fs, ImVec2((f.x0 + f.x1) * .5f, f.y1 + fs * .8f > h ? f.y0 - fs * .8f : f.y1 + fs * .8f), sel ? GLOW : INK, T("FPS counter"), w);
+    }
     float line = .004f * h, mid = (panel.x0 + panel.x1) * .5f;
     plate(dl, panel, line, 1.0f, false);
     text_center(dl, font, .034f * h, ImVec2(mid, panel.y0 + .045f * h), GLOW, T("Move the HUD"));
@@ -4167,29 +5068,32 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
     float ss = .022f * h, room = (panel.x1 - panel.x0) * .94f, wide = font->CalcTextSizeA(ss, FLT_MAX, 0, say).x;
     if (wide > room) ss *= room / wide;  // (a narrow window, a long sentence: on one line, smaller)
     text_center(dl, font, ss, ImVec2(mid, panel.y0 + .078f * h), INK, say);
-    const char *const LABEL[H_COUNT] = {"-", "+", part >= 0 && hud[part].hidden ? "Show" : "Hide", "Reset", "Defaults", "Cancel", "Save"};
+    char prof_label[64];
+    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator" : "Profile %d: port"), s.layout.profile);
+    const char *const LABEL[H_COUNT] = {"-", "+", part >= 0 && hud[part].hidden ? "Show" : "Hide", "Reset", prof_label, "Defaults", "Cancel", "Save"};
     // (on Cancel what cancels it too: a controller's B when a controller is read and was the last thing used
     // (host_input.c), else Esc)
     bool pad_b = g_hud_pad && overlay_last_input() == USED_PAD;
     for (int i = 0; i < H_COUNT; i++) {
         if (!btn[i].ok) continue;
-        bool off = i <= H_RESET && part < 0;  // (what is picked: nothing yet)
+        bool off = i <= H_RESET && part < 0 && !(i == H_RESET && s.sel == SEL_FPS);  // (what is picked: nothing yet)
         bool lit = !off && (s.hud_btn == i || (s.hud_btn < 0 && s.hud_drag < 0 && btn[i].in(s.hud_px, s.hud_py)));
         plate(dl, btn[i], line * .8f, off ? .45f : 1.0f, lit);
         float br = i == H_CANCEL ? std::min(.022f * h, (btn[i].y1 - btn[i].y0) * .3f) : 0.0f;
         float bw = br > 0 ? pad_b ? br * 2 : key_badge_width(font, br, "Esc") : 0.0f;  // (the badge's width)
         float bs = (i < 2 ? .05f : .028f) * h, broom = (btn[i].x1 - btn[i].x0) * .92f - bw * 1.1f,
-              bwide = font->CalcTextSizeA(bs, FLT_MAX, 0, T(LABEL[i])).x;
+              bwide = font->CalcTextSizeA(bs, FLT_MAX, 0, i == H_PROFILES ? prof_label : T(LABEL[i])).x;
         if (bwide > broom) bs *= broom / bwide;
         text_center(dl, font, bs, ImVec2((btn[i].x0 + btn[i].x1) * .5f - bw * .55f, (btn[i].y0 + btn[i].y1) * .5f),
-                    fade(i == H_SAVE ? GLOW : INK, off ? .45f : 1.0f), T(LABEL[i]));
+                    fade(i == H_SAVE ? GLOW : INK, off ? .45f : 1.0f), i == H_PROFILES ? prof_label : T(LABEL[i]));
         ImVec2 at(btn[i].x1 - br * .6f - bw * .5f, (btn[i].y0 + btn[i].y1) * .5f);
         if (br > 0 && pad_b) pad_b_badge(dl, font, at, br, icons);
         else if (br > 0) key_badge(dl, font, at, br, "Esc");
     }
     // (what the player should know: no part on the screen - outside a hunt, a menu over it -, where the frames are)
-    if (!any_live && part < 0) {
-        const char *t = T("Outside a hunt the frames show where each part goes");
+    bool told = SDL_GetTicksNS() < s.note_until;  // (what a profile's action did, for a while)
+    if (told || (!any_live && part < 0)) {
+        const char *t = told ? s.note : T("Outside a hunt the frames show where each part goes");
         float fs = .022f * h, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, t).x, maxw = (panel.x1 - panel.x0) * .96f;
         if (tw > maxw) fs *= maxw / tw, tw = maxw;
         ImVec2 c(mid, panel.y1 + fs * 1.1f);
@@ -4197,6 +5101,7 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
                           IM_COL32(28, 20, 15, 215), fs * .3f);
         text_center(dl, font, fs, c, GOLD, t);
     }
+    if (s.prof_open) draw_profiles(dl, font, s, w, h);
 }
 #endif
 
@@ -4281,7 +5186,97 @@ bool draw_key(float w, float h, DrawKey *k) {
     return true;
 }
 
+// (Add pictures in the pictures' window: the platform's screen, which copies them into the images folder)
+void request_pictures(void) { ui_request_pictures(); }
+
 }  // namespace
+
+extern "C" void touch_pictures_dir(char *out, size_t size) { snprintf(out, size, "%s", images_dir().c_str()); }
+// ---- the control profiles from the settings menu (its Control profiles page: settings_panel.cpp): what a slot holds, the
+// one in use, and an action on one at once, the layout in use and its files written as the editor's Save writes them
+// (not while an editor is open: false)
+namespace {
+// The layout in use is now `l` (its profile's): in touch_layout.txt, published; the fingers on what it no longer has let go
+void profile_in_use(State &s, const Layout &l, const char *why) {
+    s.layout = l, s.layout.profile_line = true;
+    run_clear_of_band(s.layout);
+    s.saved = s.layout;
+    save_layout(s.layout, s.epanel);
+    publish_hud(s.layout);
+    g_style = s.layout.style;
+    drop_fingers(s);
+    rt_logf("[touch] profiles: profile %d in use (%s, %s)\n", s.layout.profile, why,
+            s.layout.kind == KIND_EMU ? "emulator-style" : "the port's own");
+}
+bool editing(const State &s) {
+#ifndef __ANDROID__
+    if (s.hud_edit) return true;
+#endif
+    return s.edit;
+}
+}  // namespace
+extern "C" int touch_profile_active(void) {
+    std::lock_guard<std::mutex> l(g_lock);
+    ensure_loaded(g_s);
+    return g_s.layout.profile;
+}
+extern "C" int touch_profile_kind(int n) {
+    std::lock_guard<std::mutex> l(g_lock);
+    ensure_loaded(g_s);
+    int kind;
+    if (n < 1 || n > PROFILES_N) return -1;
+    if (profile_info(n, &kind)) return kind;
+    return n == g_s.layout.profile ? g_s.layout.kind : -1;  // (in use, its file not written yet: a layout of before)
+}
+extern "C" bool touch_profile_use(int n) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    Layout l;
+    if (n < 1 || n > PROFILES_N || editing(s) || !load_layout_file(profile_path(n).c_str(), &l, nullptr)) return false;
+    l.profile = n;
+    profile_in_use(s, l, "the settings' Use");
+    return true;
+}
+extern "C" bool touch_profile_store(int n) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    if (n < 1 || n > PROFILES_N || editing(s)) return false;
+    Layout l = s.layout;
+    l.profile = n;
+    if (!profile_store(l)) return false;
+    profile_in_use(s, l, "the settings' Save the current layout here");
+    return true;
+}
+extern "C" bool touch_profile_new(int n, int kind) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    if (n < 1 || n > PROFILES_N || editing(s)) return false;
+    Layout l = defaults(kind == KIND_EMU ? KIND_EMU : KIND_OURS);
+    l.profile = n;
+    if (!profile_store(l)) return false;
+    profile_in_use(s, l, "the settings' New");
+    return true;
+}
+extern "C" bool touch_profile_clear(int n) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    if (n < 1 || n > PROFILES_N || n == s.layout.profile || editing(s)) return false;
+    bool ok = remove(profile_path(n).c_str()) == 0;
+    if (ok) rt_logf("[touch] profiles: profile %d emptied (the settings)\n", n);
+    return ok;
+}
+
+extern "C" bool touch_fps_place(float w, float h, float pw, float ph, float *x0, float *y0) {
+    float fx = g_fps_x.load(), fy = g_fps_y.load();
+    if (fx < 0 || fy < 0 || w <= 0 || h <= 0) return false;
+    *x0 = std::clamp(fx * w - pw * .5f, 0.0f, std::max(0.0f, w - pw));
+    *y0 = std::clamp(fy * h - ph * .5f, 0.0f, std::max(0.0f, h - ph));
+    return true;
+}
 
 // (MHGU_PERF_OVERLAY_REUSE, runtime/overlay.cpp: the game thread, once at the start) touch_draw keeps each frame's key
 extern "C" void touch_reuse_begin(void) { g_reuse_on = true; }
@@ -4366,7 +5361,7 @@ extern "C" void touch_draw(float w, float h) {
     for (int i = 0; i < C_COUNT; i++) {
         if (!in_mode(i, s.menu)) continue;
         float k = of_mpad(i) ? pad_a : s.menu ? .5f : 1.0f;
-        if (!of_mpad(i) && pad_a > 0 && under_mpad(s.layout, i, w, h)) k *= 1 - pad_a;
+        if (!of_mpad(i) && pad_a > 0 && in_mode(C_MPAD, s.menu) && under_mpad(s.layout, i, w, h)) k *= 1 - pad_a;
         if (k > .01f) control(dl, font, s.layout, i, w, h, s, a * k);
     }
     // the HUD parts that answer a finger: the item bar's turn, the art performed (the item bar's arrows as
