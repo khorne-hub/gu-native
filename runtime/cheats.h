@@ -1,6 +1,7 @@
 // The cheats loaded from cheats/ (runtime/cheats.c), for the settings' Cheats tab: fixed once cheats_init ran.
 // cheats_set turns them on / off while the game runs (any thread: it takes effect the next frame) and keeps that in
-// cheats/_off.txt. Master codes are always on.
+// cheats/_off.txt. Master codes are always on (cheats_master), except a mod's and those that only load since 1.0: those
+// start off and have a switch, like the other cheats.
 #pragma once
 #include <stdbool.h>
 #include <stddef.h>

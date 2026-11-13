@@ -13,6 +13,9 @@
 // As Atmosphere's virtual machine, an end of a block (20000000) without a block open is passed over, and an else
 // (21000000) without one skips to the next end; such a cheat was left out before. EdiZon's and Breeze's folder marks
 // (empty "[--SectionStart:...--]" / "[--SectionEnd:...--]") are no cheats.
+// A cheat that only loads since 1.0 (a stray end or else, words written together: 0.1.9.3 left it out, so no _off.txt
+// line names it) starts off as a mod's does, and is kept on as "+<file>\t<cheat name>": an update alone runs nothing
+// new. A master code of those (or a mod's) is turned on and off like the others too, and runs first while on.
 // A cheat turned off while the game runs stops running; the words of the game's code it changed get their original
 // values back (so a code-changing cheat is undone), except those another cheat still on changed too, until that one
 // is turned off as well. Anything else it wrote stays as it is.
@@ -59,6 +62,7 @@ typedef struct {
 typedef struct {
     char name[96], file[192];
     bool master, from_mod;  // from_mod: read from a mod's cheats/ (off unless turned on)
+    bool opt_in;            // off unless "+<file>" in _off.txt: a mod's, or one 0.1.9.3 left out (master codes too)
     Op *ops;
     int nops;
     int on, ran;          // on: wanted (the settings set it, any thread); ran: running (the window loop's)
@@ -183,7 +187,9 @@ static const char *decode(Cheat *ch, const uint32_t *w, int n) {
 }
 
 // ------------------------------------------------------------------ loading
-static void add_cheat(const char *file, const char *name, bool master, const uint32_t *w, int n, const char *bad) {
+// joined: words written together (0.1.9.3 left such a cheat out, as it did one with a stray end or else)
+static void add_cheat(const char *file, const char *name, bool master, const uint32_t *w, int n, const char *bad,
+                      bool joined) {
     // (EdiZon's and Breeze's lists mark folders with empty cheats, "[--SectionStart:Weapons--]" ... "[--SectionEnd:...--]":
     // no cheat of their own)
     if (!n && !bad && !master && (!strncmp(name, "--SectionStart", 14) || !strncmp(name, "--SectionEnd", 12))) return;
@@ -200,6 +206,7 @@ static void add_cheat(const char *file, const char *name, bool master, const uin
     if (ch.nstray)
         LOG("[cheats] %s: [%s]: %d end(s) of a block with no block open: passed over, as Atmosphere does\n", file, name,
             ch.nstray);
+    ch.opt_in = ch.nstray > 0 || joined;
     cheats = realloc(cheats, (ncheats + 1) * sizeof(Cheat));
     cheats[ncheats++] = ch;
 }
@@ -218,7 +225,7 @@ static void load_file(const char *path, const char *file, bool from_mod) {
     static char badword[96];
     int n = 0, before = ncheats;
     char name[96] = "";
-    bool open = false, master = false, stray = false;
+    bool open = false, master = false, stray = false, joined = false;
     const char *bad = NULL;
     for (char *p = s; *p;) {
         if (isspace((unsigned char)*p)) { p++; continue; }
@@ -227,9 +234,9 @@ static void load_file(const char *path, const char *file, bool from_mod) {
             char close = *p == '[' ? ']' : '}';
             char *e = strchr(p + 1, close);
             if (!e) { LOG("[cheats] %s: a name without its '%c'\n", file, close); break; }
-            if (open) add_cheat(file, name, master, words, n, bad);
+            if (open) add_cheat(file, name, master, words, n, bad, joined);
             snprintf(name, sizeof name, "%.*s", (int)(e - p - 1), p + 1);
-            master = *p == '{', open = true, n = 0, bad = NULL;
+            master = *p == '{', open = true, n = 0, bad = NULL, joined = false;
             p = e + 1;
             continue;
         }
@@ -247,6 +254,7 @@ static void load_file(const char *path, const char *file, bool from_mod) {
                 bad = badword;
             }
         } else {
+            joined |= e - p > 8;
             for (char *q = p; q < e; q += 8) {
                 if (n == (int)(sizeof words / 4)) { bad = "too many codes"; break; }
                 char word[9];
@@ -256,8 +264,8 @@ static void load_file(const char *path, const char *file, bool from_mod) {
         }
         p = e;
     }
-    if (open) add_cheat(file, name, master, words, n, bad);
-    for (int i = before; i < ncheats; i++) cheats[i].from_mod = from_mod;
+    if (open) add_cheat(file, name, master, words, n, bad, joined);
+    for (int i = before; i < ncheats; i++) cheats[i].from_mod = from_mod, cheats[i].opt_in |= from_mod;
     if (stray) LOG("[cheats] %s: codes before the first [name] are left out\n", file);
     LOG("[cheats] %s: %d cheat(s)", file, ncheats - before);
     for (int i = before; i < ncheats; i++) LOG("%s%s%s%s", i == before ? ": " : ", ", cheats[i].master ? "{" : "",
@@ -576,11 +584,14 @@ static void undo(Cheat *ch) {
     ch->words = NULL, ch->nwords = 0;
 }
 
+// A master code runs whatever the settings say, except one that starts off (opt_in): that one has its switch
+static bool always_on(const Cheat *ch) { return ch->master && !ch->opt_in; }
+
 static void run_all(void) {
     for (int i = 0; i < ncheats; i++) {  // (every cheat's new state first: undo asks which ones keep running)
         Cheat *ch = &cheats[i];
         bool on = !__atomic_load_n(&ch->gone, __ATOMIC_ACQUIRE) &&
-                  (ch->master || __atomic_load_n(&ch->on, __ATOMIC_ACQUIRE));
+                  (always_on(ch) || __atomic_load_n(&ch->on, __ATOMIC_ACQUIRE));
         ch->stopping = !on && ch->ran;
         if (on && !ch->ran && g_present_count) LOG("[cheats] %s: on\n", ch->name);
         ch->ran = on;
@@ -620,10 +631,10 @@ static void load_off(void) {
 int cheats_count(void) { return ncheats; }
 const char *cheats_name(int i) { return i >= 0 && i < ncheats ? cheats[i].name : ""; }
 const char *cheats_file(int i) { return i >= 0 && i < ncheats ? cheats[i].file : ""; }
-bool cheats_master(int i) { return i >= 0 && i < ncheats && cheats[i].master; }
+bool cheats_master(int i) { return i >= 0 && i < ncheats && always_on(&cheats[i]); }
 bool cheats_on(int i) {
     return i >= 0 && i < ncheats && !cheats_dropped(i) &&
-           (cheats[i].master || __atomic_load_n(&cheats[i].on, __ATOMIC_ACQUIRE));
+           (always_on(&cheats[i]) || __atomic_load_n(&cheats[i].on, __ATOMIC_ACQUIRE));
 }
 bool cheats_dropped(int i) { return i >= 0 && i < ncheats && __atomic_load_n(&cheats[i].gone, __ATOMIC_ACQUIRE); }
 
@@ -661,9 +672,9 @@ bool cheats_set(const bool *on, int n, char *err, size_t errsz) {
     if (!f) { snprintf(err, errsz, "Could not write %s", path); return false; }
     fputs("# Cheats turned off in the settings (the Cheats tab writes this file): <file><tab><cheat name>\n", f);
     for (int i = 0; i < ncheats && i < n; i++) {
-        if (cheats[i].master || cheats_dropped(i)) continue;
-        if (!on[i] && !cheats[i].from_mod) fprintf(f, "%s\t%s\n", cheats[i].file, cheats[i].name);
-        else if (on[i] && cheats[i].from_mod) fprintf(f, "+%s\t%s\n", cheats[i].file, cheats[i].name);  // (a mod's: off unless listed)
+        if (always_on(&cheats[i]) || cheats_dropped(i)) continue;
+        if (!on[i] && !cheats[i].opt_in) fprintf(f, "%s\t%s\n", cheats[i].file, cheats[i].name);
+        else if (on[i] && cheats[i].opt_in) fprintf(f, "+%s\t%s\n", cheats[i].file, cheats[i].name);  // (off unless listed)
     }
 #ifndef __ANDROID__
     char line[512];
@@ -784,10 +795,13 @@ void cheats_init(void) {
         load_dir(other, "");
     }
     load_mod_dirs();
-    for (int i = 0; i < ncheats; i++) cheats[i].on = !cheats[i].from_mod;
+    for (int i = 0; i < ncheats; i++) cheats[i].on = !cheats[i].opt_in;
     load_off();
     for (int i = 0; i < ncheats; i++)
-        if (!cheats[i].master && !cheats[i].on) LOG("[cheats] %s: off (turned off in the settings)\n", cheats[i].name);
+        if (!always_on(&cheats[i]) && !cheats[i].on)
+            LOG(cheats[i].opt_in ? "[cheats] %s: off until turned on in the settings (a mod's, or one 0.1.9.3 left out)\n"
+                                 : "[cheats] %s: off (turned off in the settings)\n",
+                cheats[i].name);
     if (ncheats) run_all();  // (before the game starts: changes to its code are in place from the start)
 }
 

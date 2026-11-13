@@ -573,8 +573,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `ImportActivity` copies there; imported cheats start off (`cheats/_off.txt` in the app's folder).
 - Cheats as the community's lists come (`runtime/cheats.c`, 1.0): an end of a block with none open is passed over and a stray else
   skips to the next end, as Atmosphere's VM does (such cheats were left out: "an end of block without its start"); words written
-  together (16 or 24 digits) are split 8 by 8; a bad word is named in the log. A file named by another build id than 1.4.0's
-  (FB08F1D20FD1204F) is another version's and is left out (`cheats_left_out`, a row in the Cheats tab). A mod's `cheats/` folder
+  together (16 or 24 digits) are split 8 by 8; a bad word is named in the log. Those cheats (0.1.9.3 left them out, so no
+  `_off.txt` line names them) start off and are kept on as `+<file>` lines, master codes included (they get a switch then).
+  A file named by another build id than 1.4.0's (FB08F1D20FD1204F) is another version's and is left out (`cheats_left_out`, a
+  row in the Cheats tab). A mod's `cheats/` folder
   (yuzu's and Ryujinx's layout) is read under `<mod>/<file>`, its cheats off until turned on (`+<mod>/<file>` lines in
   `_off.txt`); the import screens take a mod folder that has only `cheats/`.
 - Code mods beyond IPS / pchtxt patches (1.0): a mod's whole `exefs/main` (or `sdk`) laid out as the game's is compared with the
