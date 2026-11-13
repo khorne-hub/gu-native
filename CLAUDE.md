@@ -808,6 +808,18 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   - Tested on the PC (hidden instances, the control file): two MHGU.exe met in a hub through E:\Yuzu\yuzu-room.exe and
     through a Python stand-in of the Ryujinx server (scratch, not shipped). yuzu-cmd never initializes its room network
     (its `-m` does nothing): a real emulator needs the Qt frontend, driven by hand.
+- The port's chat (1.0, S32, after tabarong's PORT_CHAT.md): `runtime/chat/` is the same in MH4U's `app_native/chat/` (keep
+  them identical); `runtime/chat_port.cpp` is MHGU's side, `runtime/settings_chat.inc` its menu pages (View::Chat, View::Friends,
+  View::ChatOn), included by settings_panel.cpp. Hub: a signed "MHPC" line in `F_AUX` (`chat_aux_received` in ldn.c's two F_AUX
+  paths; the host passes on only lines whose signature, bound to `ldn_party`'s id, holds). Global / General / friends: ephemeral
+  Nostr events (kinds 25910-25912) on public relays, only after View::ChatOn; private ones NIP-44 v2; keys with libsecp256k1
+  (`third_party/secp256k1`, `chat_secp256k1.c`); sockets `chat_ws.h` (Android: `ChatSocket.java` through JNI; Windows: WinHTTP).
+  Everything of it in `chat.txt` beside the settings (the key, friends, mutes, blocks, its options, `flag` lines); nothing said is
+  written. The button over the game and the lines beside it: `chat_overlay.cpp` (touch.cpp's `F_CHAT`, after the controls).
+  S35: the key row's Generate a key (`chat_new_key`: 16 random bytes as 32 hex, the clipboard) and Share it in the chat. S34:
+  `play_together_notices` (the Hub offline, once a session until a hub was entered; the first hub ever). A PC test of the hub
+  chat: two MHGU.exe with their own MHGU_HOME / MHGU_SAVE_DIR, `Server = Off`, `Join = 127.0.0.1`, one Create (local), the other
+  Search (local).
 - The servers and keys typed and saved are remembered: `[Multiplayer] RecentServer1..` / `RecentKey1..` (`LDN_RECENT`, 24, the
   last first, none of the short list's; Config's `ldn_recent_*`, at its end), written only when there are some. Save adds a
   typed value when the row changes, never the one it replaces: one taken out with its × stays out, even while in use. A file

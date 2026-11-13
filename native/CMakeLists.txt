@@ -53,6 +53,16 @@ set(FSR_CXX ${FSR}/src/ffx_vk_fsr3_portable.cpp ${FSR}/src/ffx_fsr3_shaderblobs.
 
 set(RT_ALL ${RT_SRC} ${S}/runtime/overlay.cpp ${S}/runtime/settings_panel.cpp ${S}/runtime/touch.cpp
            ${S}/runtime/perfstats.cpp ${IMGUI_SRC} ${S}/runtime/nvn/vulkan/vma.cpp ${FSR_C} ${FSR_CXX})
+# The port's chat (runtime/chat, the same files as the MH4U port's app_native/chat; runtime/chat_port.cpp is MHGU's side of
+# it): its keys and signatures with libsecp256k1 (third_party/secp256k1, MIT), its relays through the system's TLS
+set(CHAT_DIR ${S}/runtime/chat)
+set(CHAT_SRC ${CHAT_DIR}/chat.cpp ${CHAT_DIR}/chat_crypto.cpp ${CHAT_DIR}/chat_json.cpp ${CHAT_DIR}/chat_text.cpp ${CHAT_DIR}/chat_overlay.cpp
+             ${CHAT_DIR}/chat_ws_android.cpp ${CHAT_DIR}/chat_ws_win.cpp ${CHAT_DIR}/chat_ws_none.cpp
+             ${CHAT_DIR}/chat_secp256k1.c ${S}/runtime/chat_port.cpp)
+list(APPEND RT_ALL ${CHAT_SRC})
+set_property(SOURCE ${CHAT_SRC} APPEND PROPERTY INCLUDE_DIRECTORIES ${CHAT_DIR} ${S}/third_party/secp256k1
+             ${S}/third_party/secp256k1/include)
+set_source_files_properties(${CHAT_DIR}/chat_secp256k1.c PROPERTIES COMPILE_OPTIONS "-O2;-w")
 if(WIN32)
   # (el ejecutable exporta sus funciones: el código del juego, mhgugame.dll, las importa de él por nombre; ENABLE_EXPORTS
   # deja su biblioteca de importación, libMHGU.dll.a)
@@ -153,7 +163,7 @@ if(WIN32)
   target_include_directories(main PRIVATE ${S}/third_party/volk)
   target_compile_options(main PRIVATE "$<$<COMPILE_LANGUAGE:C,CXX>:SHELL:-include ${S}/third_party/volk/volk.h>")
   target_link_libraries(main PRIVATE ${DEPS}/sdl3/lib/libSDL3.dll.a mhguffmpeg ${DEPS}/shaderc/lib/libshaderc_combined.a
-    pthread winmm version ole32 shell32 uuid ws2_32 iphlpapi bcrypt)
+    pthread winmm version ole32 shell32 uuid ws2_32 iphlpapi bcrypt winhttp)
   target_link_options(main PRIVATE -Wl,--export-all-symbols -Wl,--stack,16777216 -static)
 else()
   # (-Bsymbolic: as FFmpeg's own shared build, for its assembly)

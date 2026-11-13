@@ -264,6 +264,39 @@ pregunta cuál conservar.
 
 ### Multijugador
 
+Se juega en las salas del propio juego: en la misma Wi-Fi, o por internet con un servidor de salas. Los teléfonos y las PC
+se encuentran en las mismas salas.
+
+#### Jugar en línea, paso a paso
+
+1. Todos actualizan la app a la versión más nueva, de [Releases](../../releases/latest). Generar una clave y compartirla en
+   el chat la necesitan.
+2. En el engranaje, **Multijugador**:
+   - El **Servidor de salas** ya viene puesto: `hunterhubid-gu-hub.duckdns.org`, un servidor de la comunidad que mantienen
+     jugadores (no este proyecto). Déjalo como está.
+   - Para jugar solo con tus amigos, uno de ustedes abre **Clave de emparejamiento** y elige **Generar una clave**. Crea una
+     clave al azar de 32 letras y números en el dispositivo, sin preguntarle a ningún servidor, y la copia. Toca **Guardar**.
+   - Comparte la clave: **Compartirla en el chat** la manda, con el servidor de salas, a un amigo en línea o a General o
+     Global (mira [Chat y amigos](#chat-y-amigos)). O pégasela a tus amigos donde hablen.
+   - Cada amigo toca **Usar esta clave** en esa línea del chat, y después **Guardar**.
+   - Todos necesitan el mismo servidor de salas y la misma clave.
+3. En el juego, ve al pueblo, toca **ZL** y elige **Connect**. El anfitrión elige **Create Hub** y confirma con **X**; los
+   demás eligen **Search Hubs** y eligen esa sala.
+4. La primera vez que juegas en línea, un cartel dice a qué servidor se conecta el juego: como cualquier servidor de
+   internet, ve tu dirección IP.
+5. En la sala, publica una misión en el mostrador, o únete a una publicada ahí.
+
+La app te ayuda en el camino: mientras no hayas estado en una sala, un aviso con estos pasos aparece cuando estás en el Hub
+sin una, y la primera vez que entras a una sala un cartel corto dice qué hacer ahí.
+
+Si no se ven las salas entre ustedes:
+
+- Revisa que todos tengan el mismo **Servidor de salas** y la misma **Clave de emparejamiento**. **Pública** es sin clave:
+  con una clave solo ves las salas con esa misma clave.
+- **Comprobar servidor de salas**, en la misma página, dice si responde y cuántas salas muestra.
+- Un anfitrión en PC tiene que permitir `MHGU.exe` en el Firewall de Windows: mira [Multijugador](#multijugador-1) de PC.
+- Todos usan la misma versión de la app.
+
 #### Juego local
 
 Dos dispositivos en el mismo Wi-Fi pueden jugar juntos:
@@ -283,7 +316,8 @@ este proyecto). Todos los que usan el mismo servidor encuentran las salas de los
 1. Se juega como en [Juego local](#juego-local): uno crea la sala y los demás la buscan. Las salas de internet aparecen junto
    a las de tu Wi-Fi.
 2. Para jugar solo con tus amigos: en el engranaje, **Multijugador**, todos ponen la misma **Clave de emparejamiento**. Solo
-   los jugadores con esa clave ven sus salas.
+   los jugadores con esa clave ven sus salas. **Generar una clave** crea una, y el chat la comparte: mira
+   [Jugar en línea, paso a paso](#jugar-en-línea-paso-a-paso).
 3. **Servidor de salas** elige otro servidor: **Otro...** para escribirlo (un nombre o una IP, y `:puerto` si no es el 39510;
    el programa chico de la carpeta `server` aloja uno, ver `server/README.md`), o **Ninguno** para jugar solo en tu red local.
    **Comprobar servidor de salas** dice si responde y cuántas salas muestra.
@@ -325,6 +359,49 @@ apagados. **Las salas de esta app** (lo predeterminado) deja todo como antes.
 
 Probado en un PC: dos copias del juego se encontraron en una sala a través del servidor de salas de yuzu, y a través de un
 sustituto del servidor de Ryujinx. Con los emuladores mismos y en teléfonos todavía no está probado.
+
+#### Chat y amigos
+
+La app tiene un chat propio, aparte del del juego: en el engranaje, **Multijugador**, **Chat** y **Amigos**. Tiene tres
+chats, y mensajes privados con tus amigos:
+
+- **Sala:** todos los de tu sala. Viaja por la conexión de la sala misma entre los juegos, así que no necesita relés de
+  internet ni cartel. Solo lo ven los jugadores con una versión que tiene el chat: los de un emulador no.
+- **General:** todos los del chat en línea que juegan MHGU, en Android y PC.
+- **Global:** todos los del chat en línea de los dos ports, MHGU y MH4U.
+
+Un botón redondo del chat aparece sobre el juego mientras el chat en línea está activo o estás en una sala. Un toque abre el
+chat, arrastrarlo lo mueve, y el número que tiene cuenta las líneas que no leíste. En **Chat**, **Opciones**, **Botón del
+chat** lo apaga y **Tamaño del botón del chat** cambia su tamaño. Las líneas nuevas se ven unos segundos a su lado:
+**Líneas sobre el juego** elige **Apagado**, **Sala y amigos** (lo predeterminado) o **Todos**.
+
+**El chat en línea** (Global, General y amigos) está apagado hasta que lo activas con **Chat en línea**, arriba en la página
+**Chat**. La primera vez, una pregunta lo explica:
+
+- Se conecta a relés públicos de Nostr: `relay.damus.io`, `nos.lol` y `relay.primal.net`, u otros que elijas en **Relés**.
+  Como cualquier servidor de internet, ven tu dirección IP.
+- Cualquiera puede leer Global y General: nunca compartas nada privado ahí. Los mensajes a un amigo se cifran en el
+  dispositivo.
+- Este proyecto no tiene servidores y no hay cuentas: eres una clave creada en el dispositivo, que se muestra como tu
+  **código de amigo** (`XXXX-XXXX-XXXX`).
+- No se guarda nada en ningún lado: las líneas no quedan guardadas, y el chat funciona solo mientras estás conectado.
+- Tus amigos, silenciados, bloqueados y opciones del chat se guardan solo en el dispositivo, en `chat.txt`, junto a los
+  ajustes. Desinstalar la app los borra y te da un código de amigo nuevo.
+
+**Amigos:** en la página **Amigos**, **Tu código de amigo** muestra el tuyo (un toque lo copia). **Agregar un amigo** con su
+código: se lo encuentra apenas los dos están en línea, y le llega una solicitud. Los mensajes privados funcionan cuando te
+agrega también, al aceptarla en **Solicitudes**. La fila de un amigo dice si está en línea, en una sala, o cuándo se lo vio
+por última vez. Un toque en ella ofrece **Hablar**, **Mandar mi clave de emparejamiento**, **Silenciar**, **Bloquear** y
+**Quitar**.
+
+**Silenciar y bloquear** los decide cada jugador: solo te afectan a ti, en tu dispositivo. **Silenciar** oculta las líneas de
+alguien en los chats. **Bloquear** además corta sus mensajes privados, sus solicitudes y su estado en línea, y lo quita de
+tus amigos. Usa **Alguien de este chat**, en la página del chat, o la fila del amigo. **Silenciados y bloqueados**, en
+**Amigos**, lo deshace.
+
+**Contra el spam:** puedes mandar una línea cada 4 segundos en Global y General (hasta 5 por minuto), y cada segundo en Sala
+y con amigos; la misma línea dos veces en un minuto no se manda. Quien manda más de 6 líneas en 20 segundos queda silenciado
+en tu dispositivo por 5 minutos. Una línea tiene hasta 200 caracteres.
 
 #### Vida de los monstruos y misiones de aldea en sala
 
@@ -702,8 +779,9 @@ Desde **F1**, **Opciones del menú**:
 ### Multijugador
 
 El juego local y las salas por internet funcionan como en el teléfono, con el mismo código y las mismas opciones, en **F1**,
-**Multijugador**: mira [Juego local](#juego-local), [Por internet](#por-internet) y [Juego cruzado con emuladores](#juego-cruzado-con-emuladores). En el pueblo, presiona ZL (Tab) y elige
-**Connect**.
+**Multijugador**: mira [Jugar en línea, paso a paso](#jugar-en-línea-paso-a-paso), [Juego local](#juego-local),
+[Por internet](#por-internet) y [Juego cruzado con emuladores](#juego-cruzado-con-emuladores). En el pueblo, presiona
+ZL (Tab) y elige **Connect**.
 
 - **Create Hub** se confirma con X: R en el teclado.
 - La primera vez que creas una sala, el Firewall de Windows pregunta si MHGU puede usar la red. Permítelo, o nadie podrá
@@ -712,6 +790,9 @@ El juego local y las salas por internet funcionan como en el teléfono, con el m
 - La búsqueda pregunta en todas las redes de la PC. Por una VPN, como Tailscale o ZeroTier, también puedes escribir la IP del
   anfitrión en **Buscar servidores** y reiniciar el juego.
 - Una PC y un teléfono juegan en la misma sala (0.1.6 o posterior en los dos).
+- **Chat y amigos:** el mismo chat que en el teléfono, en **F1**, **Multijugador**, **Chat**: mira
+  [Chat y amigos](#chat-y-amigos). En PC no hay botón del chat; las líneas nuevas igual se ven unos segundos sobre el juego
+  (**Líneas sobre el juego**).
 - La vida de los monstruos ajustable (**Juego**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
   de aldea en sala (**Multijugador**) vienen de MHGURecomp.
 
@@ -793,7 +874,7 @@ Titulares de derechos: abran un issue para ponerse en contacto.
 Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliotecas listadas en
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias, con el aviso legal, también están en la app: engranaje, **Créditos y licencias**, **Licencias**. En PC: **F1**, **Créditos y licencias**, **Licencias**, y la carpeta `licenses` junto a `MHGU.exe`.
 
-Los perfiles de controles siguen un diseño de tabarong (en Discord; [oliveaglien](https://github.com/oliveaglien) en GitHub).
+El chat, las claves de sala (el generador de la clave de emparejamiento) y los perfiles de controles siguen los diseños de tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
 
 Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
 Android de la misma forma.

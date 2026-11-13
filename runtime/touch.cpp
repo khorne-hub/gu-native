@@ -68,6 +68,7 @@
 #include "imgui.h"
 #include "imgui_internal.h"  // (ImGui::RegisterUserTexture: the players' pictures on the buttons)
 
+#include "chat_port.h"  // (the chat button: a finger on it is its own)
 #include "config.h"
 extern "C" {
 uint64_t plat_now_ns(void);
@@ -1235,7 +1236,7 @@ bool target_seen(void) {  // (the target camera's icon was drawn just now: the l
 }
 
 // ------------------------------------------------------------------ fingers (host main thread)
-enum Kind { F_NONE, F_BUTTON, F_STICK, F_CAMERA, F_MENU, F_ITEM, F_ARTS, F_EDIT };
+enum Kind { F_NONE, F_BUTTON, F_STICK, F_CAMERA, F_MENU, F_ITEM, F_ARTS, F_EDIT, F_CHAT };  // (F_CHAT: the chat button's)
 struct Finger {
     SDL_FingerID id;
     Kind kind;
@@ -2614,6 +2615,10 @@ extern "C" bool touch_event(const SDL_Event *e) {
                     return true;
                 }
             }
+            if (chat_bubble_down(x / s.w, y / s.h)) {  // (the chat button: runtime/chat_port.cpp)
+                f->kind = F_CHAT;
+                return true;
+            }
             f->kind = F_CAMERA;  // (hidden: a drag still turns the camera)
             return true;
         }
@@ -2636,6 +2641,11 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 Geo g = place(s.layout, d < 0 ? C_ITEML : C_ITEMR, s.w, s.h);
                 if (hypotf(x - g.c.x, y - g.c.y) < g.r * 1.2f) arrow = d;
             }
+        // the chat button (runtime/chat_port.cpp), where no control is: the controls keep their place over it
+        if (c < 0 && !arrow && chat_bubble_down(x / s.w, y / s.h)) {
+            f->kind = F_CHAT;
+            return true;
+        }
         if (c >= 0) {
             if (c == C_RAIM) s.bow_leave = 0;
             f->kind = F_BUTTON, f->ctl = c, f->part = part;
@@ -2694,6 +2704,12 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (f->kind == F_MENU) {
         if (overlay_menu_open() && f->part) to_menu(e);
         if (e->type != SDL_EVENT_FINGER_MOTION) f->kind = F_NONE;
+        return true;
+    }
+    if (f->kind == F_CHAT) {  // (a drag moves the chat button, a tap opens the chat)
+        bool up = e->type != SDL_EVENT_FINGER_MOTION;
+        chat_bubble_finger(up, x / s.w, y / s.h);
+        if (up) f->kind = F_NONE;
         return true;
     }
     if (e->type == SDL_EVENT_FINGER_MOTION) {

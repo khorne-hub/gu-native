@@ -169,6 +169,25 @@ static void area_log(void) {
 }
 
 // ---- once a second, from the game's input polling (the area's line above: every poll)
+// The hunter being played (its name, as the game shows it), for the port's chat (runtime/chat_port.cpp); false: none yet
+bool presence_hunter_name(char *out, size_t size) {
+    uint32_t gc = LD32(G_GAMECONTROL), sp = LD32(G_SPLAYER);
+    uint32_t slot = sane(gc) ? LD32(gc + GC_SLOT) : 0;
+    uint32_t pl = sane(sp) && slot < 4 ? LD32(sp + 0x1c + 4 * slot) : 0, pd = sane(pl) ? LD32(pl + PL_DATA) : 0;
+    if (!sane(pd) || !size) return false;
+    char name[33];
+    memcpy(name, G2H(pd + PD_NAME), 32), name[32] = 0;
+    snprintf(out, size, "%s", name);
+    return *out != 0;
+}
+
+// Where the game is: its town's type (0 the Hub, 1-6 a village, 7 the Hunters' Pub, 0xff a quest), -1 none yet (the
+// port's chat: runtime/chat_port.cpp tells how to play together in the Hub)
+int presence_town(void) {
+    uint32_t gc = LD32(G_GAMECONTROL);
+    return sane(gc) ? LD8(gc + GC_TOWN) : -1;
+}
+
 void presence_tick(void) {
     area_log();
 #ifdef __ANDROID__

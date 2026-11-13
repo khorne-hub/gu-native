@@ -21,7 +21,8 @@ bool settings_panel_confirming(void);
 // SETTINGS_VIEW_GAME_TEXT: the menu's keyboard view for the game's text entry (the hunter's name...), as the touch
 // controls' Keyboard plate asks while one is open (runtime/touch.cpp): its text goes into the entry, Accept confirms it,
 // and leaving the view closes the menu
-enum { SETTINGS_VIEW_IMPORT_SAVE = 1, SETTINGS_VIEW_RESTART = 2, SETTINGS_VIEW_GAME_TEXT = 3 };
+// SETTINGS_VIEW_CHAT: the menu's chat page (the chat button over the game: runtime/chat_port.cpp)
+enum { SETTINGS_VIEW_IMPORT_SAVE = 1, SETTINGS_VIEW_RESTART = 2, SETTINGS_VIEW_GAME_TEXT = 3, SETTINGS_VIEW_CHAT = 4 };
 #ifdef __cplusplus
 extern "C"
 #endif

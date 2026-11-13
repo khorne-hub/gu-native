@@ -260,6 +260,39 @@ can't be reached at a save, that save stays on the device, and the next start as
 
 ### Multiplayer
 
+You play together in the game's own hubs: on the same Wi-Fi, or over the internet through a hub server. Phones and PCs meet
+in the same hubs.
+
+#### Play online, step by step
+
+1. Everyone updates the app to the newest version, from [Releases](../../releases/latest). Generating a key and sharing it
+   in the chat need it.
+2. Under the gear, **Multiplayer**:
+   - **Hub server** comes set to `hunterhubid-gu-hub.duckdns.org`, a community server that players run (not this project).
+     Leave it as it is.
+   - To play only with your friends, one of you opens **Matchmaking key** and picks **Generate a key**. It makes a random key
+     of 32 letters and digits on the device, without asking any server, and copies it. Tap **Save**.
+   - Share the key: **Share it in the chat** sends it, with the hub server, to a friend online or to General or Global (see
+     [Chat and friends](#chat-and-friends)). Or paste it to your friends wherever you talk.
+   - Each friend taps **Use this key** on that chat line, then **Save**.
+   - Everyone needs the same hub server and the same key.
+3. In the game, go to town, tap **ZL** and choose **Connect**. The host chooses **Create Hub** and confirms with **X**; the
+   others choose **Search Hubs** and pick that hub.
+4. The first time you play online, a notice names the server the game connects to: like any server on the internet, it sees
+   your IP address.
+5. In the hub, post a quest at the counter, or join one posted there.
+
+The app helps along the way: until you have been in a hub, a hint with these steps shows when you are in the Hub without
+one, and the first time you enter a hub a short notice says what to do there.
+
+If you don't see each other's hubs:
+
+- Check that everyone has the same **Hub server** and the same **Matchmaking key**. **Public** means no key: with a key you
+  only see the hubs with that same key.
+- **Check hub server**, on the same page, says whether the server answers and how many hubs it lists.
+- A host on a PC must allow `MHGU.exe` through Windows Firewall: see the PC's [Multiplayer](#multiplayer-1).
+- Everyone uses the same version of the app.
+
 #### Local play
 
 Two devices on the same Wi-Fi can play together:
@@ -279,7 +312,8 @@ project). Everyone on the same server finds the others' hubs, with no ports to o
 1. Play as in [Local play](#local-play): one creates the hub, the others search for it. Hubs from the internet show up next
    to the ones on your Wi-Fi.
 2. To play only with your friends: under the gear, **Multiplayer**, everyone enters the same **Matchmaking key**. Only
-   players with that key see your hubs.
+   players with that key see your hubs. **Generate a key** makes one, and the chat shares it: see
+   [Play online, step by step](#play-online-step-by-step).
 3. **Hub server** picks another server: **Custom...** to type one (a name or IP, and `:port` if it isn't 39510; the small
    program in the `server` folder runs one, see `server/README.md`), or **Off** for your local network only. **Check hub
    server** says whether it answers and how many hubs it lists.
@@ -321,6 +355,46 @@ everything as before.
 
 Tested on a PC: two copies of the game met in a hub through yuzu's own room server, and through a stand-in of Ryujinx's
 server. With the emulators themselves and on phones it is not tested yet.
+
+#### Chat and friends
+
+The app has a chat of its own, apart from the game's: under the gear, **Multiplayer**, **Chat** and **Friends**. It has
+three chats, and private messages with your friends:
+
+- **Hub:** everyone in your hub. It travels over the hub's own link between the games, so it needs no internet relay and no
+  notice. Only players whose version has the chat see it: players on an emulator don't.
+- **General:** everyone in the online chat who plays MHGU, on Android and PC.
+- **Global:** everyone in the online chat of both ports, MHGU and MH4U.
+
+A round chat button shows over the game while the online chat is on or you are in a hub. A tap opens the chat, a drag moves
+it, and the number on it counts the lines you haven't read. Under **Chat**, **Options**, **Chat button** turns it off and
+**Chat button size** changes its size. New lines show for a few seconds beside it: **Lines over the game** picks **Off**,
+**Hub and friends** (the default) or **All**.
+
+**The online chat** (Global, General and friends) is off until you turn it on with **Online chat**, at the top of the
+**Chat** page. The first time, a question explains it:
+
+- It connects to public Nostr relays: `relay.damus.io`, `nos.lol` and `relay.primal.net`, or others you choose under
+  **Relays**. Like any server on the internet, they see your IP address.
+- Anyone can read Global and General: never share anything private there. Messages to a friend are encrypted on the device.
+- This project runs no server and there is no account: you are a key made on the device, shown as your **friend code**
+  (`XXXX-XXXX-XXXX`).
+- Nothing is stored anywhere: lines aren't saved, and the chat works only while you are connected.
+- Your friends, mutes, blocks and chat settings are kept only on the device, in `chat.txt` beside the settings. Uninstalling
+  the app loses them and gives you a new friend code.
+
+**Friends:** on the **Friends** page, **Your friend code** shows yours (a tap copies it). **Add a friend** with their code:
+they are found as soon as you are both online, and they get a request. Private messages work once they add you back, by
+accepting it under **Requests**. A friend's row says whether they are online, in a hub, or when they were last seen. A tap on
+it offers **Talk**, **Send my matchmaking key**, **Mute**, **Block** and **Remove**.
+
+**Mute and block** are each player's own: they only affect you, on your device. **Mute** hides someone's lines in the chats.
+**Block** also stops their private messages, requests and online status, and takes them out of your friends. Use **Someone
+in this chat**, on the chat page, or the friend's row. **Muted and blocked**, under **Friends**, undoes them.
+
+**Against spam:** you can send a line every 4 seconds in Global and General (at most 5 a minute), and every second in Hub
+and with friends; the same line twice in a minute isn't sent. Someone who sends more than 6 lines in 20 seconds is silenced
+on your device for 5 minutes. A line is up to 200 characters.
 
 #### Monster HP and Village quests in the Hub
 
@@ -687,8 +761,9 @@ From **F1**, **Menu Options**:
 ### Multiplayer
 
 Local play and hubs over the internet work as on the phone, with the same code and the same settings, under **F1**,
-**Multiplayer**: see [Local play](#local-play), [Over the internet](#over-the-internet) and [Crossplay with emulators](#crossplay-with-emulators). In town, press ZL (Tab) and choose
-**Connect**.
+**Multiplayer**: see [Play online, step by step](#play-online-step-by-step), [Local play](#local-play),
+[Over the internet](#over-the-internet) and [Crossplay with emulators](#crossplay-with-emulators). In town, press ZL
+(Tab) and choose **Connect**.
 
 - **Create Hub** is confirmed with X: R on a keyboard.
 - The first time you create a hub, Windows Firewall asks whether MHGU may use the network. Allow it, or nobody can find or
@@ -697,6 +772,9 @@ Local play and hubs over the internet work as on the phone, with the same code a
 - The search asks every network the PC is on. Over a VPN, such as Tailscale or ZeroTier, you can also enter the host's IP
   under **Search hosts** and restart the game.
 - A PC and a phone play in the same hub (0.1.6 or later on both).
+- **Chat and friends:** the same chat as on the phone, under **F1**, **Multiplayer**, **Chat**: see
+  [Chat and friends](#chat-and-friends). The PC has no chat button; new lines still show over the game for a few seconds
+  (**Lines over the game**).
 - Adjustable monster HP (**Gameplay**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
   (**Multiplayer**) come from MHGURecomp.
 
@@ -776,7 +854,7 @@ Rights holders: please open an issue to get in touch.
 Based on the open-source MHGURecomp project (MIT license) and the libraries listed in
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Their licenses, with the legal notice, are also in the app: gear button, **Credits & Licenses**, **Licenses**. On PC: **F1**, **Credits & Licenses**, **Licenses**, and the `licenses` folder beside `MHGU.exe`.
 
-The control profiles follow a design by tabarong (on Discord; [oliveaglien](https://github.com/oliveaglien) on GitHub).
+The chat, the room keys (the matchmaking key's generator) and the control profiles follow the designs of tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
 Android the same way.
