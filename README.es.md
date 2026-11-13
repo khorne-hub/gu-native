@@ -50,9 +50,9 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 - **Menús pensados para el pulgar:** al abrirse un menú del juego el diseño no cambia: aparece un pad chico que mueve el cursor, con los botones de página encima. La palanca de movimiento sigue caminando (donde el cazador no puede caminar, como en la caja de objetos de un pueblo o en una tienda, mueve el cursor; donde el juego muestra un modelo, como en la herrería, la palanca y arrastrar lo giran, como con un mando), A y B quedan donde están, y arrastrar en la pantalla también mueve el cursor. El pad se mueve y se cambia de tamaño en el editor como los demás botones. Para ocultarlo: en el engranaje, **Controles**, **Botones en la pantalla**, **Pad de menú**
 - El teclado del teléfono sirve para escribir el nombre de tu personaje, y los textos del menú de opciones con **Teclado del teléfono** (Enter acepta; Atrás oculta el teclado y deja lo escrito); las teclas del propio menú quedan para el mando
 - El menú de opciones se usa con el dedo y tiene el estilo visual del juego
-- **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
-- **Mandar todas las recompensas a la caja:** al terminar una misión, la opción del juego de enviar a la caja de objetos manda todas las recompensas de una vez, como en los juegos más nuevos; lo que no entra en la caja queda en la lista. Apagado por defecto: en el engranaje, **Juego**, **Mandar todas las recompensas a la caja**. Idea de Alfonso
-- **Un acceso directo con tu propia imagen:** en el engranaje, **Opciones del menú**, **Acceso directo con tu imagen** pone el juego en tu pantalla de inicio con la imagen y el nombre que elijas. El ícono propio de la app queda como está
+- **Beber y comer más rápido:** dos trucos opcionales, apagados por defecto, en el engranaje, **Mods y trucos**, **Trucos**. Aceleran la animación x1,7 o x2,5, pero no permiten caminar mientras bebes
+- **Enviar todo a la caja:** al terminar una misión, la opción del juego de enviar a la caja de objetos manda todas las recompensas de una vez, como en los juegos más nuevos; lo que no entra en la caja queda en la lista. Apagado por defecto: en el engranaje, **Juego**, **Enviar todo a la caja**. Idea de Alfonso
+- **Un acceso directo con tu propia imagen:** en el engranaje, **Sistema**, **Acceso directo en el inicio** pone el juego en tu pantalla de inicio con la imagen y el nombre que elijas. El ícono propio de la app queda como está
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods)
 - Importa tu partida desde un emulador, desde otro dispositivo o desde el juego de PC, y expórtala para llevarla ahí; trae las misiones de evento que ya tienes; ten tu partida en la nube: mira [Partidas](#partidas)
 - El juego se pausa solo cuando sales de la app, y mientras el menú de opciones está abierto si juegas solo
@@ -67,7 +67,7 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 - **Botones que quedan apretados:** toca un botón en el editor y activa **Mantener**: en el juego, un toque lo deja apretado y el siguiente lo suelta. Un botón mantenido se ve encendido, con un candado chico
 - **Tus propias imágenes:** toca un botón en el editor y elige **Imagen** para ponerle una imagen tuya (**Agregar imágenes** copia archivos PNG, JPG o WebP de tu teléfono). El botón conserva su letra. Lo que agregues es tu responsabilidad
 - **El contador de FPS** se puede arrastrar a cualquier lugar en el editor; **Restablecer** lo devuelve arriba
-- **Palanca flotante:** en el engranaje, **Controles**, **Botones en la pantalla**, activa **Palanca flotante** y la palanca de movimiento aparece donde apoyas el pulgar cerca de ella, y vuelve al levantarlo. Desactivada por defecto
+- **Palanca flotante:** en el engranaje, **Controles**, **Controles táctiles**, activa **Palanca flotante** y la palanca de movimiento aparece donde apoyas el pulgar cerca de ella, y vuelve al levantarlo. Desactivada por defecto
 - Una parte que moviste queda donde la pusiste: una línea de chat, el apuntado de un arco o de una ballesta y el sello de Quest Complete ya no la devuelven al lugar del juego, y no salta cuando se abre un menú del juego. Una parte que quedaría sobre la ventana de ese menú se oculta hasta que el menú se cierra
 - La interfaz del juego se reacomoda para no quedar bajo los pulgares (**Acomodar el HUD para el táctil**). Desactivado, el HUD es el mismo que con un mando. El botón **HUD: mando** del editor acomoda el HUD que se ve con un mando, sin conectar uno, y la B de un mando cierra el editor sin guardar
 - Opacidad de los controles y velocidad de la cámara ajustables
@@ -82,24 +82,24 @@ Habla con otros jugadores y pide ayuda en el [Discord](https://discord.gg/sk5xEj
 - **Sombras:** apágalas para ganar velocidad, en el engranaje, **Gráficos y audio**, **Sombras**. En un Moto g06 bajó cerca de un 15 % el trabajo de la GPU por cuadro en una cacería
 - **Modo gama baja:** para teléfonos débiles. Apaga el bloom, el desenfoque de profundidad y las sombras, usa texturas más livianas y mantiene el HUD nítido sobre una imagen 3D más chica
 - **Modo tostadora:** la tercera opción del modo gama baja, para los teléfonos más débiles y para la batería: resolución 3D al 25 %, 30 fps, sin reverberación ni pasto, y el HUD y las texturas todavía más livianos. En un Moto g06 se mantuvo en 30 fps y gastó cerca de un tercio menos de energía que el modo gama baja a 60 fps
-- **Bloom y desenfoque de profundidad** y **Reverberación** (engranaje, **Gráficos y audio**): interruptores propios. Apagados, la GPU o el procesador trabajan menos
+- **Bloom y desenfoque de profundidad** y **Reverberación** (engranaje, **Gráficos y audio**, **Imagen y sonido**): interruptores propios. Apagados, la GPU o el procesador trabajan menos
 - **Pasto** (engranaje, **Gráficos y audio**): apagado, se omiten el pasto alto y el follaje de los mapas; más rápido donde hay mucho (la zona 8 del Pantano)
 - **Efectos** (engranaje, **Gráficos y audio**): apagados, se omiten los efectos de partículas del juego (golpes, chispas, fuego, alientos, polvo, lluvia); más rápido donde hay muchos. También desaparecen los efectos que avisan del ataque de un monstruo: eso queda en tus manos
-- **Borrar la caché de shaders** (engranaje, **Gráficos y audio**): el próximo inicio borra los shaders que el juego armó y guardó y los vuelve a armar, para una imagen que muestra algo mal después de actualizar el driver de la GPU o de un cierre. Mientras se arman, un cartel chico dice cuánto falta
+- **Borrar la caché de shaders** (engranaje, **Gráficos y audio**, **Avanzado**): el próximo inicio borra los shaders que el juego armó y guardó y los vuelve a armar, para una imagen que muestra algo mal después de actualizar el driver de la GPU o de un cierre. Mientras se arman, un cartel chico dice cuánto falta
 - Contador opcional de FPS y temperatura
 - Usa menos memoria en dispositivos con GPU Mali y en teléfonos con poca RAM
 - La pantalla sigue tu límite de FPS: a 60 FPS corre a 60 Hz aunque admita 120
 - **Si tu teléfono calienta, baja el límite de FPS.** Es lo que más ayuda: de 120 a 60 consumió entre un cuarto y un tercio menos en un Galaxy S25 Ultra, y de 60 a 30 un quinto menos en un Moto g06
 - En GPU Mali las texturas se decodifican en varios núcleos, para reducir los tirones
-- **Driver de GPU propio:** solo en Adreno y bajo tu propio riesgo. En el engranaje, **Gráficos y audio**, **Driver de GPU**, agrega un .zip con `meta.json` y la librería. Por defecto se usa el del sistema, y si uno falla al arrancar o no carga, la app vuelve sola a ese y te avisa
-- **Corrección de Adreno:** en una Adreno con driver Vulkan 1.1 y resolución 3D baja, la app deja MSAA 2x para que la imagen no se repita en grilla. Si se ve oscura o parpadea, o para ganar velocidad, ponla en **Off** en el engranaje, **Gráficos y audio**
+- **Driver de GPU propio:** solo en Adreno y bajo tu propio riesgo. En el engranaje, **Gráficos y audio**, **Avanzado**, **Driver de GPU**, agrega un .zip con `meta.json` y la librería. Por defecto se usa el del sistema, y si uno falla al arrancar o no carga, la app vuelve sola a ese y te avisa
+- **Corrección de Adreno:** en una Adreno con driver Vulkan 1.1 y resolución 3D baja, la app deja MSAA 2x para que la imagen no se repita en grilla. Si se ve oscura o parpadea, o para ganar velocidad, ponla en **Off** en el engranaje, **Gráficos y audio**, **Avanzado**
 
 #### Con un mando
 
 - Los controles táctiles se ocultan apenas conectas uno y vuelven cuando lo desconectas, sin reiniciar
 - El engranaje queda siempre en pantalla, así que siempre puedes abrir las opciones. También puedes apretar **+** y **-** juntos
 - El clic de la palanca derecha fija al monstruo (con el **Tipo de control 3** del juego, cuyo clic cambia el objetivo, mantenla apretada). Mientras está fijado, aparece un candado junto al ícono del objetivo, y los disparos de una ballesta apuntan al cuerpo del monstruo, igual que con los controles táctiles
-- **Cualquier mando:** si el juego no lee bien el tuyo, entra al engranaje, **Controles**, **Mapear un mando**, y aprieta cada botón una vez. Queda guardado para ese modelo. Si un mando no se puede leer hasta mapearlo, la app te avisa al conectarlo
+- **Cualquier mando:** si el juego no lee bien el tuyo, entra al engranaje, **Controles**, **Mando**, **Mapear un mando**, y aprieta cada botón una vez. Queda guardado para ese modelo. Si un mando no se puede leer hasta mapearlo, la app te avisa al conectarlo
 
 ### ¿Qué tan bien corre?
 
@@ -167,7 +167,7 @@ lado. Hay dos formas: en el teléfono, sin PC, o en una PC (más rápido).
 
 **En el teléfono.** Copia la carpeta `MHGU` con `exefs` y `romfs` al teléfono, instala el APK (Paso 3) y elige la
 carpeta. La app dice que falta el código del juego: toca **Crear en este teléfono** y después **Crear**. Más tarde
-también está en el engranaje, **Opciones del menú**, **Crear el código del juego**.
+también está en el engranaje, **Sistema**, **Código del juego**, **Crear el código del juego**.
 
 - La primera vez descarga sus herramientas, unos 100 MB: Python desde python.org y Zig, un compilador de C, desde PyPI.
   Las dos son software libre, se comprueban antes de usarse, y nunca se descarga nada del juego.
@@ -226,7 +226,7 @@ unos minutos más. Si lo vuelves a hacer, conserva lo que ya está creado y al d
 La app revisa la carpeta, te dice exactamente qué falta si algo está mal y arranca el juego.
 
 Tus partidas y ajustes se guardan aparte, en `Android/data/com.mhgu.recomp/files`. Para elegir otra carpeta después: engranaje,
-**Opciones del menú**, **Carpeta del juego**.
+**Sistema**, **Tu partida**, **Carpeta del juego**.
 
 ### Partidas
 
@@ -237,7 +237,7 @@ Puedes traer tu partida desde un emulador, desde otro dispositivo o desde el jue
 1. Busca el archivo `system` de tu partida. En Ryujinx: clic derecho en el juego, **Open User Save Directory**. En yuzu: clic derecho
    en el juego, **Open Save Data Location**. Desde el juego de PC: expórtala ahí (mira [Partidas en PC](#partidas-1)).
 2. Copia ese archivo a tu dispositivo, por ejemplo a Descargas.
-3. En el juego, entra al engranaje, **Opciones del menú**, **Importar partida**, y elige el archivo.
+3. En el juego, entra al engranaje, **Sistema**, **Tu partida**, **Importar partida**, y elige el archivo.
 
 Se reemplazan todos los personajes del dispositivo y el juego se reinicia. Tu partida anterior queda guardada en
 `Android/data/com.mhgu.recomp/files/MHGURecomp/save_backups`.
@@ -246,7 +246,7 @@ Se reemplazan todos los personajes del dispositivo y el juego se reinicia. Tu pa
 
 Para llevar tu partida a un emulador, a otro dispositivo o al juego de PC:
 
-1. En el juego, guarda. Después entra al engranaje, **Opciones del menú**, **Exportar partida**, y elige una carpeta.
+1. En el juego, guarda. Después entra al engranaje, **Sistema**, **Tu partida**, **Exportar partida**, y elige una carpeta.
 2. Ahí se crea una carpeta `MHGU_save_...` con los archivos `system` y `system_backup`. Pásala a tu PC.
 3. En Ryujinx: clic derecho en el juego, **Open User Save Directory**. En yuzu: clic derecho en el juego, **Open Save Data Location**.
 4. Guarda una copia de lo que haya ahí y copia los dos archivos.
@@ -256,8 +256,8 @@ Para llevar tu partida a un emulador, a otro dispositivo o al juego de PC:
 La partida es la misma en los dos, así que puedes llevarla en cualquier sentido:
 
 - **Del teléfono a la PC:** en el teléfono, **Exportar partida** y copia la carpeta `MHGU_save_...` a la PC. En el juego de
-  PC, **F1**, **Opciones del menú**, **Importar partida**, y elige el archivo `system` de esa carpeta.
-- **De la PC al teléfono:** en el juego de PC, **F1**, **Opciones del menú**, **Exportar partida**, y copia el archivo
+  PC, **F1**, **Sistema**, **Tu partida**, **Importar partida**, y elige el archivo `system` de esa carpeta.
+- **De la PC al teléfono:** en el juego de PC, **F1**, **Sistema**, **Tu partida**, **Exportar partida**, y copia el archivo
   `system` al teléfono. En el teléfono, **Importar partida** y elígelo.
 
 Importar reemplaza todos los personajes del dispositivo al que llega, y la partida que reemplaza queda en una copia, como arriba.
@@ -265,8 +265,8 @@ Importar reemplaza todos los personajes del dispositivo al que llega, y la parti
 #### Elegir dónde se guarda tu partida
 
 La partida está en la carpeta propia de la app, salvo que elijas otra; por ejemplo, una carpeta que una app de
-sincronización (Syncthing, FolderSync y similares) comparta con tus otros dispositivos. Ve al engranaje, **Opciones del
-menú**, **Carpeta de partidas**, y elige la carpeta:
+sincronización (Syncthing, FolderSync y similares) comparta con tus otros dispositivos. Ve al engranaje, **Sistema**, **Tu
+partida**, **Carpeta de partidas**, y elige la carpeta:
 
 - Tu partida va en una carpeta llamada `MHGU save` dentro de la que elijas, así una sola carpeta compartida sirve para la de
   MHGU y la de MH4U para Android (`MH4U save`). Una carpeta que ya tiene una partida, como la que hace **Exportar partida**,
@@ -291,14 +291,14 @@ consola. La app no incluye ni descarga ninguna: las traes tú, bajo tu responsab
 1. Busca el archivo `system` de esa partida (Ryujinx: clic derecho en el juego, **Open User Save Directory**; yuzu y sus
    sucesores: clic derecho en el juego, **Open Save Data Location**) y cópialo a tu dispositivo, por ejemplo a una carpeta
    `Download/MHGU descargas`.
-2. En el juego, ve al engranaje, **Opciones del menú**, **Importar DLC y misiones de evento**, **Elegir carpeta**, y elige esa
+2. En el juego, ve al engranaje, **Mods y trucos**, **DLC y misiones de evento**, **Importar DLC y misiones de evento**, **Elegir carpeta**, y elige esa
    carpeta. La app revisa el archivo y te dice cuántas misiones de evento y de desafío tiene.
 3. Toca **Importar y reiniciar**. Primero tu partida se copia a `save_backups`; el juego se reinicia y tu partida recibe las
    descargas.
 
 - Tus cazadores y todo lo demás de tu partida quedan como están: solo entran las descargas, y solo a una partida que todavía
   no tenga ninguna propia. Una partida que ya tiene algunas conserva las suyas, y la app te lo avisa.
-- **Contenido extra** (engranaje, **Opciones del menú**) tiene que estar activado, como viene.
+- **Contenido extra** (engranaje, **Juego**) tiene que estar activado, como viene.
 - Los archivos de DLC propios del juego (`DLC.dlcp`) no sirven de esta forma: el juego solo los toma con su menú
   **Descargas**, que necesita sus servicios en línea.
 
@@ -312,7 +312,7 @@ carpeta del teléfono igual a una carpeta de tu nube. Paso a paso, con Google Dr
    sola no sincroniza carpetas del teléfono.
 2. Con el administrador de archivos del teléfono, crea una carpeta para tus partidas, por ejemplo `Partidas` en la memoria del
    teléfono (no dentro de `Android/data`).
-3. En el juego, guarda. Después ve al engranaje, **Opciones del menú**, **Carpeta de partidas**, y elige esa carpeta. El juego
+3. En el juego, guarda. Después ve al engranaje, **Sistema**, **Tu partida**, **Carpeta de partidas**, y elige esa carpeta. El juego
    se reinicia, y tu partida queda en una carpeta `MHGU save` dentro de ella.
 4. En la app de sincronización, une esa carpeta con una carpeta nueva de tu Google Drive. Elige sincronización
    **bidireccional**, que sincronice cuando cambian los archivos (o cada pocos minutos), y deja apagada toda opción que borre o
@@ -331,11 +331,12 @@ partida** (mira [Pasar una partida entre Android y PC](#pasar-una-partida-entre-
 
 ### Trucos y mods
 
-- **Trucos:** archivos `.txt` en el formato de Atmosphere, para la versión 1.4.0 (su id de compilación es `FB08F1D20FD1204F`). En el engranaje, **Trucos**, **Agregar trucos**, elige el archivo y activa cada uno en esa misma página. Entran apagados.
-- **Mods:** la carpeta de un mod con `romfs` o `exefs` adentro, o un `.zip` de esa carpeta. En el engranaje, **Mods**, **Agregar un mod**. Después se ordenan y se activan en esa página.
+- **Trucos:** archivos `.txt` en el formato de Atmosphere, para la versión 1.4.0 (su id de compilación es `FB08F1D20FD1204F`). En el engranaje, **Mods y trucos**, **Trucos**, **Agregar trucos**, elige el archivo y activa cada uno en esa misma página. Entran apagados.
+- **Mods:** la carpeta de un mod con `romfs` o `exefs` adentro, o un `.zip` de esa carpeta. En el engranaje, **Mods y trucos**, **Mods**, **Agregar un mod**. Después se ordenan y se activan en esa página.
+- **Los ajustes de los plugins de Forge sin teclado:** cuando un mod trae plugins de Forge, aparece **Menú de Forge (plugins)** en el engranaje, **Mods y trucos**. Abre el menú de Forge, más grande y desplazable con el dedo; su x o la tecla Atrás lo cierran, y un campo de texto abre el teclado del teléfono. Los plugins son obra de otros: los usas bajo tu propia responsabilidad.
 - También puedes copiarlos tú a la carpeta del juego, en carpetas `cheats` y `mods` junto a `exefs` y `romfs`. El juego los lee al arrancar.
 - Los trucos y mods que cambian el código del juego funcionan, pero esa parte del juego corre más lenta. En línea, usa trucos solo si todos en la sala están de acuerdo.
-- **Los packs de texturas HD** también son mods: los hechos para los emuladores de Switch, que reemplazan los archivos `.tex` del juego en una carpeta `romfs`, cargan tal como vienen. Sus texturas ocupan memoria del teléfono a medida que se dibujan: en un teléfono con poca RAM un pack grande puede cerrar el juego. El registro dice cuántas texturas tiene cada mod y cuánto pesan. Esta app no trae ningún pack.
+- **Los packs de texturas HD** también son mods: los hechos para los emuladores, que reemplazan los archivos `.tex` del juego en una carpeta `romfs`, cargan tal como vienen. Sus texturas ocupan memoria del teléfono a medida que se dibujan: en un teléfono con poca RAM un pack grande puede cerrar el juego. El registro dice cuántas texturas tiene cada mod y cuánto pesan. Esta app no trae ningún pack.
 
 ### Multijugador
 
@@ -379,7 +380,7 @@ Dos dispositivos en el mismo Wi-Fi pueden jugar juntos:
 1. Los dos van al pueblo, tocan **ZL** y eligen **Connect**.
 2. Uno (el anfitrión) elige **Create Hub** y confirma con **X**.
 3. El otro elige **Search Hubs** y elige esa sala.
-4. Si la sala no aparece: en el engranaje, **Multijugador**, **Buscar servidores**, escribe la IP del anfitrión y busca de nuevo.
+4. Si la sala no aparece: en el engranaje, **Multijugador**, **Red local**, **Buscar servidores**, escribe la IP del anfitrión y busca de nuevo.
 
 Se probó crear la sala, encontrarla y entrar en un Motorola y una Anbernic, pero todavía no una misión completa.
 
@@ -411,7 +412,7 @@ de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión com
 #### Juego cruzado con emuladores
 
 Los jugadores de esta app (teléfonos y PC) pueden jugar con jugadores de emuladores que corren el juego, en su juego en
-línea. En el engranaje, **Multijugador**, **Jugar en línea con**:
+línea. En el engranaje, **Multijugador**, **Jugar con emuladores**, **Jugar en línea con**:
 
 - **Salas de emuladores (Eden, Citron, Sudachi, yuzu)**: las salas multijugador de la familia de emuladores de yuzu.
   1. Elige una sala: **Salas públicas** lista las salas públicas donde se juega este juego (del lobby que usan esos
@@ -480,7 +481,7 @@ en tu dispositivo por 5 minutos. Una línea tiene hasta 200 caracteres.
 
 #### Vida de los monstruos y misiones de aldea en sala
 
-La vida de los monstruos ajustable (engranaje, **Juego**) y las misiones de aldea en sala (engranaje, **Multijugador**) vienen de
+La vida de los monstruos ajustable (engranaje, **Juego**, **Vida de los monstruos**) y las misiones de aldea en sala (engranaje, **Multijugador**, **En la sala**) vienen de
 MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo en Android.
 
 ### Dónde se guarda cada cosa
@@ -506,13 +507,13 @@ MHGURecomp, el proyecto en el que se basa este. Todavía no se probaron a fondo 
 actualización firmada igual que la app que tienes, así que el APK oficial no se instala encima. Android dice entonces "No
 se instaló la app" o "el paquete entra en conflicto con un paquete existente". Haz esto una vez:
 
-1. Guarda tu partida. En la app que tienes: engranaje, **Opciones del menú**, **Exportar partida**, y elige una carpeta,
+1. Guarda tu partida. En la app que tienes: engranaje, **Sistema**, **Tu partida**, **Exportar partida**, y elige una carpeta,
    como Descargas.
 2. Abre los **Ajustes** del teléfono, **Aplicaciones**, **MHGU**, **Almacenamiento**, y toca **Borrar datos** (o **Borrar
    almacenamiento**).
 3. Toca **Desinstalar**. Si Android pregunta si quieres conservar los datos de la app, di que no.
 4. Instala el APK desde [Releases](../../releases/latest).
-5. Ábrelo y elige tu carpeta del juego. Después engranaje, **Opciones del menú**, **Importar partida**, y elige el archivo
+5. Ábrelo y elige tu carpeta del juego. Después engranaje, **Sistema**, **Tu partida**, **Importar partida**, y elige el archivo
    `system` de la carpeta del paso 1.
 
 Tu carpeta del juego y el código del juego que creaste quedan como están. ¿Sigue diciendo "No se instaló la app"?
@@ -568,7 +569,7 @@ puntos, **Añadir juegos**.
 | En un teléfono débil va lento | Activa el modo gama baja, apaga **Sombras** y prueba la resolución 3D al 33 % o al 25 %. Si sigue lento: modo gama baja, **Tostadora** |
 
 Si sigue fallando, pregunta en el [Discord](https://discord.gg/sk5xEjEMwF) o abre un [issue](../../issues) con el modelo de tu dispositivo, la versión de la app y el registro. Si el juego se cierra por un error, aparece una pantalla para
-compartirlo; si no, está en el engranaje, **Opciones del menú**, **Compartir registro**. Si la pantalla se queda en negro y no llegas al
+compartirlo; si no, está en el engranaje, **Sistema**, **Tu partida**, **Compartir registro**. Si la pantalla se queda en negro y no llegas al
 engranaje, mantén pulsado el ícono de la app: también ofrece **Compartir registro**. No adjuntes archivos del juego.
 
 ## PC (Windows)
@@ -587,13 +588,13 @@ copia, en el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1).
 - **El clic derecho es un segundo ataque (A), solo con el arma desenfundada:** nunca habla con la gente, abre ni recoge por
   error
 - **Todas las teclas se pueden cambiar,** hasta dos por botón, también los botones del mouse: **F1**, **Controles**,
-  **Asignación de teclas**. La cámara y tus botones combinados también pueden ir en teclas
+  **Teclado y ratón**, **Asignación de teclas**. La cámara y tus botones combinados también pueden ir en teclas
 - **Fijar al monstruo:** un toque de Alt (R3) deja la cámara fija en el monstruo, y aparece un candado junto al ícono del
   objetivo. Un disparo desde la postura normal apunta entonces al cuerpo del monstruo; tu propio apuntado, el fuego
   agachado y los movimientos de los estilos quedan en tus manos. Se puede desactivar: **F1**, **Controles**, **Fijar objetivo**
 - **Escribe con tu teclado:** el nombre de tu personaje, y una línea de chat en una sala con **/**, también en una misión
 - **Una pantalla táctil:** en una PC con una, los controles táctiles del teléfono aparecen cuando la tocas (**Controles**,
-  **Controles táctiles**), y **Personalizar controles y HUD** los ubica
+  **Mostrar los controles táctiles**), y **Personalizar controles y HUD** los ubica
 
 #### Menús y comodidad
 
@@ -605,26 +606,26 @@ copia, en el [paso 2 de la instalación](#paso-2-crea-el-código-del-juego-1).
   misiones y su tablero
 - **El menú de opciones (F1)** se usa con el mouse, el teclado o un mando, en español o en inglés. Esc, B o un clic afuera
   cierran cada ventana
-- **Beber y comer más rápido:** los mismos dos trucos opcionales que en el teléfono, apagados, en **F1**, **Trucos**
-- **Mandar todas las recompensas a la caja:** como en el teléfono, apagado, en **F1**, **Juego**. Idea de Alfonso
+- **Beber y comer más rápido:** los mismos dos trucos opcionales que en el teléfono, apagados, en **F1**, **Mods y trucos**, **Trucos**
+- **Enviar todo a la caja:** como en el teléfono, apagado, en **F1**, **Juego**. Idea de Alfonso
 - **Tus propios trucos y mods:** mira [Trucos y mods](#trucos-y-mods-1)
 - Importa tu partida desde un emulador o desde la app de Android, y expórtala para llevarla ahí: mira [Partidas](#partidas-1)
 - El juego se detiene mientras su ventana está minimizada, y sigue donde estaba cuando la vuelves a abrir (**F1**,
-  **Opciones del menú**, **Pausar en segundo plano**)
+  **Sistema**, **Pausar en segundo plano**)
 
 #### Personalización
 
-- **Mover el HUD:** **F1**, **Pantalla**, **Mover el HUD**, y arrastra con el mouse cualquier parte: el reloj, la vida y la
+- **Mover el HUD:** **F1**, **Gráficos y audio**, **Pantalla y HUD**, **Mover el HUD**, y arrastra con el mouse cualquier parte: el reloj, la vida y la
   resistencia, el filo y los indicadores, el grupo, el mapa, la cámara de objetivo, la barra de objetos y las Artes de caza.
   La rueda cambia el tamaño de una parte, y **Ocultar** la saca de la pantalla. Es el mismo HUD con teclado y con mando. Cómo:
   mira [Controles](#controles)
 - Una parte que moviste queda donde la pusiste: una línea de chat, un apuntado y el sello de Quest Complete ya no la
   devuelven, y no salta cuando se abre un menú del juego. Una parte que quedaría sobre la ventana de ese menú se oculta hasta
   que el menú se cierra
-- **En una pantalla ancha,** **Posición del HUD** (**F1**, **Pantalla**) acomoda el HUD en los 16:9 del medio, en 21:9, en
+- **En una pantalla ancha,** **Posición del HUD** (**F1**, **Gráficos y audio**, **Pantalla y HUD**) acomoda el HUD en los 16:9 del medio, en 21:9, en
   32:9 o en todo el ancho
 - **Botones combinados:** hasta 6 botones propios que aprietan varios a la vez, como A+X, en una tecla (**Asignación de
-  teclas**) o en un botón del mando (**Controles**, **Botones combinados**)
+  teclas**) o en un botón del mando (**Controles**, **Mando**, **Botones combinados**)
 
 #### Pantalla y rendimiento
 
@@ -648,15 +649,15 @@ Más en [Gráficos y FPS](#gráficos-y-fps).
 
 - Conéctalo y juega. **F1**, o **+** y **-** juntos, abren los ajustes
 - El clic de la palanca derecha fija al monstruo
-- **Cualquier mando:** si el juego no lee bien el tuyo, entra a **F1**, **Controles**, **Mapear un mando**, y aprieta cada
+- **Cualquier mando:** si el juego no lee bien el tuyo, entra a **F1**, **Controles**, **Mando**, **Mapear un mando**, y aprieta cada
   botón una vez. Queda guardado para ese modelo
-- El menú de opciones puede mostrar los botones con el estilo de tu mando (**Controles**, **Iconos del mando**)
+- El menú de opciones puede mostrar los botones con el estilo de tu mando (**Controles**, **Mando**, **Iconos del mando**)
 
 #### Discord
 
 Si la app de Discord está abierta en la misma PC, tu perfil muestra lo que estás haciendo: dónde estás, los monstruos que
 cazas, el mapa y la zona, cuántos cazadores te acompañan, tu arma, y el nombre y el RC de tu cazador. Viene activado. Para
-apagarlo: **F1**, **Multijugador**, **Presencia en Discord**. Para no mostrar tu nombre ni tu RC: **Mostrar nombre y RC del cazador**.
+apagarlo: **F1**, **Multijugador**, **Discord**, **Presencia en Discord**. Para no mostrar tu nombre ni tu RC: **Mostrar nombre y RC del cazador**.
 El juego solo habla con la app de Discord de tu PC.
 
 ### ¿Qué tan bien corre?
@@ -760,7 +761,7 @@ No hay instalador: el programa es una carpeta.
 
 Si `MHGU.exe` está dentro de tu carpeta `MHGU`, junto a `exefs` y `romfs`, el juego la encuentra sin preguntar. El primer
 arranque prepara los shaders del juego de fondo mientras pasan los logos; ocupan unos 340 MB en la carpeta `cache`. Después un
-aviso dice que **F1** abre los ajustes. Para elegir otra carpeta después: **F1**, **Opciones del menú**, **Carpeta del juego**;
+aviso dice que **F1** abre los ajustes. Para elegir otra carpeta después: **F1**, **Sistema**, **Tu partida**, **Carpeta del juego**;
 el juego la usa desde el próximo arranque.
 
 El zip tiene una carpeta con los archivos del programa y nada del juego:
@@ -780,7 +781,8 @@ El zip tiene una carpeta con los archivos del programa y nada del juego:
   nunca habla, abre ni recoge), Espacio B, E o el botón del medio Y (envainar, usar un objeto), Q es L, Tab y T son ZL y ZR,
   Enter es +, Retroceso −, las flechas son la cruceta, M el minimapa (L3), un toque de Alt el bloqueo en el monstruo (R3) e
   I, J, K, L giran la cámara. La rueda del mouse gira la barra de objetos. Haz clic en la ventana para girar la cámara con el
-  mouse; Esc suelta el mouse. Todas las teclas se pueden cambiar: **F1**, **Controles**, **Asignación de teclas**.
+  mouse; Esc suelta el mouse. Todas las teclas se pueden cambiar: **F1**, **Controles**, **Teclado y ratón**, **Asignación de
+  teclas**.
 - **El mouse en los menús del juego:** en la caja de objetos, la bolsa, el menú de pausa, la caja de equipo y otras listas,
   y cuando alguien te habla o el juego te pregunta algo, aparece el puntero y funciona como en los juegos nuevos: apunta a
   una fila o a una casilla para elegirla (se ven sus datos), el clic izquierdo es A (confirma lo que apuntas, o lo elegido,
@@ -788,13 +790,14 @@ El zip tiene una carpeta con los archivos del programa y nada del juego:
   las listas y pasa las páginas de la caja (en una cantidad suma o resta uno, en una pregunta de sí o no elige la respuesta,
   que en casi todas también puedes apuntar y hacer clic; en las demás confirma con F), y los botones laterales pasan las
   páginas. Fuera de los menús y las conversaciones el mouse gira la cámara como antes. En esos menús y conversaciones el
-  clic izquierdo es A, no X: donde un menú pida X, presiona R. Para apagarlo: **F1**, **Controles**, **Ratón en los menús
-  del juego**.
-- **Mando:** conéctalo y juega; + y − juntos abren los ajustes. Si el juego no lee bien el tuyo: **Controles**, **Mapear un mando**.
+  clic izquierdo es A, no X: donde un menú pida X, presiona R. Para apagarlo: **F1**, **Controles**, **Teclado y ratón**,
+  **Ratón en los menús del juego**.
+- **Mando:** conéctalo y juega; + y − juntos abren los ajustes. Si el juego no lee bien el tuyo: **Controles**, **Mando**,
+  **Mapear un mando**.
 - **F1** abre los ajustes, **F11** o **Alt+Enter** pasan de pantalla completa a ventana, **F12** guarda una captura en `shots`,
   **F7** prueba los niveles de MSAA sin guardarlos, y **/** abre el chat en un hub (en un teclado en español es la tecla **-**;
   se puede cambiar en **Asignación de teclas**).
-- **El HUD:** abre **F1**, **Pantalla**, **Mover el HUD** y arrastra con el mouse cualquier parte: el reloj, la vida y la
+- **El HUD:** abre **F1**, **Gráficos y audio**, **Pantalla y HUD**, **Mover el HUD** y arrastra con el mouse cualquier parte: el reloj, la vida y la
   resistencia, el filo y los indicadores, el grupo, el mapa, la cámara de objetivo, la barra de objetos y las Artes de caza.
   La rueda sobre una (o **-** / **+**) cambia su tamaño, **Ocultar** la saca de la pantalla, **Restablecer** devuelve la
   elegida a su lugar y **Por defecto** todas. Fuera de una cacería, unos marcos muestran dónde va cada parte. **Guardar** lo
@@ -802,7 +805,7 @@ El zip tiene una carpeta con los archivos del programa y nada del juego:
 
 ### Gráficos y FPS
 
-En una portátil con gráficos integrados, o en una pantalla 4K, baja la **Resolución 3D** en **F1**, **Pantalla** (el HUD y el
+En una portátil con gráficos integrados, o en una pantalla 4K, baja la **Resolución 3D** en **F1**, **Gráficos y audio** (el HUD y el
 texto siguen nítidos), o activa el **Modo gama baja** en **Gráficos y audio**: la imagen 3D queda en unas 720 líneas (66 % en
 1080p, 50 % en 1440p, 33 % en 4K) y se apagan el bloom, el desenfoque de profundidad, el MSAA y el FSR. Su tercera opción,
 **Tostadora**, baja a unas 540 líneas, 30 fps y sin sombras ni FXAA. Los dos cambios se aplican al reiniciar el juego. La
@@ -811,31 +814,32 @@ habituales); **Resolución de renderizado**, **Personalizada**, fija un tamaño 
 
 **Efectos**, en **Gráficos y audio**, omite los efectos de partículas del juego (golpes, chispas, fuego, alientos, polvo,
 lluvia): más rápido donde hay muchos, pero también desaparecen los efectos que avisan del ataque de un monstruo. **Borrar la
-caché de shaders**, ahí mismo, hace que el próximo inicio vuelva a armar todos los shaders, para una imagen que muestra algo
+caché de shaders**, en su página **Avanzado**, hace que el próximo inicio vuelva a armar todos los shaders, para una imagen que muestra algo
 mal después de actualizar el driver de la GPU; mientras se arman, un cartel chico dice cuánto falta.
 
 **Límite de FPS**, en **Gráficos y audio**, va de 30 a 240, o **Sin límite** (60 por defecto). Sin límite necesita la
 **Sincronización vertical** apagada: con ella encendida, el máximo es la frecuencia del monitor. En una PC que no sostiene 60,
-30 es más parejo. Ahí también está **Mostrar FPS y datos de la PC**: **Básico** muestra los FPS, el tiempo por cuadro, el
+30 es más parejo. En **Pantalla y HUD** está **Mostrar FPS y datos de la PC**: **Básico** muestra los FPS, el tiempo por cuadro, el
 cuadro más largo y la temperatura de la GPU, y **Completo** agrega una línea de la GPU (uso, frecuencia, memoria de video) y
 otra de la CPU. Windows no deja que un programa lea la temperatura de la CPU.
 
-Con **FSR** activado, la fila **Escalador** de esa pestaña también ofrece XeSS-SR. Necesita gráficos Intel Iris Xe o Arc, o
+Con **FSR** activado, la fila **Escalador** (**Imagen y sonido**) también ofrece XeSS-SR. Necesita gráficos Intel Iris Xe o Arc, o
 una tarjeta con DP4a como una AMD RX 6000 o una NVIDIA RTX 3000 o más nueva (donde cuesta más que FSR 3.1), y el Microsoft
 Visual C++ Redistributable (x64). Sin eso el juego usa FSR 3.1, y la fila dice por qué. **FSR 4**, también en esa lista, es
 para las AMD Radeon RX 9000: no se probó y necesita el archivo `amd_fidelityfx_vk.dll` de la propia AMD al lado de `MHGU.exe`,
 que no viene incluido. Consíguelo solo de AMD, nunca de otro sitio. Sin él se usa FSR 3.1. FSR tiene su propio costo: para
 ganar velocidad en una GPU débil, mejor baja la resolución 3D o usa el modo gama baja.
 
-En **Pantalla**: **Modo de ventana** (Sin bordes, Pantalla completa o Ventana), **Resolución de pantalla**, **Campo de
+En **Gráficos y audio**, **Pantalla y HUD**: **Modo de ventana** (Sin bordes, Pantalla completa o Ventana), **Resolución de pantalla**, **Campo de
 visión**, **Posición del HUD** para pantallas anchas, y **Llenar la pantalla**, que hace que los videos del juego y los fondos
 de los menús llenen una pantalla más ancha que 16:9 en lugar de mostrar barras a los costados. En **Gráficos y audio**:
-**GPU**, **MSAA**, **FXAA**, **Distancia de dibujado**, **Sombras**, **Bloom y desenfoque de profundidad**, **Degradados
-suaves**, el volumen, **Reverberación** y **Silenciar en segundo plano**.
+**Sombras** y el volumen; en su **Imagen y sonido**: **MSAA**, **FXAA**, **Distancia de dibujado**, **Bloom y
+desenfoque de profundidad**, **Degradados suaves**, **Reverberación** y **Silenciar en segundo plano**; en su
+**Avanzado**: **GPU**.
 
 ### Partidas
 
-Desde **F1**, **Opciones del menú**:
+Desde **F1**, **Sistema**, **Tu partida**:
 
 - **Importar partida:** elige el archivo `system` de una partida. De Ryujinx: clic derecho en el juego, **Open User Save
   Directory**; de yuzu: clic derecho en el juego, **Open Save Data Location**; del teléfono: expórtala ahí (mira
@@ -852,10 +856,10 @@ Desde **F1**, **Opciones del menú**:
 ### Trucos y mods
 
 - **Trucos:** archivos `.txt` en el formato de Atmosphere, para la versión 1.4.0 (su id de compilación es
-  `FB08F1D20FD1204F`). **F1**, **Trucos**, **Agregar trucos**, y elige los archivos. Entran apagados: activa cada uno en esa
+  `FB08F1D20FD1204F`). **F1**, **Mods y trucos**, **Trucos**, **Agregar trucos**, y elige los archivos. Entran apagados: activa cada uno en esa
   página y pulsa **Guardar**. Activarlos o desactivarlos no necesita reiniciar.
-- **Mods:** la carpeta de un mod con `romfs` o `exefs` adentro, o un `.zip` de esa carpeta. **F1**, **Mods**, **Agregar un
-  mod**. Después se ordenan y se activan en esa página: cuando dos cambian el mismo archivo, gana el que está más abajo en la
+- **Mods:** la carpeta de un mod con `romfs` o `exefs` adentro, o un `.zip` de esa carpeta. **F1**, **Mods y trucos**, **Mods**,
+  **Agregar un mod**. Después se ordenan y se activan en esa página: cuando dos cambian el mismo archivo, gana el que está más abajo en la
   lista.
 - Van a las carpetas `cheats` y `mods` de tu carpeta del juego, donde también puedes ponerlos tú, y el juego se reinicia para
   leerlos. Cada archivo de trucos y cada mod tiene su **Quitar**: los trucos de un archivo dejan de funcionar al momento, y un
@@ -881,8 +885,8 @@ ZL (Tab) y elige **Connect**.
 - **Chat y amigos:** el mismo chat que en el teléfono, en **F1**, **Multijugador**, **Chat**: mira
   [Chat y amigos](#chat-y-amigos). En PC no hay botón del chat; las líneas nuevas igual se ven unos segundos sobre el juego
   (**Líneas sobre el juego**).
-- La vida de los monstruos ajustable (**Juego**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
-  de aldea en sala (**Multijugador**) vienen de MHGURecomp.
+- La vida de los monstruos ajustable (**Juego**, **Vida de los monstruos**, con la vida de misiones concretas en **Ajustes por misión**) y las misiones
+  de aldea en sala (**Multijugador**, **En la sala**) vienen de MHGURecomp.
 
 Probado en PC: entrar a la sala de un teléfono por el servidor de salas y en la misma Wi-Fi. Todavía no: crear una sala en la
 PC (necesita el permiso del firewall) y una misión completa.
@@ -943,7 +947,7 @@ Para abrir `%APPDATA%`, escríbelo en la barra de direcciones del Explorador de 
 | La fila **Escalador** dice que se usa FSR 3.1 | El escalador que elegiste no puede correr en esta PC, y la ayuda de la fila dice por qué. Para XeSS-SR suele faltar el Microsoft Visual C++ Redistributable (x64) |
 | Va lento | Baja la **Resolución 3D** o activa el **Modo gama baja**; si sigue lento, **Tostadora**. En una portátil con dos tarjetas gráficas, revisa que **GPU** muestre la dedicada |
 
-El registro está en **F1**, **Opciones del menú**, **Carpeta del registro** (`log.txt`; si el juego se cerró y lo volviste a
+El registro está en **F1**, **Sistema**, **Tu partida**, **Carpeta del registro** (`log.txt`; si el juego se cerró y lo volviste a
 abrir, el de esa sesión es `log_prev.txt`): adjúntalo a un [issue](../../issues) con el procesador y la tarjeta gráfica de tu
 PC. No adjuntes archivos del juego. También puedes preguntar en el [Discord](https://discord.gg/sk5xEjEMwF).
 
@@ -963,6 +967,7 @@ Basado en el proyecto de código abierto MHGURecomp (licencia MIT) y las bibliot
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Sus licencias, con el aviso legal, también están en la app: engranaje, **Créditos y licencias**, **Licencias**. En PC: **F1**, **Créditos y licencias**, **Licencias**, y la carpeta `licenses` junto a `MHGU.exe`.
 
 El chat, las claves de sala (el generador de la clave de emparejamiento) y los perfiles de controles siguen los diseños de tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
+
 Ideas de la comunidad: Alfonso, mandar todas las recompensas a la caja de una vez.
 
 Del mismo autor: [MH4U para Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompilado para
@@ -992,7 +997,7 @@ firmada con otra clave lo avisa una vez al arrancar.
 
 La app también te avisa cuando sale una versión nueva. Como mucho una vez al día le pregunta a GitHub cuál es la última
 versión de este repositorio (no se envía nada más, ni siquiera el modelo del teléfono), y al abrir el juego te ofrece abrir
-su página. Nunca descarga ni instala nada por su cuenta. Engranaje, **Opciones del menú**, **Buscar actualizaciones** lo apaga.
+su página. Nunca descarga ni instala nada por su cuenta. Engranaje, **Sistema**, **Buscar actualizaciones** lo apaga.
 
 La versión de PC no tiene esa firma: cada versión publica el SHA-256 de su zip. Para revisar el tuyo en Windows, abre una
 terminal en su carpeta y ejecuta `certutil -hashfile <archivo> SHA256`; el resultado tiene que coincidir con el de la versión.

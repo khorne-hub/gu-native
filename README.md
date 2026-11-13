@@ -50,9 +50,9 @@ Talk with other players and ask for help in the community's [Discord](https://di
 - **Menus made for your thumb:** nothing of the layout changes when a menu of the game's opens: a small pad shows and moves the cursor, with the page buttons above it. The movement stick keeps walking (where the hunter can't walk, as at a town's item box or a shop, it moves the cursor; where the game shows a model, as at the smithy, the stick and dragging turn it, as on a controller), A and B stay where they are, and dragging on the screen moves the cursor too. The pad is moved and resized in the editor like the other buttons. To hide it: under the gear, **Controls**, **Buttons on the screen**, **Menu pad**
 - Your phone's keyboard works for typing your character's name, and in the settings menu's text with **Phone keyboard** (Enter accepts; Back hides the keyboard and keeps what you typed); the menu's own keys stay for a controller
 - The settings menu works by touch and matches the game's look
-- **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
-- **Send all rewards to the box:** at the end of a quest, the game's **Send to the Item Box** sends every reward at once, as in the newer games; what doesn't fit in the box stays in the list. Off by default: under the gear, **Gameplay**, **Send all rewards to the box**. Alfonso's idea
-- **A shortcut with your own picture:** under the gear, **Menu Options**, **Shortcut with your image** puts the game on your home screen with a picture and a name you choose. The app's own icon stays as it is
+- **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Mods & Cheats**, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
+- **Send all to the box:** at the end of a quest, the game's **Send to the Item Box** sends every reward at once, as in the newer games; what doesn't fit in the box stays in the list. Off by default: under the gear, **Gameplay**, **Send all to the box**. Alfonso's idea
+- **A shortcut with your own picture:** under the gear, **System**, **Home screen shortcut** puts the game on your home screen with a picture and a name you choose. The app's own icon stays as it is
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
 - Import your save from an emulator, another device or the PC game, and export it to take it there; bring the event quests you already have; keep your save in the cloud: see [Saves](#saves)
 - The game pauses by itself when you leave the app, and while the settings menu is open if you play alone
@@ -67,7 +67,7 @@ Talk with other players and ask for help in the community's [Discord](https://di
 - **Buttons that stay pressed:** tap a button in the editor and turn on **Hold**: in the game, a tap holds it down and the next tap lets it go. A held button is lit, with a small padlock
 - **Your own pictures:** tap a button in the editor and choose **Picture** to put a picture of your own on it (**Add pictures** copies PNG, JPG or WebP files from your phone). The button keeps its letter. What you add is your own responsibility
 - **The FPS counter** can be dragged anywhere in the editor; **Reset** puts it back at the top
-- **Floating stick:** under the gear, **Controls**, **Buttons on the screen**, turn on **Floating stick** and the movement stick comes to where your thumb lands near it, and goes back when you lift it. Off by default
+- **Floating stick:** under the gear, **Controls**, **Touch controls**, turn on **Floating stick** and the movement stick comes to where your thumb lands near it, and goes back when you lift it. Off by default
 - A part you moved stays where you put it: a chat line, a bow's or a bowgun's aim and the Quest Complete stamp no longer send it back to the game's place, and it doesn't jump when a menu of the game's opens. A part that would sit over that menu's window hides until the menu closes
 - The game's HUD is rearranged to stay clear of your thumbs (**Move the HUD for touch**). Turned off, the HUD is the same as with a controller. The editor's **HUD: controller** button arranges the HUD you get with a controller, without connecting one, and a controller's B closes the editor without saving
 - Adjustable control opacity and camera speed
@@ -82,24 +82,24 @@ Talk with other players and ask for help in the community's [Discord](https://di
 - **Shadows:** turn them off for more speed, under the gear, **Graphics & Audio**, **Shadows**. On a Moto g06 it cut the GPU's work per frame by about 15% in a hunt
 - **Low-end mode:** for weak phones. It turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture
 - **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb or grass, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
-- **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**): switches of their own. Off, the GPU or the processor does less
+- **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**, **Picture and sound**): switches of their own. Off, the GPU or the processor does less
 - **Grass** (gear, **Graphics & Audio**): off, the tall grass and foliage of the maps are left out, faster where there is a lot of it (the Marshland's area 8)
 - **Effects** (gear, **Graphics & Audio**): off, the game's particle effects are left out (hits, sparks, fire, breath, dust, rain), faster where there are many. The effects that warn of a monster's attack go too: that's your call
-- **Clear shader cache** (gear, **Graphics & Audio**): the next start deletes the shaders the game built and kept and builds them again, for a picture that shows something wrong after a GPU driver update or a crash. While the shaders are built, a small plate says how far they are
+- **Clear shader cache** (gear, **Graphics & Audio**, **Advanced**): the next start deletes the shaders the game built and kept and builds them again, for a picture that shows something wrong after a GPU driver update or a crash. While the shaders are built, a small plate says how far they are
 - Optional FPS and temperature counter
 - Uses less memory on devices with Mali GPUs and on phones with little RAM
 - The screen follows your FPS limit: at 60 fps it runs at 60 Hz even if it can do 120
 - **If your phone runs hot, lower the FPS limit.** Nothing helps more: going from 120 to 60 used a quarter to a third less power on a Galaxy S25 Ultra, and going from 60 to 30 a fifth less on a Moto g06
 - On Mali GPUs textures are decoded on several cores, to reduce stutter
-- **Your own GPU driver:** Adreno only, at your own risk. Under the gear, **Graphics & Audio**, **GPU driver**, add a .zip with `meta.json` and the library. By default the system's is used, and if one fails at start or doesn't load, the app goes back to it by itself and says so
-- **Adreno fix:** on an Adreno with a Vulkan 1.1 driver, at a low 3D resolution, the app keeps 2x MSAA so the picture doesn't repeat in a grid. If it looks dark or flickers, or for more speed, set **Adreno fix** to **Off** under the gear, **Graphics & Audio**
+- **Your own GPU driver:** Adreno only, at your own risk. Under the gear, **Graphics & Audio**, **Advanced**, **GPU driver**, add a .zip with `meta.json` and the library. By default the system's is used, and if one fails at start or doesn't load, the app goes back to it by itself and says so
+- **Adreno fix:** on an Adreno with a Vulkan 1.1 driver, at a low 3D resolution, the app keeps 2x MSAA so the picture doesn't repeat in a grid. If it looks dark or flickers, or for more speed, set **Adreno fix** to **Off** under the gear, **Graphics & Audio**, **Advanced**
 
 #### With a controller
 
 - The touch controls hide as soon as you connect one and come back when you disconnect it, with no restart
 - The gear stays on the screen, so you can always open the settings. You can also press **+** and **-** together
 - Clicking the right stick locks onto the monster (with the game's **Control Type 3**, whose click changes the target, hold it instead). While the lock is on, a padlock shows by the target icon, and a bowgun's shots aim at the monster's body, as with the touch controls
-- **Any controller:** if the game doesn't read yours well, go to the gear, **Controls**, **Map a controller**, and press each button once. It's kept for that model. If a controller can't be read until it is mapped, the app tells you when you connect it
+- **Any controller:** if the game doesn't read yours well, go to the gear, **Controls**, **Controller**, **Map a controller**, and press each button once. It's kept for that model. If a controller can't be read until it is mapped, the app tells you when you connect it
 
 ### How well does it run?
 
@@ -167,7 +167,7 @@ ways: on the phone, with no PC, or on a PC (faster).
 
 **On the phone.** Copy the `MHGU` folder with `exefs` and `romfs` to the phone, install the APK (Step 3) and choose the
 folder. The app says the game code is missing: tap **Build on this phone**, then **Build**. Later it is also in the gear
-button, **Menu Options**, **Build the game code**.
+button, **System**, **Game code**, **Build the game code**.
 
 - The first time it downloads its tools, about 100 MB: Python from python.org and Zig, a C compiler, from PyPI. Both are
   free software, checked before they are used, and nothing of the game is ever downloaded.
@@ -225,7 +225,7 @@ Running it again keeps what is already made and up to date.
 The app checks the folder, tells you exactly what is missing if something is wrong, and starts the game.
 
 Your saves and settings are kept separately, in `Android/data/com.mhgu.recomp/files`. To choose another folder later: gear
-button, **Menu Options**, **Game folder**.
+button, **System**, **Your game**, **Game folder**.
 
 ### Saves
 
@@ -236,7 +236,7 @@ You can bring your save from an emulator, another device or the PC game:
 1. Find your save's file named `system`. In Ryujinx: right-click the game, **Open User Save Directory**. In yuzu: right-click the game,
    **Open Save Data Location**. From the PC game: export it there (see [Saves on PC](#saves-1)).
 2. Copy that file to your device, for example to Downloads.
-3. In the game, go to the gear, **Menu Options**, **Import save**, and choose the file.
+3. In the game, go to the gear, **System**, **Your game**, **Import save**, and choose the file.
 
 All the characters on the device are replaced and the game restarts. Your previous save is kept in
 `Android/data/com.mhgu.recomp/files/MHGURecomp/save_backups`.
@@ -245,7 +245,7 @@ All the characters on the device are replaced and the game restarts. Your previo
 
 To take your save to an emulator, another device or the PC game:
 
-1. Save in the game. Then go to the gear, **Menu Options**, **Export save**, and choose a folder.
+1. Save in the game. Then go to the gear, **System**, **Your game**, **Export save**, and choose a folder.
 2. A folder named `MHGU_save_...` is made there with the files `system` and `system_backup`. Move it to your PC.
 3. In Ryujinx: right-click the game, **Open User Save Directory**. In yuzu: right-click the game, **Open Save Data Location**.
 4. Keep a copy of what is there, and copy both files in.
@@ -255,8 +255,8 @@ To take your save to an emulator, another device or the PC game:
 The save is the same on both, so you can take it either way:
 
 - **From the phone to the PC:** on the phone, **Export save** and copy the `MHGU_save_...` folder to the PC. In the PC game,
-  **F1**, **Menu Options**, **Import save**, and choose the `system` file in that folder.
-- **From the PC to the phone:** in the PC game, **F1**, **Menu Options**, **Export save**, and copy the `system` file to the
+  **F1**, **System**, **Your game**, **Import save**, and choose the `system` file in that folder.
+- **From the PC to the phone:** in the PC game, **F1**, **System**, **Your game**, **Export save**, and copy the `system` file to the
   phone. On the phone, **Import save** and choose it.
 
 Importing replaces all the characters on the device it goes to, and the save it replaces is kept in a copy, as above.
@@ -264,7 +264,7 @@ Importing replaces all the characters on the device it goes to, and the save it 
 #### Choose where your save is kept
 
 The save is in the app's own folder unless you choose another one, for example a folder that a sync app (Syncthing,
-FolderSync and the like) shares with your other devices. Go to the gear, **Menu Options**, **Save folder**, and choose the
+FolderSync and the like) shares with your other devices. Go to the gear, **System**, **Your game**, **Save folder**, and choose the
 folder:
 
 - Your save goes in a folder named `MHGU save` inside the one you choose, so one shared folder can hold MHGU's and MH4U for
@@ -287,14 +287,14 @@ none and downloads none: you bring your own, at your own risk.
 1. Find that save's file named `system` (Ryujinx: right-click the game, **Open User Save Directory**; yuzu and its
    successors: right-click the game, **Open Save Data Location**) and copy it to your device, for example to a folder
    `Download/MHGU downloads`.
-2. In the game, go to the gear, **Menu Options**, **Import DLC and event quests**, **Choose a folder**, and choose that folder.
+2. In the game, go to the gear, **Mods & Cheats**, **DLC and event quests**, **Import DLC and event quests**, **Choose a folder**, and choose that folder.
    The app checks the file and tells you how many event and challenge quests it has.
 3. Tap **Import and restart**. Your save is copied to `save_backups` first; the game restarts, and your save takes the
    downloads.
 
 - Your hunters and everything else in your save stay as they are: only the downloads go in, and only into a save that has
   none of its own yet. A save that already has some keeps its own, and the app tells you so.
-- **Bonus content** (gear, **Menu Options**) must be on, as it is by default.
+- **Bonus content** (gear, **Gameplay**) must be on, as it is by default.
 - The game's own DLC files (`DLC.dlcp`) can't be used this way: the game only takes them through its **Download** menu, which
   needs its online services.
 
@@ -307,7 +307,7 @@ phone the same as a folder in your cloud. Step by step, with Google Drive:
    **FolderSync** or **Autosync for Google Drive**. Google Drive's own app doesn't keep phone folders in sync.
 2. With your phone's file manager, make a folder for your saves, for example `Saves` in the phone's storage (not inside
    `Android/data`).
-3. In the game, save. Then go to the gear, **Menu Options**, **Save folder**, and choose that folder. The game restarts, and
+3. In the game, save. Then go to the gear, **System**, **Your game**, **Save folder**, and choose that folder. The game restarts, and
    your save is in a folder `MHGU save` inside it.
 4. In the sync app, pair that folder with a new folder in your Google Drive. Choose **two-way** sync, syncing when files
    change (or every few minutes), and leave off any option that deletes or moves files after syncing. Let the first sync
@@ -325,11 +325,12 @@ and the PC with **Export save** and **Import save** (see [Move a save between An
 
 ### Cheats and mods
 
-- **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). Under the gear, **Cheats**, **Add cheats**, pick the file, and turn each one on in that same page. They start off.
-- **Mods:** a mod's folder with `romfs` or `exefs` in it, or a `.zip` of that folder. Under the gear, **Mods**, **Add a mod**. Then order them and turn them on in that page.
+- **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). Under the gear, **Mods & Cheats**, **Cheats**, **Add cheats**, pick the file, and turn each one on in that same page. They start off.
+- **Mods:** a mod's folder with `romfs` or `exefs` in it, or a `.zip` of that folder. Under the gear, **Mods & Cheats**, **Mods**, **Add a mod**. Then order them and turn them on in that page.
+- **Forge plugins' settings without a keyboard:** when a mod brings Forge plugins, **Forge menu (plugins)** shows under the gear, **Mods & Cheats**. It opens Forge's menu, bigger and scrolled with a finger; its x or the Back key closes it, and a text field brings up the phone's keyboard. Plugins are other people's work: you use them at your own risk.
 - You can also copy them yourself into your game folder, into `cheats` and `mods` folders beside `exefs` and `romfs`. The game reads them at start.
 - Cheats and mods that change the game's code work, but that part of the game runs slower. Use cheats online only if everyone in the hub agrees.
-- **HD texture packs** are mods too: the ones made for the Switch emulators, which replace the game's own `.tex` files in a `romfs` folder, load as they are. Their textures take the phone's memory as they are drawn: on a phone with little RAM a big pack can close the game. The log says how many textures each mod has and how big they are. No pack comes with this app.
+- **HD texture packs** are mods too: the ones made for the emulators, which replace the game's own `.tex` files in a `romfs` folder, load as they are. Their textures take the phone's memory as they are drawn: on a phone with little RAM a big pack can close the game. The log says how many textures each mod has and how big they are. No pack comes with this app.
 
 ### Multiplayer
 
@@ -373,7 +374,7 @@ Two devices on the same Wi-Fi can play together:
 1. Both go to town, tap **ZL** and choose **Connect**.
 2. One player (the host) chooses **Create Hub** and confirms with **X**.
 3. The other chooses **Search Hubs** and picks that hub.
-4. If the hub doesn't show up: under the gear, **Multiplayer**, **Search hosts**, enter the host's IP and search again.
+4. If the hub doesn't show up: under the gear, **Multiplayer**, **Local network**, **Search hosts**, enter the host's IP and search again.
 
 Creating a hub, finding it and joining it were tested on a Motorola and an Anbernic, but not a full quest yet.
 
@@ -405,7 +406,7 @@ on the same Wi-Fi; a full quest together not yet.
 #### Crossplay with emulators
 
 Players of this app (phones and PCs) can play with players of emulators running the game, in their online play. Under the
-gear, **Multiplayer**, **Play online with**:
+gear, **Multiplayer**, **Play with emulators**, **Play online with**:
 
 - **Emulator rooms (Eden, Citron, Sudachi, yuzu)**: the multiplayer rooms of the yuzu family of emulators.
   1. Choose a room: **Public rooms** lists the public rooms where the game is played (from the lobby those emulators use,
@@ -471,7 +472,7 @@ on your device for 5 minutes. A line is up to 200 characters.
 
 #### Monster HP and Village quests in the Hub
 
-Adjustable monster HP (gear, **Gameplay**) and Village quests in the Hub (gear, **Multiplayer**) come from MHGURecomp, the project this
+Adjustable monster HP (gear, **Gameplay**, **Monster health**) and Village quests in the Hub (gear, **Multiplayer**, **In the hub**) come from MHGURecomp, the project this
 one is based on. They haven't been fully tested on Android yet.
 
 ### Where things are kept
@@ -497,11 +498,11 @@ Did you get the app from another website (apkvision, for example)? That copy was
 installs an update signed like the app you have, so the official APK won't go over it. Android then says "App not
 installed" or "package conflicts with an existing package". Do this once:
 
-1. Keep your save. In the app you have: gear, **Menu Options**, **Export save**, and choose a folder, such as Download.
+1. Keep your save. In the app you have: gear, **System**, **Your game**, **Export save**, and choose a folder, such as Download.
 2. Open your phone's **Settings**, **Apps**, **MHGU**, **Storage**, and tap **Clear data** (or **Clear storage**).
 3. Tap **Uninstall**. If Android asks whether to keep the app's data, say no.
 4. Install the APK from [Releases](../../releases/latest).
-5. Open it and choose your game folder. Then gear, **Menu Options**, **Import save**, and pick the `system` file in the
+5. Open it and choose your game folder. Then gear, **System**, **Your game**, **Import save**, and pick the `system` file in the
    folder from step 1.
 
 Your game folder and the game code you made stay as they are. Still "App not installed"?
@@ -557,7 +558,7 @@ dots, **Add games**.
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 
 If it still fails, ask in the [Discord](https://discord.gg/sk5xEjEMwF) or open an [issue](../../issues) with your device model, the app's version and the log. If the game closes because of an error, a screen lets you
-share it; if not, it's under the gear, **Menu Options**, **Share log**. If the screen stays black and you can't reach the gear, a long
+share it; if not, it's under the gear, **System**, **Your game**, **Share log**. If the screen stays black and you can't reach the gear, a long
 press on the app's icon offers **Share log** too. Don't attach game files.
 
 ## PC (Windows)
@@ -574,13 +575,13 @@ The download has the program only: the game code (`mhgugame.dll` and `mhgugame.i
 - **Plays with keyboard and mouse alone:** WASD moves, the mouse turns the camera, left click attacks (X) and F is the action
   button (A): it talks, opens, gathers and picks up. The full list is in [Controls](#controls)
 - **The right click is a second attack (A), only with the weapon out:** it never talks to people, opens or gathers by mistake
-- **Every key can be changed,** up to two per button, mouse buttons included: **F1**, **Controls**, **Keybinds**. The camera
+- **Every key can be changed,** up to two per button, mouse buttons included: **F1**, **Controls**, **Keyboard and mouse**, **Keybinds**. The camera
   and your combined buttons can go on keys too
 - **Monster lock-on:** a tap on Alt (R3) keeps the camera on the monster, and a padlock shows by the target icon. A shot
   from a normal stance then aims at the monster's body; your own aim, crouching fire and the styles' moves are left to you.
   It can be turned off: **F1**, **Controls**, **Lock-on**
 - **Type with your keyboard:** your character's name, and a chat line in a hub with **/**, in a quest too
-- **A touch screen:** on a PC with one, the phone's touch controls show when you touch it (**Controls**, **Touch controls**),
+- **A touch screen:** on a PC with one, the phone's touch controls show when you touch it (**Controls**, **Show the touch controls**),
   and **Customize controls and HUD** places them
 
 #### Menus and comfort
@@ -591,25 +592,25 @@ The download has the program only: the game code (`mhgugame.dll` and `mhgugame.i
 - **WASD moves the cursor in the game's menus,** in town too: the item box, a shop, the quest counter and its board
 - **The settings menu (F1)** works with the mouse, the keyboard or a controller, in English or Spanish. Esc, B or a click
   outside closes each window
-- **Faster drinking and eating:** the same two optional cheats as on the phone, off, under **F1**, **Cheats**
-- **Send all rewards to the box:** as on the phone, off, under **F1**, **Gameplay**. Alfonso's idea
+- **Faster drinking and eating:** the same two optional cheats as on the phone, off, under **F1**, **Mods & Cheats**, **Cheats**
+- **Send all to the box:** as on the phone, off, under **F1**, **Gameplay**. Alfonso's idea
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods-1)
 - Import your save from an emulator or the Android app, and export it to take it there: see [Saves](#saves-1)
-- The game stops while its window is minimized, and goes on where it was when you bring it back (**F1**, **Menu Options**,
+- The game stops while its window is minimized, and goes on where it was when you bring it back (**F1**, **System**,
   **Pause in the background**)
 
 #### Customization
 
-- **Move the HUD:** **F1**, **Display**, **Move the HUD**, and drag any part with the mouse: the clock, health and stamina, the
+- **Move the HUD:** **F1**, **Graphics & Audio**, **Screen and HUD**, **Move the HUD**, and drag any part with the mouse: the clock, health and stamina, the
   sharpness and gauges, the party, the map, the target camera, the item bar and the Hunter Arts. The wheel changes a part's
   size, and **Hide** takes it off the screen. The same HUD is used with a keyboard and with a controller. How: see
   [Controls](#controls)
 - A part you moved stays where you put it: a chat line, an aim and the Quest Complete stamp no longer send it back, and it
   doesn't jump when a menu of the game's opens. A part that would sit over that menu's window hides until the menu closes
-- **On a wide screen,** **HUD anchor** (**F1**, **Display**) lays the HUD out over the middle 16:9, 21:9, 32:9 or the whole
+- **On a wide screen,** **HUD anchor** (**F1**, **Graphics & Audio**, **Screen and HUD**) lays the HUD out over the middle 16:9, 21:9, 32:9 or the whole
   width
 - **Combined buttons:** up to 6 buttons of your own that press several at once, such as A+X, on a key (**Keybinds**) or a
-  controller button (**Controls**, **Combined buttons**)
+  controller button (**Controls**, **Controller**, **Combined buttons**)
 
 #### Display and performance
 
@@ -634,13 +635,13 @@ More in [Graphics and frame rate](#graphics-and-frame-rate).
 - Clicking the right stick locks onto the monster
 - **Any controller:** if the game doesn't read yours well, go to **F1**, **Controls**, **Map a controller**, and press each
   button once. It's kept for that model
-- The settings menu can show the buttons in the style of your controller (**Controls**, **Button icons**)
+- The settings menu can show the buttons in the style of your controller (**Controls**, **Controller**, **Button icons**)
 
 #### Discord
 
 If the Discord app is open on the same PC, your profile there shows what you're doing: where you are, the monsters you hunt,
 the map and area, how many hunters are with you, your weapon, and your hunter's name and HR. It is on by default. To turn it
-off: **F1**, **Multiplayer**, **Discord Rich Presence**. To leave out your name and HR: **Show hunter name and HR**. The game only
+off: **F1**, **Multiplayer**, **Discord**, **Discord Rich Presence**. To leave out your name and HR: **Show hunter name and HR**. The game only
 talks to the Discord app on your PC.
 
 ### How well does it run?
@@ -743,7 +744,7 @@ There is no installer: the program is a folder.
 
 If `MHGU.exe` is inside your `MHGU` folder, beside `exefs` and `romfs`, the game finds it without asking. The first start
 prepares the game's shaders in the background while the logos play; they take about 340 MB in the `cache` folder. A notice
-then says that **F1** opens the settings. To choose another folder later: **F1**, **Menu Options**, **Game folder**; the game
+then says that **F1** opens the settings. To choose another folder later: **F1**, **System**, **Your game**, **Game folder**; the game
 uses it from its next start.
 
 The zip holds one folder with the program's files and nothing of the game:
@@ -763,7 +764,7 @@ The zip holds one folder with the program's files and nothing of the game:
   Y (sheathe, use an item), Q is L, Tab and T are ZL and ZR, Enter is +, Backspace −, the arrows are the d-pad, M the
   minimap (L3), a tap on Alt the lock-on (R3) and I, J, K, L turn the camera. The mouse wheel turns the item bar. Click the
   window to turn the camera with the mouse; Esc lets the mouse go. Every key can be changed: **F1**, **Controls**,
-  **Keybinds**.
+  **Keyboard and mouse**, **Keybinds**.
 - **The mouse in the game's menus:** in the item box, the pouch, the pause menu, the equipment box and other lists, and
   while someone talks to you or the game asks something, the pointer shows and works as in the newer games: point at a row
   or a box to select it (its details show), left click is A (it confirms what you point at, or what is selected, and goes
@@ -771,20 +772,20 @@ The zip holds one folder with the program's files and nothing of the game:
   the box's pages (in a quantity it adds or takes one, in a yes / no question it picks the answer, which in most of them
   you can also point at and click; in the others confirm with F), and the side buttons turn pages. Out of the menus and
   talks the mouse turns the camera as before. In those menus and talks a left click is A, not X: where a menu asks for X,
-  press R. To turn it off: **F1**, **Controls**, **Mouse in the game's menus**.
+  press R. To turn it off: **F1**, **Controls**, **Keyboard and mouse**, **Mouse in the game's menus**.
 - **Controller:** connect it and play; + and − together open the settings. If the game doesn't read yours well: **Controls**,
-  **Map a controller**.
+  **Controller**, **Map a controller**.
 - **F1** opens the settings, **F11** or **Alt+Enter** switches between full screen and a window, **F12** saves a screenshot in
   `shots`, **F7** tries the MSAA levels without saving them, and **/** opens the chat in a hub (on a Spanish keyboard, the **-**
   key; you can change it in **Keybinds**).
-- **The HUD:** open **F1**, **Display**, **Move the HUD** and drag any part of it with the mouse: the clock, health and
+- **The HUD:** open **F1**, **Graphics & Audio**, **Screen and HUD**, **Move the HUD** and drag any part of it with the mouse: the clock, health and
   stamina, the sharpness and gauges, the party, the map, the target camera, the item bar and the Hunter Arts. The wheel over
   one (or **-** / **+**) changes its size, **Hide** takes it off the screen, **Reset** puts the picked one back and
   **Defaults** all of them. Outside a hunt, frames show where each part goes. **Save** keeps it; Esc cancels.
 
 ### Graphics and frame rate
 
-On a laptop with integrated graphics, or on a 4K screen, lower **3D resolution** under **F1**, **Display** (the HUD and the
+On a laptop with integrated graphics, or on a 4K screen, lower **3D resolution** under **F1**, **Graphics & Audio** (the HUD and the
 text stay sharp), or turn on **Low-end mode** under **Graphics & Audio**: the 3D picture goes to about 720 lines (66% at 1080p,
 50% at 1440p, 33% at 4K), and bloom, depth of field, MSAA and FSR turn off. Its third choice, **Toaster**, goes to about 540
 lines, 30 fps and no shadows or FXAA. Both take effect when the game restarts. The 3D resolution takes any percentage from
@@ -792,31 +793,32 @@ lines, 30 fps and no shadows or FXAA. Both take effect when the game restarts. T
 exact size instead.
 
 **Effects**, under **Graphics & Audio**, leaves out the game's particle effects (hits, sparks, fire, breath, dust, rain): faster
-where there are many, but the effects that warn of a monster's attack go too. **Clear shader cache**, there too, makes the next
+where there are many, but the effects that warn of a monster's attack go too. **Clear shader cache**, under its **Advanced**, makes the next
 start build every shader again, for a picture that shows something wrong after a GPU driver update; while the shaders are
 built, a small plate says how far they are.
 
 **Frame rate limit**, under **Graphics & Audio**, goes from 30 to 240, or **Unlimited** (60 by default). Unlimited needs
-**VSync** off: with VSync on, the monitor's refresh rate is the most. On a PC that can't hold 60, 30 is steadier. There too,
+**VSync** off: with VSync on, the monitor's refresh rate is the most. On a PC that can't hold 60, 30 is steadier. Under **Screen and HUD**,
 **Show FPS and PC stats**: **Basic** shows the frame rate, the frame time, the longest frame and the GPU's temperature, and
 **Full** adds a line on the GPU (use, clock, video memory) and one on the CPU. Windows doesn't let a program read the CPU's
 temperature.
 
-With **FSR** on, the **Upscaler** row there also offers XeSS-SR. It needs Intel Iris Xe or Arc graphics, or a card with DP4a
+With **FSR** on, the **Upscaler** row (**Picture and sound**) also offers XeSS-SR. It needs Intel Iris Xe or Arc graphics, or a card with DP4a
 such as an AMD RX 6000 or NVIDIA RTX 3000 or newer (where it costs more than FSR 3.1), and the Microsoft Visual C++
 Redistributable (x64). Without them the game uses FSR 3.1, and the row says why. **FSR 4**, in that list too, is for AMD
 Radeon RX 9000 cards: it is untested and needs AMD's own `amd_fidelityfx_vk.dll` beside `MHGU.exe`, which isn't included.
 Get it only from AMD, never from another site. Without it, FSR 3.1 runs. FSR has a cost of its own: for speed on a weak GPU,
 lower the 3D resolution or use Low-end mode instead.
 
-Under **Display**: **Window mode** (Borderless, Fullscreen or Windowed), **Screen resolution**, **Field of view**, **HUD anchor**
+Under **Graphics & Audio**, **Screen and HUD**: **Window mode** (Borderless, Fullscreen or Windowed), **Screen resolution**, **Field of view**, **HUD anchor**
 for wide screens, and **Fill the screen**, which lets the game's videos and the menus' backdrops fill a screen wider than 16:9
-instead of showing bars at the sides. Under **Graphics & Audio**: **GPU**, **MSAA**, **FXAA**, **Draw distance**, **Shadows**,
-**Bloom and depth of field**, **Smooth gradients**, the volume, **Reverb** and **Mute in background**.
+instead of showing bars at the sides. Under **Graphics & Audio**: **Shadows** and the volume; under its **Picture and sound**: **MSAA**, **FXAA**,
+**Draw distance**, **Bloom and depth of field**, **Smooth gradients**, **Reverb** and **Mute in background**; under its
+**Advanced**: **GPU**.
 
 ### Saves
 
-From **F1**, **Menu Options**:
+From **F1**, **System**, **Your game**:
 
 - **Import save:** choose a save's `system` file. From Ryujinx: right-click the game, **Open User Save Directory**; from yuzu:
   right-click the game, **Open Save Data Location**; from the phone: export it there (see
@@ -832,10 +834,10 @@ From **F1**, **Menu Options**:
 
 ### Cheats and mods
 
-- **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). **F1**, **Cheats**,
+- **Cheats:** `.txt` files in Atmosphere's format, for version 1.4.0 (its build id is `FB08F1D20FD1204F`). **F1**, **Mods & Cheats**, **Cheats**,
   **Add cheats**, and pick the files. They start off: turn each one on in that page and press **Save**. Turning them on or
   off needs no restart.
-- **Mods:** a mod's folder with `romfs` or `exefs` in it, or a `.zip` of that folder. **F1**, **Mods**, **Add a mod**. Then
+- **Mods:** a mod's folder with `romfs` or `exefs` in it, or a `.zip` of that folder. **F1**, **Mods & Cheats**, **Mods**, **Add a mod**. Then
   order them and turn them on in that page: when two change the same file, the one lower in the list wins.
 - They go in your game folder's `cheats` and `mods`, where you can also put them yourself, and the game restarts to read
   them. Each cheat file and each mod has its own **Remove**: a cheat file's cheats stop at once, and a mod the game is using
@@ -861,8 +863,8 @@ Local play and hubs over the internet work as on the phone, with the same code a
 - **Chat and friends:** the same chat as on the phone, under **F1**, **Multiplayer**, **Chat**: see
   [Chat and friends](#chat-and-friends). The PC has no chat button; new lines still show over the game for a few seconds
   (**Lines over the game**).
-- Adjustable monster HP (**Gameplay**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
-  (**Multiplayer**) come from MHGURecomp.
+- Adjustable monster HP (**Gameplay**, **Monster health**, with HP for single quests under **Per-quest overrides**) and Village quests in the Hub
+  (**Multiplayer**, **In the hub**) come from MHGURecomp.
 
 Tested on PC: joining a phone's hub through the hub server and on the same Wi-Fi. Not yet: creating a hub on the PC (it
 needs the firewall's permission) and a full quest.
@@ -922,7 +924,7 @@ To open `%APPDATA%`, type it in File Explorer's address bar and press Enter.
 | The **Upscaler** row says FSR 3.1 is in use | The upscaler you chose can't run on this PC, and the row's help says why. For XeSS-SR it is often the missing Microsoft Visual C++ Redistributable (x64) |
 | It runs slowly | Lower **3D resolution** or turn on **Low-end mode**; still slow, **Toaster**. On a laptop with two graphics cards, check that **GPU** shows the dedicated one |
 
-The log is in **F1**, **Menu Options**, **Log folder** (`log.txt`; if the game closed and you opened it again, that session's
+The log is in **F1**, **System**, **Your game**, **Log folder** (`log.txt`; if the game closed and you opened it again, that session's
 is `log_prev.txt`): attach it to an [issue](../../issues) with your PC's processor and graphics card. Don't attach game files. You can also ask in the [Discord](https://discord.gg/sk5xEjEMwF).
 
 ## Legal
@@ -941,6 +943,7 @@ Based on the open-source MHGURecomp project (MIT license) and the libraries list
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Their licenses, with the legal notice, are also in the app: gear button, **Credits & Licenses**, **Licenses**. On PC: **F1**, **Credits & Licenses**, **Licenses**, and the `licenses` folder beside `MHGU.exe`.
 
 The chat, the room keys (the matchmaking key's generator) and the control profiles follow the designs of tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
+
 Ideas from the community: Alfonso, sending all the rewards to the box at once.
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
@@ -970,7 +973,7 @@ so once when it starts.
 
 The app also tells you when a new version is out. At most once a day it asks GitHub for this repository's latest release
 (nothing else is sent, not even the phone's model), and at the next start it offers to open the release page. It never
-downloads or installs anything by itself. Gear, **Menu Options**, **Check for updates** turns it off.
+downloads or installs anything by itself. Gear, **System**, **Check for updates** turns it off.
 
 The PC version has no such signature: each release lists the SHA-256 of its zip. To check yours on Windows, open a terminal
 in its folder and run `certutil -hashfile <file> SHA256`; the result must match the release's.
