@@ -3484,7 +3484,9 @@ std::string verify_value() {
 void verify_open() {
     VerifyState v = verify_state();
     if (v.stage == VERIFY_NONE || v.stage == VERIFY_CANCELLED || v.stage == VERIFY_FAILED) verify_start();
-    push(View::Verify, verify_busy(verify_state()) ? "verify.cancel" : "verify.again");
+    bool busy = verify_busy(verify_state());
+    push(View::Verify, busy ? "verify.cancel" : "verify.again");
+    if (!busy) s.focus_request = false;  // (a report opens at its top, the verdict, not scrolled to its last rows)
 }
 void verify_rows(std::vector<Row> &r) {
     VerifyState v = verify_state();
@@ -3508,7 +3510,7 @@ void verify_rows(std::vector<Row> &r) {
         action(r, "verify.back", tr("Back"), []() { pop(); });
         return;
     }
-    if (s.focus == "verify.cancel") focus("verify.again");  // (the check ended under the controller's cursor)
+    if (s.focus == "verify.cancel") s.focus = "verify.again";  // (it ended under the cursor: the report stays at its top)
     std::vector<VerifyLine> lines(std::max(verify_lines(nullptr, 0), 1));
     lines.resize(std::min((int)lines.size(), verify_lines(lines.data(), (int)lines.size())));
     header(r, "verify.verdict", v.stage == VERIFY_CANCELLED ? tr("Check cancelled")
