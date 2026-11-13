@@ -6,8 +6,8 @@
 // The chat's settings are its own (chat.txt beside the settings), applied at once: Save and Discard leave them. Its texts
 // carry their Spanish beside them (cs here, runtime/chat/chat_text.cpp for the chat's own).
 
-int g_chat = chat::GLOBAL;  // the chat the page shows (FRIEND: with g_chat_peer, a friend's key)
-std::string g_chat_peer;
+int g_chat = -1;  // the chat the page shows (FRIEND: with g_chat_peer, a friend's key); -1: not picked yet (the hub's
+std::string g_chat_peer;  // while in one, else Global)
 const char *cs(const char *en, const char *es) {
     chat::set_spanish((s.editing ? s.draft.language : config_language()) == 1);
     return chat::t(en, es);
@@ -80,9 +80,14 @@ void chat_new_key() {
                                "No se pudo copiar: se ve en la fila. Guarda, y compártela en el chat."));
     fprintf(stderr, "[settings] a new matchmaking key was generated (%s)\n", copied ? "copied" : "not copied");
 }
+// The hub server a key goes with, by its name (the default one named, so a friend with another one set gets this one)
+std::string chat_server_name() {
+    char server[sizeof s.draft.ldn_server];
+    return ldn_server_name(s.draft.ldn_server, server, sizeof server) ? std::string(server) : std::string();
+}
 // Multiplayer's rows under the key: share it in the chat
 void chat_key_rows(std::vector<Row> &r) {
-    const std::string key = s.draft.ldn_key, server = s.draft.ldn_server;
+    const std::string key = s.draft.ldn_key, server = chat_server_name();
     action(r, "key.share", cs("Share it in the chat", "Compartirla en el chat"),
            [key, server]() {
                if (!chat::enabled()) {
@@ -140,6 +145,7 @@ void chat_status_row(std::vector<Row> &r) {
 void chat_page_rows(std::vector<Row> &r) {
     cs("", "");  // (the language)
     std::vector<chat::Person> people = chat::people();
+    if (g_chat < 0) g_chat = chat::hub_up() ? chat::HUB : chat::GLOBAL;
     bool found = g_chat != chat::FRIEND;
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
@@ -409,7 +415,7 @@ void friends_page_rows(std::vector<Row> &r) {
                 switch (act[k]) {
                 case 0: chat_open(chat::FRIEND, q.id); break;
                 case 1:
-                    if (!chat::share(chat::FRIEND, q.id, chat::SHARE_KEY, s.draft.ldn_server, s.draft.ldn_key, &why)) s.error = chat::explain(why);
+                    if (!chat::share(chat::FRIEND, q.id, chat::SHARE_KEY, chat_server_name(), s.draft.ldn_key, &why)) s.error = chat::explain(why);
                     else chat_open(chat::FRIEND, q.id);
                     break;
                 case 2: chat::set_muted(q.id, q.name, !q.muted); break;
