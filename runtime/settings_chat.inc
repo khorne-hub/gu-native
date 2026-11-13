@@ -18,17 +18,21 @@ std::string chat_hosts() {  // (the relays without wss://, for the question and 
     return all;
 }
 std::string chat_on_detail() {
-    char b[1400];
+    char b[2048];
     snprintf(b, sizeof b,
              cs("The online chat (Global, General and friends) connects this device to public Nostr relays that anyone can use: "
                 "%s. As with any server on the internet, they can see your IP address, and anyone can read Global and "
-                "General: never share anything private there. Messages to a friend are encrypted on this device. The "
+                "General: never share anything private there. While it is on, your chat name, your game and whether you "
+                "are in a hub or room can be seen by anyone, so your friends find you. Messages to a friend are encrypted "
+                "on this device. The "
                 "project runs no server and there is no account: you are a key made on this device (your friend code). "
                 "Nothing is saved anywhere, and the chat works only while you are connected. You can turn it off or choose "
                 "other relays at any time. The hub's chat needs none of this.",
                 "El chat en línea (Global, General y amigos) conecta este dispositivo a relés públicos de Nostr que cualquiera "
                 "puede usar: %s. Como cualquier servidor de internet, ven tu dirección IP, y cualquiera puede leer Global y "
-                "General: nunca compartas nada privado ahí. Los mensajes a un amigo se cifran en este dispositivo. El "
+                "General: nunca compartas nada privado ahí. Mientras está activo, cualquiera puede ver tu nombre en el "
+                "chat, tu juego y si estás en una sala, para que tus amigos te encuentren. Los mensajes a un amigo se "
+                "cifran en este dispositivo. El "
                 "proyecto no tiene servidores y no hay cuentas: eres una clave creada en este dispositivo (tu código de "
                 "amigo). No se guarda nada en ningún lado, y el chat funciona solo mientras estás conectado. Puedes "
                 "apagarlo o elegir otros relés cuando quieras. El chat de la sala no necesita nada de esto."),
