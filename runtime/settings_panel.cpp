@@ -672,8 +672,8 @@ void guide_button(ImDrawList *dl, ImVec2 p, float size, int physical, bool shoul
         else dl->AddTriangle(ImVec2(c.x, c.y - r), ImVec2(c.x + r, c.y + r * .8f), ImVec2(c.x - r, c.y + r * .8f), k.rule, t);
         return;
     }
-    static const char *const xbox[4] = {"A", "B", "X", "Y"}, *const nintendo[4] = {"B", "A", "Y", "X"};
-    const char *name = (layout == 1 ? nintendo : xbox)[physical & 3];
+    static const char *const abxy[4] = {"A", "B", "X", "Y"}, *const bayx[4] = {"B", "A", "Y", "X"};
+    const char *name = (layout == 1 ? bayx : abxy)[physical & 3];
     ImVec2 ts = font->CalcTextSizeA(text, FLT_MAX, 0, name);
     shadow_text(dl, font, text, ImVec2(c.x - ts.x * .5f, c.y - ts.y * .5f), k.ink, name);
 }

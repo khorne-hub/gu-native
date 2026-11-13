@@ -875,7 +875,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
     server's pings echoed; a Ryujinx host's own proxy (P2P) followed when the server sends one). No server by default: the
     owner decided the player types one, and the help states the official server's rule (Ryujinx-to-Ryujinx only, IP bans
     for others) and that the choice is the player's.
-  - Tested on the PC (hidden instances, the control file): two MHGU.exe met in a hub through E:\Yuzu\yuzu-room.exe and
+  - Tested on the PC (hidden instances, the control file): two MHGU.exe met in a hub through yuzu-room.exe and
     through a Python stand-in of the Ryujinx server (scratch, not shipped). yuzu-cmd never initializes its room network
     (its `-m` does nothing): a real emulator needs the Qt frontend, driven by hand.
 - The port's chat (1.0, S32, after tabarong's PORT_CHAT.md): `runtime/chat/` is the same in MH4U's `app_native/chat/` (keep
@@ -1047,7 +1047,8 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   bar, as large as the room beside it allows (`item_arrow`; MH4U's `place_raw` has the same rule), and the same Spanish
   words (palanca, Envainar, Evasión, Guardia / correr, Diseño, barra de objetos). A name, a text or a default changed in
   one port is changed in the other (MH4U for Android: `app_native/settings_panel.cpp`, `settings_locale.h`, `touch.cpp`).
-- The menu of 1.0 (`E:/claude_trabajo/v1.0/MENU.md` has every row's place, its English and Spanish): six sections in the
+- The menu of 1.0 (its plan, MENU.md, with every row's place in English and Spanish, is in the 1.0 work notes outside
+  the repository): six sections in the
   column at the left, each with its mark (`section_icon`: Controls, Graphics & Audio, Gameplay, Multiplayer, Mods &
   Cheats, System), and Credits & Licenses as a smaller plate under them (MH4U's GPL additional terms name that page).
   A section's page holds its basic rows; a row with an arrow opens a page one level down (`View::Page`, `State::at`:
@@ -1103,7 +1104,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   of the other two); `MHGU_EFFECTS_FLIP=<s>` turns them on and off in turns (a test). The volcano's smoke in Jurassic
   Frontier's sky and the cooking pot's steam in Bherna stay with Effects off: part of the stage's models, not effect units.
   `MHGU_EFFECTS=0|1` overrides the ini in a test run. The scripts that found the classes and vtables (from a decompressed
-  `main` and `generated/main`): E:\claude_trabajo\v1.0\out\gfx\tools (dtis.py, props.py, strrefs.py).
+  `main` and `generated/main`) are in the 1.0 work notes, outside the repository (dtis.py, props.py, strrefs.py).
 - 3D resolution (1.0): `[Display] RenderScale` takes any percent from `RENDER_SCALE_MIN` (10) to 100, the 3D picture never
   under 320x180 (`config_load`). The menu's row (`scale_row`) is a number: left / right one percent, a tap the usual ones
   (100 ... 20); on a phone the list ends with Exact size, which sets `[Display] RenderResolution` to the percent's size and
@@ -1118,7 +1119,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `exec.c vk_shader_progress`: the start's queued builds and the prewarm's translations, done of total) shows once they
   have taken 3 s and while they last, then "Shaders built" for a moment; the log says when it showed and when it ended.
   PC after a clear: "353 of 6627 built 3.0 s after the overlay's first frame".
-- What the PC showed of the 1.0 graphics work (E:\claude_trabajo\v1.0\out\gfx: `pc_run.sh`, `evidence\`): the menu's rows
+- What the PC showed of the 1.0 graphics work (the 1.0 work notes: `pc_run.sh`, `evidence\`): the menu's rows
   and their EN/ES help (Effects, the 3D resolution at 95 % with its size and the presets list, Clear shader cache with its
   size), the clear at the next start and the plate ("965 de 7021 (13 %)" over the first start's credits). Effects Off: the log
   says each class's draws left out, and uEffect's draw is what reaches its particle managers (it walks the unit's list at
@@ -1126,7 +1127,7 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   with Jaggi near, a great sword's charge) showed a particle big enough to see go, so the picture with and without is still
   to be seen in a hunt with hits on a phone (the MH4U port's same switch removes the sand ship's dust and the sun's flare in
   its PC runner's deterministic G2). Owed on a phone (the 2026-11-13 phones had a Play Protect dialog in front; nothing was
-  installed): E:\claude_trabajo\v1.0\out\gfx\phone_tests.sh <serial> gu (Effects in quest 301's area 6, the menu's rows on
+  installed): the 1.0 work notes' phone_tests.sh <serial> gu (Effects in quest 301's area 6, the menu's rows on
   a phone, 57 %, the clear and the plate, and MHGU_PERF_MENU_PRESENT 0 / 1 for 1.0's S25), and Exact size by hand.
 - Texture packs are romfs mods (they replace the game's `.tex` files): `[romfs] mod <name>: N files (X MB), T of them
   textures (Y MB as files ...)` says what each brings. No pack format of the emulators' (KTX2 and the like) applies here: the
