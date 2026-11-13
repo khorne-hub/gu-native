@@ -783,8 +783,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   desktop's mouse does. So menus that run none of the counted cursors take them: the Options' values, a talk's yes / no (#196,
   #210, #215, Discord). A dialog is a menu for the touch controls too (`menu_dialog_age`: the talk window's
   update 0x83d010 ran, or the message window 0x84bc40 waits for a button, as the desktop's mouse sees them): a talk's window sits
-  where the chat's log does, which is no menu window here, so the Transpurrter's "cancel the delivery?" had no menu pad (#210)
-  and a town's "choose a destination" none either (#163, #216). `[touch] a model in the menu` and `[touch] the player walks
+  where the chat's log does, which is no menu window here, so the Transpurrter's "cancel the delivery?" had no menu pad (#210).
+  A town's world map (X) and the "Choose a destination" list after it (the village, the hunter's house) are neither: no window
+  the HUD's layers tell, no talk, only a cursor of the game's running, and the hunter counts as played (the town's update runs
+  under them). Outside a quest such a cursor makes a menu (`town_cursor_menu`; in a town none runs but a menu's), so the menu
+  pad shows there and the stick moves the cursor (#163, #216; up to 0.1.9.3 only the highlighted place could be taken).
+  `[touch] a model in the menu` and `[touch] the player walks
   nowhere in this menu` are logged always (a model that stops turning after a moment, Low-end at 50 %: #162, #186, Discord).
 - A text entry of the game's (the hunter's name at character creation...) shows a Keyboard plate at the top while the port's
   menu is closed (`g_text_plate`): a tap opens the menu's keyboard view for it (`SETTINGS_VIEW_GAME_TEXT`), Accept types the

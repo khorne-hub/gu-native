@@ -756,8 +756,16 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // A dialog of the game's - the talk window shown (a person's lines and their yes / no), the message window waiting for a
 // button - is a menu too, whatever is drawn (hle/mousemenu.c menu_dialog_age): the talk window sits where the chat's log
 // does, which is no menu window here, so a talk's yes / no in a quest (the Transpurrter's "cancel the delivery?") had no
-// menu pad and its cursor could not move (#210), nor a town's "choose a destination" (#163, #216)
+// menu pad and its cursor could not move (#210). A town's "choose a destination" is no dialog: town_cursor_menu below
 std::atomic<uint64_t> g_menu_press_ns;  // (SDL_GetTicksNS) when Plus or Minus was last pressed
+// A town's screen that only a cursor of the game's runs, with no window the HUD's layers tell: the world map (X) and the
+// "Choose a destination" list that follows it, in the village or in the hunter's house (#163, #216). The hunt's controls
+// stayed there with no menu pad, the stick walked nobody and moved no cursor, so only the highlighted place could be
+// taken. In a town no Hunter Art comes of the d-pad, and no cursor runs but a menu's (RG406V, Bherna and its house: none
+// while walking about, one in every update with the map or the list up)
+bool town_cursor_menu(bool quest) {
+    return !quest && menu_cursor_age() <= 1 && plat_now_ns() - g_town_ns < 500 * 1000000ull;
+}
 bool game_menu(uint32_t hunter) {
     {
         static bool was;  // (MHGU_TOUCH_LOG: as it changes)
@@ -768,6 +776,16 @@ bool game_menu(uint32_t hunter) {
             rt_logf("[touch] a dialog of the game's %s (frame %llu)\n", dialog ? "up: a menu" : "gone", (unsigned long long)g_present_count);
         was = dialog;
         if (dialog) return true;
+    }
+    {
+        static bool was;  // (MHGU_TOUCH_LOG: as it changes)
+        static int dbg = -1;
+        if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+        bool town = town_cursor_menu(hunter != 0);
+        if (town != was && dbg)
+            rt_logf("[touch] a town's cursor with no window %s (frame %llu)\n", town ? "runs: a menu" : "stopped", (unsigned long long)g_present_count);
+        was = town;
+        if (town) return true;
     }
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
@@ -832,7 +850,7 @@ std::atomic<int> g_frames_since_preview{1000};
 float mpad_fade(uint64_t ticks) {  // (1 while a menu window shows, down to 0 after it is gone)
     if (!config_live_touch_show(TB_MENU_PAD)) return 0.0f;
     if (g_frames_since_front.load() <= 2 && config_live_touch_show(TB_STICK)) return 0.0f;
-    if (menu_dialog_age() <= 2) return 1.0f;  // (a dialog: game_menu)
+    if (menu_dialog_age() <= 2 || town_cursor_menu(g_in_quest.load())) return 1.0f;  // (a dialog, a town's map: game_menu)
     uint64_t m = g_menu_ns.load();
     if (!m) return 0.0f;
     if (g_frames_since_menu.load() <= 1 || menu_cursor_age() <= 1) return 1.0f;
