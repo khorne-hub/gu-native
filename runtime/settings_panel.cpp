@@ -5219,13 +5219,15 @@ void touch_picker(std::vector<Row> &options, float scale) {
     float f = s.m.f, pad = s.m.pad, line = s.m.line, spacing = ImGui::GetStyle().ItemSpacing.y;
     float band = std::max(f * 2.4f, s.m.row * .95f), side = band * .74f, title = std::floor(f * 1.05f);
     float frame = std::max(2.f, f * .14f) * 1.7f;  // (draw_frame's rules at the bottom)
-    float longest = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3;
+    // (its row's help, opened by the "?" in the band: over the choices, in the help's own plate)
+    const bool helped = !s.dropdown.help.empty(), helping = helped && s.dropdown.show_help;
+    // (the title whole beside its X, and its "?" when it has one: on a narrow screen it would be cut)
+    float longest = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str()).x + side + pad * 3 +
+                    (helped ? side + pad : 0);
     for (const auto &o : options)  // (a remembered one: and its x)
         longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f +
                                         (o.remove ? forget_side() + f * .6f : 0));
     float w = std::clamp(longest + pad * 2, vp->WorkSize.x * .32f, vp->WorkSize.x * .62f);
-    // (its row's help, opened by the "?" in the band: over the choices, in the help's own plate)
-    const bool helped = !s.dropdown.help.empty(), helping = helped && s.dropdown.show_help;
     const float hsize = std::floor(f * .84f), hwrap = w - pad * 2 - f * 1.4f;
     const float help_h = helping ? font->CalcTextSizeA(hsize, FLT_MAX, hwrap, s.dropdown.help.c_str()).y + f * 1.0f + spacing : 0;
     float h = std::min(band + line * 2 + pad * 2 + help_h + options.size() * (s.m.row + spacing) + pad + frame,
@@ -5261,9 +5263,16 @@ void touch_picker(std::vector<Row> &options, float scale) {
         help_seal(dl, q.GetCenter(), side * .4f, s.dropdown.show_help, down);
         title_end = q.Min.x - pad * .5f;
     }
-    ImVec2 ts = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
+    // (a title longer than the plate allows, its widest on a narrow screen: smaller, to fit whole)
+    float tsize = title;
+    ImVec2 ts = title_font()->CalcTextSizeA(tsize, FLT_MAX, 0, s.dropdown.title.c_str());
+    const float room = title_end - (x0 + pad * 1.5f);
+    if (ts.x > room && room > 0) {
+        tsize = std::floor(std::max(title * room / ts.x, title * .6f));
+        ts = title_font()->CalcTextSizeA(tsize, FLT_MAX, 0, s.dropdown.title.c_str());
+    }
     dl->PushClipRect(ImVec2(x0, y0), ImVec2(title_end, y0 + band), true);
-    shadow_text(dl, title_font(), title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
+    shadow_text(dl, title_font(), tsize, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(x0 + pad, y0 + band + line * 2 + pad));
     ImGui::BeginChild("##choices",
