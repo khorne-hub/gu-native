@@ -322,6 +322,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - A menu's left windows on layer 100 keep the middle 16:9 with its windows at 21:9 and Edges. Some are drawn before the menu's windows
   in the frame (the smithy's parchment and its model, the quest counter's quest card: under the window beside them), so a window of
   this frame or the two before tells (`ui_window_frame`); by the pass alone they went Right, over that window. hudtrace marks them.
+- Layer 110 holds the loading screen's strips (y 168, 433, 570, the 168 ones first in the pass) and, in the field, a gun's
+  quick-aim reticle (one piece at about 650, 433), the lock-on markers and effects: those keep the middle at any HUD anchor, as
+  the 3D picture they are on does. Up to 0.1.9.3 the reticle went right by place with Edges / 21:9, and in frames where its y
+  fell within 0.3 of 433 it was taken for a strip, with the status after it at the loading screen's places (RG406V,
+  `MHGU_UI_ANCHOR=Edges`, `MHGU_ASPECT=2340:1080`, Valor heavy bowgun training: GU#219).
 - The hunter: heading at +0x14a0, in the camera's units, (x, z) = (sin, cos); written, the hunter turns at once. Place at +0xa0, zone at
   +0x1054, which monsters have too. The classes are `uPlayerQuest00..15` in weapon order, no 05: 04 and 06 the bowguns, 10 the bow.
   Writing the place does nothing: the game puts it back. Each zone of a map has its own coordinates.

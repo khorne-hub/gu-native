@@ -4690,8 +4690,13 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                 if (fabsf(pos_z - 110.0f) < 0.5f) {
                     sy = 1.0f;
                     // (only the strips: the lock-on markers and other effects use layer 110 too, mid-hunt, and made
-                    // everything after them center-anchored, so the HUD jumped down)
-                    loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 433.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f;
+                    // everything after them center-anchored, so the HUD jumped down. A gun's quick aim draws its reticle
+                    // here too, one piece at about 650, 433 (642..657, 432.7..433.3: RG406V, Valor heavy bowgun): taken
+                    // for the middle strip, it went to x * s and the status drawn after it to the loading screen's rule,
+                    // the clock and the bars toward the middle in those frames with Edges / 21:9. By the middle a piece
+                    // at y 433 is a strip only once the pass is the loading screen's: the others came before it)
+                    loading_strip = fabsf(pos_y - 168.0f) < 0.3f || fabsf(pos_y - 570.0f) < 0.3f ||
+                                    (fabsf(pos_y - 433.0f) < 0.3f && (ui_loading_pass || fabsf(pos_x - 650.0f) > 40.0f));
                     if (loading_strip) ui_loading_pass = true;
                     static int dbg = -1;  // (MHGU_TOUCH_LOG: a strip taken mid-hunt would put the whole HUD at the game's places)
                     if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != NULL;
@@ -4891,6 +4896,12 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                                 if (picture) map_frame = g_present_count;
                             }
                         }
+                    } else if (fabsf(pos_z - 110.0f) < 0.5f && hunt_hud && !loading_strip) {
+                        // 110.0 in the field: a gun's quick-aim reticle, the lock-on markers, effects: on the 3D picture,
+                        // which keeps its middle at any HUD anchor. By place (the fallback below) the reticle, at x 650.1,
+                        // went right with Edges / 21:9, off the shot's line (GU#219), and anything else left or right
+                        anchor = ANCHOR_CENTER;
+                        vanchor = V_CENTER;
                     } else {
                         // General fallback for other layers
                         if (pos_x <= 430.0f) anchor = ANCHOR_LEFT;
