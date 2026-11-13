@@ -1158,7 +1158,7 @@ void choices(const Row &row, std::vector<std::string> names, int selected, std::
     int first = std::clamp(selected, 0, (int)names.size() - 1);
     s.dropdown = {true, false, false, row.id, std::move(names), selected, std::move(set), {}, row.title, std::move(removable),
                   std::move(remove)};
-    s.dropdown.help = help_text(row);
+    s.dropdown.help = help_text(row);  // (and as the page's row has it: picker_help)
     s.dropdown_at = anim_now();
     focus("choice." + std::to_string(first));
 }
@@ -2398,7 +2398,7 @@ void rows_graphics_60(std::vector<Row> &r) {
 }
 void reset_graphics_60() { s.draft.volume = config_defaults().volume; }
 MENU_ENTRY("graphics", 60, rows_graphics_60, reset_graphics_60);
-void rows_graphics_70(std::vector<Row> &r) {
+void rows_graphics_screen_85(std::vector<Row> &r) {
 #ifdef __ANDROID__
     add_bool(r, "stats", "FPS counter", &s.draft.show_stats, ini("ShowStats"));
 #else  // (a desktop: Off, Basic (the file's On) or Full: runtime/perfstats.cpp, platform/win_stats.c)
@@ -2407,8 +2407,8 @@ void rows_graphics_70(std::vector<Row> &r) {
     r.back().help = tr("Basic: frames per second, frame time, the longest frame and the GPU's temperature. Full adds a line on the GPU (use, temperature, clock, video memory) and one on the CPU (the game's use and memory, the CPU's clock, the time the game's and the render threads take per frame). The CPU's temperature is not shown: Windows lets no program read it without installing a driver.");
 #endif
 }
-void reset_graphics_70() { s.draft.show_stats = config_defaults().show_stats; }
-MENU_ENTRY("graphics", 70, rows_graphics_70, reset_graphics_70);
+void reset_graphics_screen_85() { s.draft.show_stats = config_defaults().show_stats; }
+MENU_ENTRY("graphics/screen", 85, rows_graphics_screen_85, reset_graphics_screen_85);  // (the FPS counter: with the HUD, where the editor moves it)
 // Graphics & Audio > Picture and sound. (None of these with Low-end mode: config.c. fxaa, FXAA's rows: a desktop's
 // Low-end mode keeps them, only Toaster's turns FXAA off. The anti-aliasing rows while FSR runs: FSR at the next start
 // turns them off. A desktop's Low-end mode keeps FXAA and turns FSR off there, config.c, so with it they say what that
@@ -3755,10 +3755,66 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     }
     dl->PopClipRect();
 }
+// The phone's rows to the pages one level down (MENU.md): plates side by side, two or three to a line, each with its
+// title, its summary under it and a chevron; lit as a picked row. Their runs, by row: the place in its run and the run's
+// length (0: not a page's row)
+void tile_runs(const std::vector<Row> &rows, std::vector<int> &at, std::vector<int> &run) {
+    at.assign(rows.size(), 0), run.assign(rows.size(), 0);
+    for (size_t i = 0; i < rows.size();) {
+        size_t j = i;
+        while (j < rows.size() && !rows[j].id.compare(0, 5, "page.") && !rows[j].header)
+            j++;
+        for (size_t k = i; k < j; k++)
+            at[k] = (int)(k - i), run[k] = (int)(j - i);
+        i = j > i ? j : i + 1;
+    }
+}
+void tile_draw(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool held) {
+    const Look k = touch_look();
+    ImFont *font = ImGui::GetFont();
+    float f = ImGui::GetFontSize(), line = s.m.line, cy = rect.GetCenter().y;
+    if (lit) {
+        dl->AddRectFilledMultiColor(rect.Min, rect.Max, k.bar0, k.bar1, k.bar1, k.bar0);
+        dl->AddRect(rect.Min, rect.Max, fade(k.glow, held ? 1.f : .85f), 0, 0, line * .7f);
+    } else
+        plate(dl, rect, line * .8f, held, r.enabled);
+    ImU32 ink = !r.enabled ? theme().text_off : lit ? IM_COL32(255, 248, 232, 255) : k.ink;
+    float right = rect.Max.x - f * .75f, x = rect.Min.x + f * .8f, room = right - f * .7f - x;
+    chevron(dl, ImVec2(right, cy), f * .26f, 1, lit ? ink : fade(k.rule, .85f), std::max(2.f, line));
+    if (lit)
+        diamond(dl, ImVec2(rect.Min.x + f * .42f, cy), f * .17f, k.glow);
+    float size = f, wide = font->CalcTextSizeA(size, FLT_MAX, 0, r.title.c_str()).x;
+    if (wide > room)  // (a long title: smaller, down to .8 of the letters, then cut at a word)
+        size = std::max(std::floor(f * .8f), std::floor(f * room / wide));
+    std::string title = whole_words(font, size, r.title, room);
+    if (title.empty())
+        title = r.title;
+    float small = std::floor(f * .78f);
+    std::string value = r.value;
+    if (!value.empty())
+        value = whole_words(font, small, value, room);
+    ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, title.c_str());
+    float y = value.empty() ? cy - ts.y * .5f : cy - (ts.y + small * 1.05f) * .5f;
+    dl->PushClipRect(rect.Min, rect.Max, true);
+    shadow_text(dl, font, size, ImVec2(x, y), ink, title.c_str());
+    if (!value.empty())
+        dl->AddText(font, small, ImVec2(x, y + ts.y + small * .05f), lit ? fade(ink, .85f) : k.rule, value.c_str());
+    dl->PopClipRect();
+}
 // A row's help opened or closed (its "?", Y or H): one at a time; the list shows it as it opens
 void toggle_help(const std::string &id) {
     s.help_open = s.help_open == id ? std::string() : id;
     s.help_scroll = !s.help_open.empty();
+}
+// The open picker's help: its row's, as the view's rows have it this frame
+void picker_help(const std::vector<Row> &rows) {
+    if (!s.dropdown.open)
+        return;
+    for (const Row &r : rows)
+        if (r.id == s.dropdown.row) {
+            s.dropdown.help = help_text(r);
+            return;
+        }
 }
 // Y (the left face button) or H: the picked row's help, as its "?"
 void help_keys(const std::vector<Row> &rows) {
@@ -3772,7 +3828,7 @@ void help_keys(const std::vector<Row> &rows) {
         return;
     }
     for (const Row &r : rows)
-        if (r.id == s.focus && !r.header && !help_text(r).empty()) {
+        if (r.id == s.focus && !r.header && r.id.compare(0, 5, "page.") && !help_text(r).empty()) {
             toggle_help(r.id);
             return;
         }
@@ -3839,11 +3895,15 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
     const float xs = touch ? forget_side() : font * 1.3f;  // (that x's side)
     // The phone: a row's help is the "?" at its right, opened under it (MENU.md: no paragraphs on the pages). A column
     // for them where a row of the view has one, so the values line up
+    std::vector<int> tile_at, tile_run;  // (the phone's pages' rows: plates side by side)
+    tile_runs(rows, tile_at, tile_run);
+    if (!touch || list || (s.view != View::Main && s.view != View::Page))
+        tile_run.assign(rows.size(), 0);
     std::vector<char> helps(rows.size(), 0);
     bool seals = false;
     if (touch && !list && !keyboard_view && !plated)
         for (size_t i = 0; i < rows.size(); i++)
-            seals |= helps[i] = !rows[i].header && !help_text(rows[i]).empty();
+            seals |= helps[i] = !rows[i].header && !tile_run[i] && !help_text(rows[i]).empty();
     const float qw = seals ? std::min(s.m.row * .66f, font * 2.3f) : 0;
     for (int i = 0; i < (int)rows.size(); i++) {
         Row &r = rows[i];
@@ -3868,6 +3928,42 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             if (touch && end < p.x + width)  // (the phone: a rule after it, as the game's section titles)
                 w->DrawList->AddLine(ImVec2(end, y), ImVec2(p.x + width, y), fade(theme().accent, .45f),
                                      std::max(1.f, s.m.line * .5f));
+            continue;
+        }
+        if (tile_run[i]) {  // (a page one level down: a plate of a line of them)
+            const int per = width >= font * 34 ? 3 : 2, k = tile_at[i], n = tile_run[i], first = k / per * per;
+            const int on = std::min(per, n - first);  // (a last line's fewer: wider)
+            float tw = (width - (on - 1) * gap) / on, th = s.m.row;
+            for (int j = i - k; j < i - k + n; j++)  // (the run's height: with a summary under a title, a little taller)
+                if (!rows[j].value.empty())
+                    th = std::max(s.m.row, font * 2.9f);
+            if (k % per)
+                ImGui::SameLine();
+            ImVec2 p = ImGui::GetCursorScreenPos();
+            ImGui::PushID(r.id.c_str());
+            ImGuiID id = w->GetID("row");
+            ImRect rect(p, ImVec2(p.x + tw, p.y + th));
+            bool selected = passive ? r.id == s.dropdown.row : s.focus == r.id;
+            ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0, 0, 0, 0));
+            ImGui::PushStyleColor(ImGuiCol_NavCursor, ImVec4(0, 0, 0, 0));
+            ImGui::BeginDisabled(!r.enabled);
+            bool clicked = ImGui::Button("###row", ImVec2(tw, th));
+            bool held = ImGui::IsItemActive();
+            ImGui::EndDisabled();
+            ImGui::PopStyleColor(4);
+            if (ImGui::IsItemHovered())
+                s.hovered = r.id;
+            if (selected && r.enabled && !passive)
+                own_focus(w, id, rect);
+            tile_draw(w->DrawList, r, rect, selected && r.enabled, held);
+            s.targets.push_back({r.id, rect.GetCenter(), r.enabled});
+            ImGui::PopID();
+            if (clicked && r.enabled && !s.swallow) {
+                focus(r.id);
+                activate = r.activate;
+            }
             continue;
         }
         bool key = keyboard_view && i < keys;
@@ -4556,6 +4652,7 @@ void touch_panel(bool *open, const Config &before) {
         keyboard_keys();
     auto rows = rows_for_view(open);
     reopen_picker(rows);
+    picker_help(rows);
     std::vector<Row> options;  // (a dropdown open: the picker's, the controller moves in it)
     if (s.dropdown.open)
         options = dropdown_rows();
@@ -4682,7 +4779,7 @@ void touch_panel(bool *open, const Config &before) {
         float tw = 0;
         for (int i = 0; i < PAGES - 1; i++)
             tw = std::max(tw, ImGui::CalcTextSize(tr(page_names[i])).x);
-        tw = std::clamp(tw + f * 3.f, (end - left) * .16f, (end - left) * .26f);
+        tw = std::clamp(tw + f * 3.f, (end - left) * .16f, (end - left) * .3f);  // (a 4:3 screen: up to .3, the names at their size)
         float gap = pad * .5f, credits = std::max(f * 2.f, s.m.row * .62f), ornament = pad * 1.6f;
         float th = std::min((bottom - top - credits - ornament - gap * (PAGES - 2)) / (PAGES - 1), s.m.row * 1.1f);
         ImU32 bright = IM_COL32(255, 248, 232, 255);
@@ -4793,7 +4890,7 @@ void touch_panel(bool *open, const Config &before) {
                                   {confirm, "Confirm", true},
                                   {back, "Back", true},
                                   {overlay_face_position(2), guide_remove() ? "Remove" : "Save", guide_remove() || dirty()},
-                                  {overlay_face_position(3), "Help", !s.dropdown.open},
+                                  {overlay_face_position(3), "Help", !s.dropdown.open || !s.dropdown.help.empty()},
                                   {-2, "Sections", sections}};
             float text = std::floor(guide * .78f), gapx = guide * .8f, gx = end;
             for (int i = (int)std::size(items) - 1; i >= 0; i--) {
@@ -5739,6 +5836,7 @@ void settings_panel(bool *open) {
     }
     auto rows = rows_for_view(open);
     reopen_picker(rows);
+    picker_help(rows);
     std::vector<Row> options;  // (a dropdown open: the controller moves in it)
     if (s.dropdown.open)
         options = dropdown_rows();
