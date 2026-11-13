@@ -3511,7 +3511,7 @@ void verify_rows(std::vector<Row> &r) {
         return;
     }
     if (s.focus == "verify.cancel")  // (it ended under the cursor: the report stays at its top)
-        s.focus = "verify.again", s.focus_request = false;
+        s.focus = "verify.again", s.focus_request = false, s.focus_scroll_frames = 0;
     std::vector<VerifyLine> lines(std::max(verify_lines(nullptr, 0), 1));
     lines.resize(std::min((int)lines.size(), verify_lines(lines.data(), (int)lines.size())));
     header(r, "verify.verdict", v.stage == VERIFY_CANCELLED ? tr("Check cancelled")
