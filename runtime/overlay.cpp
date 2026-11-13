@@ -909,12 +909,25 @@ static void frame_once(void *cpu) {
                 for (int i = 0; i < n; i++) ImGui::BulletText("%s", names[i]);
             }
             if (ImGui::CollapsingHeader("Plugin UI")) forge_imgui_run(cpu, FORGE_IMGUI_RENDER);
-            // (by touch: a finger dragged anywhere but on a control - a slider, a button held - scrolls the window; a press
-            // on the window's own background makes its move id the active one, which moves nothing off the title bar)
-            ImGuiID active = ImGui::GetActiveID();
-            if (touch_ui && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) &&
-                (!active || (GImGui->ActiveIdWindow && active == GImGui->ActiveIdWindow->MoveId)) && ImGui::IsMouseDragging(ImGuiMouseButton_Left, 8 * scale))
-                ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
+            // (by touch: a finger dragged up or down scrolls the window, as a phone's lists do - from its background, a
+            // header, a button or a box: the press is let go, so nothing is clicked when the finger lifts; a slider or a
+            // field the press already changed keeps the finger. A press on the window's background makes its move id the
+            // active one, which moves nothing off the title bar)
+            static bool scrolling;
+            if (!touch_ui || !io.MouseDown[ImGuiMouseButton_Left]) scrolling = false;
+            if (touch_ui && !scrolling &&
+                ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem) &&
+                ImGui::IsMouseDragging(ImGuiMouseButton_Left, 10 * scale)) {
+                ImVec2 d = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left, 0);
+                ImGuiID active = ImGui::GetActiveID();
+                bool background = !active || (GImGui->ActiveIdWindow && active == GImGui->ActiveIdWindow->MoveId);
+                if (fabsf(d.y) > fabsf(d.x) && (background || !GImGui->ActiveIdHasBeenEditedBefore)) {
+                    scrolling = true;
+                    if (active) ImGui::ClearActiveID();
+                    LOG("[overlay] forge's menu scrolled by a finger (%.0f of %.0f)\n", ImGui::GetScrollY(), ImGui::GetScrollMaxY());
+                }
+            }
+            if (scrolling) ImGui::SetScrollY(ImGui::GetScrollY() - io.MouseDelta.y);
         }
         ImGui::End();
         if (!keep) set_open(false);

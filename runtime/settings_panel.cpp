@@ -1830,7 +1830,7 @@ Row cheat_row(int i) {
 void cheat_rows(std::vector<Row> &r) {
 #ifdef __ANDROID__  // (the app's cheats folder is in Android/data, out of a file manager's reach: copied in by ImportActivity)
     action(r, "cheats.add", tr("Add cheats"), []() { ui_request_import(0); });
-    r.back().help = tr("Copies cheat .txt files (Atmosphere's format, for 1.4.0) from your phone's storage. You can also put them yourself in the cheats folder inside your game folder. The game restarts to read them.");
+    r.back().help = tr("Copies cheat .txt files (Atmosphere's format, for 1.4.0: in a list's folder, the file named FB08F1D20FD1204F.txt) from your phone's storage. You can also put them yourself in the cheats folder inside your game folder. The game restarts to read them.");
     for (int i = 0; i < (int)cheat_tab.draft.size(); ++i)
         r.push_back(cheat_row(i));
     cheat_left_rows(r);
