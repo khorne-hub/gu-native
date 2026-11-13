@@ -143,6 +143,8 @@ void chat_status_row(std::vector<Row> &r) {
         if (d < 0) chat::set_enabled(false);
     };
     r.push_back(std::move(row));
+    if (chat::enabled())  // (the phone shows the switch alone: the relays' state under it)
+        note(r, "chat.state", chat::status_text(st, up, total) + (st == chat::ONLINE ? fmt(", %d %s", chat::online_count(), cs("online", "en línea")) : std::string()));
 }
 // The chat page: which chat, Say something, its last lines (the sender's name over each, as tabarong's panel), the people
 // in it (a tap: add as a friend, mute, block), and the chat's options
@@ -172,10 +174,9 @@ void chat_page_rows(std::vector<Row> &r) {
                 to.push_back({chat::FRIEND, p.id});
                 if (g_chat == chat::FRIEND && g_chat_peer == p.id) at = (int)to.size() - 1;
             }
-        add_choice(r, "chat.channel", "", at, names, [to](int i) {
+        add_choice(r, "chat.channel", cs("Chat", "Chat"), at, names, [to](int i) {
             if (i >= 0 && i < (int)to.size()) g_chat = to[i].first, g_chat_peer = to[i].second;
         });
-        r.back().title = cs("Chat", "Chat");
         r.back().help = chat::channel_help(g_chat);
     }
     std::string label;
@@ -256,13 +257,12 @@ void chat_page_rows(std::vector<Row> &r) {
     {
         int on = 0;
         for (const chat::Person &p : people) on += p.is_friend && p.online;
-        r.back().value = fmt("%d %s ›", on, cs("online", "en línea"));
+        r.back().value = fmt("%d %s", on, cs("online", "en línea"));
     }
     header(r, "chat.options", cs("Options", "Opciones"));
-    add_choice(r, "chat.overlay", "", chat::overlay(),
+    add_choice(r, "chat.overlay", cs("Lines over the game", "Líneas sobre el juego"), chat::overlay(),
                {cs("Off", "Apagado"), cs("Hub and friends", "Sala y amigos"), cs("All", "Todos")},
                [](int i) { chat::set_overlay(i); });
-    r.back().title = cs("Lines over the game", "Líneas sobre el juego");
     r.back().help = cs("New lines show for a few seconds over the game, beside the chat button.",
                        "Las líneas nuevas se ven unos segundos sobre el juego, junto al botón del chat.");
 #ifdef __ANDROID__
@@ -303,7 +303,7 @@ void chat_page_rows(std::vector<Row> &r) {
         const bool custom = now != def;
         std::string list;
         for (const std::string &x : now) list += (list.empty() ? "" : " ") + x;
-        add_choice(r, "chat.relays", "", custom ? 1 : 0,
+        add_choice(r, "chat.relays", cs("Relays", "Relés"), custom ? 1 : 0,
                    {cs("The usual ones", "Los de siempre"), custom ? list : std::string(cs("Custom...", "Otros..."))}, [list](int i) {
                        if (i == 0) {
                            chat::set_relays({});
@@ -329,7 +329,6 @@ void chat_page_rows(std::vector<Row> &r) {
                            return true;
                        });
                    });
-        r.back().title = cs("Relays", "Relés");
         r.back().help = std::string(cs("The Nostr relays the online chat goes through. The usual ones: ", "Los relés de Nostr por los que va el chat en línea. Los de siempre: ")) +
                         "relay.damus.io, nos.lol, relay.primal.net. " +
                         cs("Everyone you want to talk to needs at least one relay in common with you.",
@@ -457,7 +456,7 @@ void chat_entry_rows(std::vector<Row> &r) {
     action(r, "chat.open", cs("Chat", "Chat"), []() { push(View::Chat, "chat.say"); });
     int up = 0, total = 0;
     chat::Status st = chat::status(&up, &total);
-    r.back().value = (unread ? fmt("%d %s - ", unread, cs("new", "nuevas")) : std::string()) + chat::status_text(st, up, total) + " ›";
+    r.back().value = (unread ? fmt("%d %s - ", unread, cs("unread", "sin leer")) : std::string()) + chat::status_text(st, up, total);
     r.back().help = cs("Talk with the hub you are in, with every player of the ports (Global) or of this game (General), and "
                        "with your friends.",
                        "Habla con la sala en la que estás, con todos los jugadores de los ports (Global) o de este juego "
@@ -465,6 +464,6 @@ void chat_entry_rows(std::vector<Row> &r) {
     action(r, "friends.open", cs("Friends", "Amigos"), []() { push(View::Friends, "friends.code"); });
     int on = 0, requests = 0;
     for (const chat::Person &p : chat::people()) on += p.is_friend && p.online, requests += p.request && !p.is_friend && !p.blocked;
-    r.back().value = (requests ? fmt("%d %s - ", requests, cs("requests", "solicitudes")) : std::string()) + fmt("%d %s ›", on, cs("online", "en línea"));
+    r.back().value = (requests ? fmt("%d %s - ", requests, cs("requests", "solicitudes")) : std::string()) + fmt("%d %s", on, cs("online", "en línea"));
     r.back().help = cs("Your friend code, adding friends, and who you muted or blocked.", "Tu código de amigo, agregar amigos, y a quién silenciaste o bloqueaste.");
 }

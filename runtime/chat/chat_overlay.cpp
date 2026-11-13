@@ -26,7 +26,7 @@ std::vector<Shown> g_shown;
 unsigned g_seen_serial;
 bool g_serial_known;
 // the button: its centre as fractions of the screen, its size (1: its own); a drag under way
-constexpr float HOME_X = .045f, HOME_Y = .40f;
+constexpr float HOME_X = .11f, HOME_Y = .30f;  // (right of the column of buttons at the left edge, over the stick)
 float g_bx = HOME_X, g_by = HOME_Y, g_bs = 1;
 bool g_loaded, g_drag, g_dragged, g_on_screen;
 float g_drag_dx, g_drag_dy, g_down_x, g_down_y, g_w = 1, g_h = 1;
@@ -119,7 +119,7 @@ void overlay_draw(float w, float h) {
     }
     if (g_shown.empty()) return;
     // the lines: plates beside the button (or where it would be), the newest at the bottom, fading out
-    const float fs = ImGui::GetFontSize() * 1.05f, pad = 6 * scale, wrap = std::min(w * .42f, 560 * scale);
+    const float fs = ImGui::GetFontSize() * 1.3f, pad = 7 * scale, wrap = std::min(w * .45f, 640 * scale);
     float x = g_on_screen ? bx + br + 8 * scale : bx, y = by - br;
     if (x + wrap + 2 * pad > w) x = std::max(4.f, bx - br - 8 * scale - wrap - 2 * pad);
     for (const Shown &s : g_shown) {
