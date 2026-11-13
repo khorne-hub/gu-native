@@ -901,6 +901,16 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   `exec.c vk_shader_progress`: the start's queued builds and the prewarm's translations, done of total) shows once they
   have taken 3 s and while they last, then "Shaders built" for a moment; the log says when it showed and when it ended.
   PC after a clear: "353 of 6627 built 3.0 s after the overlay's first frame".
+- What the PC showed of the 1.0 graphics work (E:\claude_trabajo\v1.0\out\gfx: `pc_run.sh`, `evidence\`): the menu's rows
+  and their EN/ES help (Effects, the 3D resolution at 95 % with its size and the presets list, Clear shader cache with its
+  size), the clear at the next start and the plate ("965 de 7021 (13 %)" over the first start's credits). Effects Off: the log
+  says each class's draws left out, and uEffect's draw is what reaches its particle managers (it walks the unit's list at
+  +0x1f0 and calls each one's +0x54); no scene tried on the PC (Jurassic Frontier's camp, Bherna, the Deserted Island's area 6
+  with Jaggi near, a great sword's charge) showed a particle big enough to see go, so the picture with and without is still
+  to be seen in a hunt with hits on a phone (the MH4U port's same switch removes the sand ship's dust and the sun's flare in
+  its PC runner's deterministic G2). Owed on a phone (the 2026-11-13 phones had a Play Protect dialog in front; nothing was
+  installed): E:\claude_trabajo\v1.0\out\gfx\phone_tests.sh <serial> gu (Effects in quest 301's area 6, the menu's rows on
+  a phone, 57 %, the clear and the plate, and MHGU_PERF_MENU_PRESENT 0 / 1 for 1.0's S25), and Exact size by hand.
 - Texture packs are romfs mods (they replace the game's `.tex` files): `[romfs] mod <name>: N files (X MB), T of them
   textures (Y MB as files ...)` says what each brings. No pack format of the emulators' (KTX2 and the like) applies here: the
   game reads its own `.tex` files, and a pack's BC textures are decoded on the CPU on a Mali as the game's own are.
