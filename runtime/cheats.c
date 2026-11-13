@@ -607,8 +607,12 @@ static void load_off(void) {
         if (line[0] == '#' || !tab) continue;
         *tab = 0;
         bool on = line[0] == '+';  // ("+<mod>/<file>": a mod's cheat turned on)
+        // (0.1.9.3 kept only 63 bytes of a file's name and wrote them so: such a line still names that file's cheat)
+        bool cut = !on && strlen(line) == 63;
         for (int i = 0; i < ncheats; i++)
-            if (!strcmp(cheats[i].file, line + on) && !strcmp(cheats[i].name, tab + 1)) cheats[i].on = on;
+            if ((!strcmp(cheats[i].file, line + on) || (cut && !strncmp(cheats[i].file, line, 63))) &&
+                !strcmp(cheats[i].name, tab + 1))
+                cheats[i].on = on;
     }
     fclose(f);
 }
@@ -698,6 +702,7 @@ static bool other_version(const char *name, char id[17]) {
     int n = 0;
     while (hexv((unsigned char)name[n]) >= 0) n++;
     if (n < 16 || n > 64 || strcasecmp(name + n, ".txt")) return false;
+    if (n == 16 && !strncasecmp(name, "0100770008DD8000", 16)) return false;  // (the game's title id, no build id: loaded as in 0.1.9.3)
     bool same = true;
     for (int i = 0; i < 16; i++) same &= hexv((unsigned char)name[i]) == ((g_main_build_id[i / 2] >> (i & 1 ? 0 : 4)) & 15);
     if (same) return false;
