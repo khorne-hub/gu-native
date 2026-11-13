@@ -108,6 +108,9 @@ bool fnhook_room(uint32_t addr, bool tramp);  // a hook at addr (with a trampoli
 void fnhook_keep_entry(uint32_t addr, uint32_t w0, uint32_t w1);
 bool fnhook_entry_word(uint32_t pc, uint32_t *w);
 void rt_fatal_trace(void) __attribute__((noreturn));
+// (set by a backend: what the crashing thread was doing there, for the report; async-signal-safe) e.g. exec.c's
+// pipeline build in a PowerVR driver
+extern void (*rt_fault_note)(void);
 void crash_handler_install(void);
 
 // ---- kernel.c

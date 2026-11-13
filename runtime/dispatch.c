@@ -577,9 +577,12 @@ const char *rt_host_fn_name(uint64_t pc, uint64_t *offset) {
     return name;
 }
 
+void (*rt_fault_note)(void);
+
 void rt_fatal_trace(void) {
     fprintf(stderr, "host backtrace (guest functions are f_<addr>):\n");
     plat_print_backtrace();
+    if (rt_fault_note) rt_fault_note();
 #ifdef __ANDROID__
     void perf_mem_report(void);  // (runtime/platform/android_perf.c: map entries and memory now)
     perf_mem_report();

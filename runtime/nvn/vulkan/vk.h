@@ -141,6 +141,7 @@ typedef struct TexBackend {
     bool up_said;
     uint32_t shadow_off_gen;  // ([Performance] Shadows Off) a shadow atlas cleared once: when (exec.c shadow_skipped)
     VkImage shadow_off_image; // (and which image it had then)
+    bool stand_in;            // no image of the texture's own (textures.c stand_in): 1x1, never uploaded to or rendered into
 } TexBackend;
 
 bool vk_wide_rt_on(void);  // (textures.c) RGBA8 render targets as RGBA16 UNORM ([Graphics] SmoothGradients)

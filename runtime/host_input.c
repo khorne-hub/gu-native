@@ -311,6 +311,11 @@ static void control_poll(void) {
 #endif
             if (!strcmp(cmd, "gpuprof")) { extern volatile int g_gpuprof_request; g_gpuprof_request = 1; continue; }
             if (!strcmp(cmd, "devicelost")) { extern volatile int g_fake_lost; g_fake_lost = 1; continue; }  // (tests: exec.c lost_report)
+            if (!strcmp(cmd, "submitoom")) {  // submitoom <n>: the next n tries to submit refused for memory (tests: exec.c submit_again)
+                extern volatile int g_fake_oom;
+                g_fake_oom = atoi(arg) > 0 ? atoi(arg) : 1;
+                continue;
+            }
             if (!strcmp(cmd, "hudtrace")) { g_hudtrace_request = 1; continue; }
             if (!strcmp(cmd, "menutrace")) { mousemenu_trace(atoi(arg)); continue; }  // (hle/mousemenu.c)
             if (!strcmp(cmd, "menupress")) { mousemenu_test_press((uint32_t)strtoul(arg, NULL, 16)); continue; }
