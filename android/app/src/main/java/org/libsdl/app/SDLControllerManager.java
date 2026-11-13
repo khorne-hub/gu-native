@@ -268,6 +268,22 @@ public class SDLControllerManager
         return r.toString();
     }
 
+    // MHGU: a physical keyboard (one with letters) and a mouse connected to the phone (GameActivity.keyboardMouse,
+    // runtime/host_input.c): the settings show the keybinds and the mouse's rows only then. 1 a keyboard, 2 a mouse;
+    // external devices only - not the phone's own keys, a touch screen, a stylus or a touchpad, nor a virtual device
+    public static int keyboardMouse() {
+        int bits = 0;
+        for (int id : InputDevice.getDeviceIds()) {
+            InputDevice d = InputDevice.getDevice(id);
+            if (d == null || d.isVirtual() || (Build.VERSION.SDK_INT >= 29 && !d.isExternal())) continue;
+            int s = d.getSources();
+            if ((s & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD &&
+                    d.getKeyboardType() == InputDevice.KEYBOARD_TYPE_ALPHABETIC) bits |= 1;
+            if ((s & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE) bits |= 2;
+        }
+        return bits;
+    }
+
     private static String deviceLine(int id) {
         InputDevice dev = InputDevice.getDevice(id);
         if (dev == null) return null;

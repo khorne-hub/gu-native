@@ -39,6 +39,7 @@
 extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 #endif
 extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
+extern "C" bool host_input_keyboard_mouse(void);  // (runtime/host_input.c: a phone's keyboard and mouse, S14)
 
 namespace {
 enum class View { Main, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons, ComboEdit,
@@ -1446,6 +1447,20 @@ Row bind_row(int i, const char *what = nullptr) {
     };
     return row;
 }
+#ifdef __ANDROID__
+// (S14) A keyboard and a mouse connected to the phone (host_input_keyboard_mouse): the PC's Keybinds and the mouse's
+// speed, under a header of their own in Controls; none of it shows without both. The keys and the mouse work as they
+// did either way: a click in the game captures the mouse for the camera, Esc lets it go. The MH4U port's the same rows
+void keyboard_mouse_rows(std::vector<Row> &r) {
+    if (!host_input_keyboard_mouse())
+        return;
+    header(r, "kbm.head", tr("Keyboard and mouse"));
+    action(r, "keybinds", tr("Keybinds"), []() { push(View::Keybinds, "bind.0"); });
+    r.back().help = tr("The keys and mouse buttons for the game's buttons, for moving, the camera, the item bar and the combined buttons. A click in the game captures the mouse: it turns the camera until Esc lets it go. These rows show while a keyboard and a mouse are connected.");
+    number(r, "mouse", tr("Mouse sensitivity"), &s.draft.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
+    r.back().value = fmt("%.2fx", s.draft.mouse_sensitivity);
+}
+#endif
 // The Keybinds submenu: a row per keybind, the chat key
 void keybind_rows(std::vector<Row> &r) {
     for (int i = 0; i < BINDS; i++) {
@@ -2415,6 +2430,8 @@ std::vector<Row> main_rows() {
 #ifndef __ANDROID__
         action(r, "keybinds", tr("Keybinds"), []() { push(View::Keybinds, "bind.0"); });
         r.back().help = tr("The keys and mouse buttons for the Switch controller's buttons, for moving, the camera, the item bar and the combined buttons, and the chat key.");
+#else
+        keyboard_mouse_rows(r);  // (S14: only with a keyboard and a mouse connected)
 #endif
         break;
     }
@@ -2762,11 +2779,14 @@ void combo_rows(std::vector<Row> &r) {
                {tr("None"), "L3", "R3", tr("Minus"), "Guide", "Misc", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad"},
                [k](int v) { s.draft.touch_combo_pad[k] = v; });
     r.back().help = tr("That button of a controller does the same, and no longer does what it did.");
-#ifndef __ANDROID__  // (a key does the same while held: [Keybinds] Combo<n>Key, also in Keybinds)
-    r.push_back(bind_row(BIND_COMBO1 + k, tr("A key or mouse button that presses these buttons while held. Keybinds has it too.")));
-    r.back().id = "ce.key";
-    r.back().title = tr("Key");
+#ifdef __ANDROID__  // (a key does the same while held: [Keybinds] Combo<n>Key, also in Keybinds; a phone's with a keyboard
+    if (host_input_keyboard_mouse())  // and a mouse connected, S14)
 #endif
+    {
+        r.push_back(bind_row(BIND_COMBO1 + k, tr("A key or mouse button that presses these buttons while held. Keybinds has it too.")));
+        r.back().id = "ce.key";
+        r.back().title = tr("Key");
+    }
     action(r, "ce.clear", tr("Clear"), [k]() {
         s.draft.touch_combo[k][0] = 0;
         s.draft.touch_combo_pad[k] = 0;
@@ -4339,7 +4359,11 @@ void report(bool *open) {
     is_capturing = *open && s.view == View::KeyCapture;
     // (a click on the capture view's buttons is theirs; anywhere else it is the mouse button chosen - a finger's tap
     // is no mouse button)
+#ifdef __ANDROID__  // (S14: a phone's mouse, with a keyboard connected: a finger's tap is never a mouse button, overlay.cpp)
+    capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing && host_input_keyboard_mouse();
+#else
     capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing && !touch_ui();
+#endif
     capture_wheel = is_capturing && s.capture_bind >= 0;  // (the capture view doesn't scroll)
     textinput_menu_keyboard(*open && s.view == View::Keyboard && s.keyboard.phone);  // (its key asked for it: textinput.c)
     if (!*open)

@@ -678,6 +678,10 @@ static inline const char *settings_text(int language, const char *english) {
         {"The D-pad during a hunt. In the game's menus the menu pad takes its place, unless D-pad in menus is on.",
          "La cruceta durante una cacería. En los menús del juego la reemplaza el pad de menú, salvo que Cruceta en los menús esté activado."},
         {"L and R in menus", "L y R en los menús"},
+        // (S14: a keyboard and a mouse on the phone)
+        {"Keyboard and mouse", "Teclado y ratón"},
+        {"The keys and mouse buttons for the game's buttons, for moving, the camera, the item bar and the combined buttons. A click in the game captures the mouse: it turns the camera until Esc lets it go. These rows show while a keyboard and a mouse are connected.",
+         "Las teclas y los botones del ratón para los botones del juego, para moverse, la cámara, la barra de objetos y los botones combinados. Un clic en el juego captura el ratón: gira la cámara hasta que Esc lo suelta. Estas filas aparecen mientras hay un teclado y un ratón conectados."},
         {"D-pad in menus", "Cruceta en los menús"},
         {"Hunter Arts with a controller", "Artes de Cazador con mando"},
         {"On: the D-pad stays on the screen in the game's menus too, beside the menu pad, and moves their cursor. Off: the menu pad takes its place while a menu is open.",

@@ -279,6 +279,12 @@ public class GameActivity extends SDLActivity {
         return org.libsdl.app.SDLControllerManager.inputReport(changed);
     }
 
+    /** Teclado y mouse conectados (runtime/host_input.c, por JNI desde el hilo de SDL): 1 un teclado físico con letras,
+     *  2 un mouse, los dos sumados. Con los dos, las opciones muestran las teclas y el mouse. */
+    public static int keyboardMouse() {
+        return org.libsdl.app.SDLControllerManager.keyboardMouse();
+    }
+
     /** Ajustes -> Licencias (runtime/ui.c show_licenses, por JNI desde el hilo de SDL). */
     public static void showLicenses() {
         SDLActivity activity = mSingleton;

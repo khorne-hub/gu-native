@@ -201,7 +201,9 @@ static bool finger_mouse(SDL_MouseID which, Uint64 timestamp) { return which == 
 bool overlay_event(const SDL_Event *e) {
     if (!g_enabled) return false;
     if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && settings_panel_key((int)e->key.scancode)) return true;
-    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN && settings_panel_mouse(e->button.button)) return true;
+    if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN && !finger_mouse(e->button.which, e->button.timestamp) &&
+        settings_panel_mouse(e->button.button))  // (a mouse's button chosen for a keybind: not a finger's tap)
+        return true;
     if (e->type == SDL_EVENT_MOUSE_WHEEL &&
         settings_panel_wheel(e->wheel.integer_y * (e->wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -1 : 1)))
         return true;
