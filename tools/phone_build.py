@@ -54,6 +54,7 @@ class Stages(io.TextIOBase):
         self.error = ''
         self.parts = {}  # (the translator's parts, sdk and main: their functions add up)
         self.files = 0
+        self.in_error = False
 
     def writable(self):
         return True
@@ -77,6 +78,9 @@ class Stages(io.TextIOBase):
     def line(self, text):
         if text.startswith('ERROR: '):
             self.error = text[7:]
+            self.in_error = True
+        elif self.in_error and text:  # (the lines fail() adds after it: the compiler's own words)
+            self.error = (self.error + ' ' + text)[:400]
         elif ': translating the game code' in text:
             self.set('recompile')
         elif ': compiling ' in text:

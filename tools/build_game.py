@@ -341,7 +341,8 @@ def link_pc(clang, nm, dlltool, objs, work):
 
 
 def link_android_zig(clang, target, objs, work):
-    """--zig-cc: links libmhgugame.so as link_android does, against stand-ins of the device's libraries (no NDK)."""
+    """--zig-cc: links libmhgugame.so as link_android does, against stand-ins of the device's libraries (no NDK), given
+    by their paths: to Zig, -lc and -lm ask for a C library of its own, which it has none of for Android."""
     stub_c = os.path.join(work, 'stub.c')
     open(stub_c, 'w').close()
     for name in ('libmain.so', 'libc.so', 'libm.so', 'libdl.so'):
@@ -352,9 +353,10 @@ def link_android_zig(clang, target, objs, work):
     with open(rsp, 'w', encoding='utf-8') as f:
         f.write('\n'.join('"' + o.replace('\\', '/') + '"' for o in objs))
     lib = os.path.join(work, 'libmhgugame.so')
+    # (Zig's cc takes no -Wl,--no-rosegment: the read-only data gets a segment of its own, which only changes the layout)
     code, out = run([clang] + target + ['-shared', '-nostdlib', '-fPIC', '-Wl,-soname,libmhgugame.so', '-Wl,--build-id=sha1',
-                     '-Wl,--no-rosegment', '-Wl,--gc-sections', '-Wl,-z,max-page-size=16384', '-Wl,--allow-shlib-undefined',
-                     '-Wl,-s', '-o', lib, '@' + rsp, '-L' + work, '-lmain', '-lm', '-lc', '-ldl'])
+                     '-Wl,--gc-sections', '-Wl,-z,max-page-size=16384', '-Wl,--allow-shlib-undefined',
+                     '-Wl,-s', '-o', lib, '@' + rsp] + [os.path.join(work, n) for n in ('libmain.so', 'libm.so', 'libc.so', 'libdl.so')])
     if code:
         fail('linking failed:\n' + out[-1500:])
     return lib

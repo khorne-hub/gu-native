@@ -365,7 +365,10 @@ public class BuilderActivity extends Activity {
         }
         if (j.status.equals("done")) {
             j.status = "idle";
-            if (fromGame) {  // (the game holds the old library: the app starts again, as Import save does)
+            if (fromGame) {  // (the game holds the old code: the app starts again, as Import save does)
+                // (the game runs the copy in the app's own folder: without it, the start looks at the folder again and
+                // copies the new one, GameFolderActivity.verify / keepLib)
+                new File(getFilesDir(), "game/libmhgugame.so").delete();
                 startActivity(new Intent(this, PhoenixActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         .putExtra(PhoenixActivity.EXTRA_PID, android.os.Process.myPid()));
                 finish();
