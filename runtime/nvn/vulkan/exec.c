@@ -4368,9 +4368,13 @@ static void build_pipeline(void *arg) {
         if (test_left > 0 && atomic_fetch_sub(&test_left, 1) == 1) *(volatile int *)(uintptr_t)8 = 1;
     }
 #endif
-    VkPipelineCreationFeedback fb = {0};
+    // (a stage's feedback for each of the pipeline's stages too: the spec allowed a count of 0 only later, and a Mali-G57's
+    // driver of Vulkan 1.3.225, the RG406V's, wrote them through the null array, a SIGSEGV at 0 on every worker)
+    VkPipelineCreationFeedback fb = {0}, stage_fb[2] = {{0}};
     VkPipelineCreationFeedbackCreateInfo fbi = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CREATION_FEEDBACK_CREATE_INFO,
-                                                .pPipelineCreationFeedback = &fb};
+                                                .pPipelineCreationFeedback = &fb,
+                                                .pipelineStageCreationFeedbackCount = pi.stageCount,
+                                                .pPipelineStageCreationFeedbacks = stage_fb};
     if (g_vk.creation_feedback) pi.pNext = &fbi;
     VkResult r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &pp->pipe);
 #ifdef __ANDROID__
