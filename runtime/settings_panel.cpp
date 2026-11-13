@@ -81,6 +81,8 @@ struct Dropdown {
     std::string title;  // (the phone's picker: its row's title over the choices)
     std::vector<char> removable;      // the choices remembered (the servers and keys typed): an x at the right of each
     std::function<void(int)> remove;  // takes one of them out of its list
+    std::string help;                 // (the phone's picker: its row's help, shown over the choices by its "?")
+    bool show_help = false;
 };
 struct Keyboard {
     std::string title, original, buffer;
@@ -234,6 +236,7 @@ const Theme &theme() {
 }
 ImVec4 vec(ImU32 c) { return ImGui::ColorConvertU32ToFloat4(c); }
 bool pressed(ImGuiKey key, bool repeat);
+std::string help_text(const Row &r);  // (a row's help: further down)
 // A text's paragraphs joined into one line each, for the page to wrap at its own width: files broken at a fixed width (the
 // legal notice, the project's license, the GNU licenses) came out with every other line cut short. Joined: a paragraph
 // broken at a width (a line before its last one 60 characters or more) whose lines all start at the same indent, kept
@@ -1155,6 +1158,7 @@ void choices(const Row &row, std::vector<std::string> names, int selected, std::
     int first = std::clamp(selected, 0, (int)names.size() - 1);
     s.dropdown = {true, false, false, row.id, std::move(names), selected, std::move(set), {}, row.title, std::move(removable),
                   std::move(remove)};
+    s.dropdown.help = help_text(row);
     s.dropdown_at = anim_now();
     focus("choice." + std::to_string(first));
 }
@@ -3758,10 +3762,15 @@ void toggle_help(const std::string &id) {
 }
 // Y (the left face button) or H: the picked row's help, as its "?"
 void help_keys(const std::vector<Row> &rows) {
-    if (s.dropdown.open || s.view == View::Keyboard || s.view == View::KeyCapture || confirmation())
+    if (s.view == View::Keyboard || s.view == View::KeyCapture || confirmation())
         return;
     if (!pressed(ImGuiKey_GamepadFaceLeft) && !pressed(ImGuiKey_H))
         return;
+    if (s.dropdown.open) {  // (the picker's: its row's help over the choices)
+        if (!s.dropdown.help.empty())
+            s.dropdown.show_help = !s.dropdown.show_help;
+        return;
+    }
     for (const Row &r : rows)
         if (r.id == s.focus && !r.header && !help_text(r).empty()) {
             toggle_help(r.id);
@@ -4438,7 +4447,11 @@ void touch_picker(std::vector<Row> &options, float scale) {
         longest = std::max(longest, font->CalcTextSizeA(f, FLT_MAX, 0, o.title.c_str()).x + f * 3.4f +
                                         (o.remove ? forget_side() + f * .6f : 0));
     float w = std::clamp(longest + pad * 2, vp->WorkSize.x * .32f, vp->WorkSize.x * .62f);
-    float h = std::min(band + line * 2 + pad * 2 + options.size() * (s.m.row + spacing) + pad + frame,
+    // (its row's help, opened by the "?" in the band: over the choices, in the help's own plate)
+    const bool helped = !s.dropdown.help.empty(), helping = helped && s.dropdown.show_help;
+    const float hsize = std::floor(f * .84f), hwrap = w - pad * 2 - f * 1.4f;
+    const float help_h = helping ? font->CalcTextSizeA(hsize, FLT_MAX, hwrap, s.dropdown.help.c_str()).y + f * 1.0f + spacing : 0;
+    float h = std::min(band + line * 2 + pad * 2 + help_h + options.size() * (s.m.row + spacing) + pad + frame,
                        vp->WorkSize.y * .86f);
     ImGui::SetNextWindowPos(
         ImVec2(vp->WorkPos.x + (vp->WorkSize.x - w) * .5f, vp->WorkPos.y + (vp->WorkSize.y - h) * .5f),
@@ -4462,8 +4475,17 @@ void touch_picker(std::vector<Row> &options, float scale) {
         close_dropdown();
     plate(dl, shut, line, held, true);
     cross(dl, shut.GetCenter(), side * .2f, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
+    float title_end = shut.Min.x - pad * .5f;
+    if (helped) {  // (its "?", left of the X)
+        ImRect q(shut.Min.x - pad - side, by, shut.Min.x - pad, by + side);
+        bool down = false;
+        if (touch_button("###pickhelp", q, true, &down))
+            s.dropdown.show_help = !s.dropdown.show_help;
+        help_seal(dl, q.GetCenter(), side * .4f, s.dropdown.show_help, down);
+        title_end = q.Min.x - pad * .5f;
+    }
     ImVec2 ts = title_font()->CalcTextSizeA(title, FLT_MAX, 0, s.dropdown.title.c_str());
-    dl->PushClipRect(ImVec2(x0, y0), ImVec2(shut.Min.x - pad * .5f, y0 + band), true);
+    dl->PushClipRect(ImVec2(x0, y0), ImVec2(title_end, y0 + band), true);
     shadow_text(dl, title_font(), title, ImVec2(x0 + pad * 1.5f, by + side * .5f - ts.y * .5f), k.glow, s.dropdown.title.c_str());
     dl->PopClipRect();
     ImGui::SetCursorScreenPos(ImVec2(x0 + pad, y0 + band + line * 2 + pad));
@@ -4472,6 +4494,17 @@ void touch_picker(std::vector<Row> &options, float scale) {
                       ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar);
     ImGui::SetWindowFontScale(scale);
     auto *choices = ImGui::GetCurrentWindow();
+    if (helping) {  // (the row's help, as a row's opened one)
+        ImVec2 p = ImGui::GetCursorScreenPos();
+        float cw = ImGui::GetContentRegionAvail().x - s.m.line * 3;
+        ImRect box(p, ImVec2(p.x + cw, p.y + help_h - spacing));
+        ImGui::Dummy(box.GetSize());
+        choices->DrawList->AddRectFilled(box.Min, box.Max, theme().game ? IM_COL32(62, 42, 30, 240) : fade(k.plate, .9f));
+        choices->DrawList->AddRect(box.Min, box.Max, fade(k.edge, .9f), 0, 0, std::max(1.f, line * .5f));
+        choices->DrawList->AddRectFilled(box.Min, ImVec2(box.Min.x + line * 1.2f, box.Max.y), k.rule);
+        diamond(choices->DrawList, ImVec2(box.Min.x + line * .6f, box.Min.y + f * .85f), f * .2f, k.glow);
+        choices->DrawList->AddText(font, hsize, ImVec2(box.Min.x + f * .7f, box.Min.y + f * .5f), k.ink, s.dropdown.help.c_str(), nullptr, hwrap);
+    }
     draw_rows(options, true);
     ImGui::Dummy(ImVec2(1, pad));
     finger_scroll(choices);
