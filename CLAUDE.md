@@ -507,7 +507,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   staging chunk and vertex cache range goes back at once (`trim_now`), it is submitted again, up to 4 tries in about a second; still
   refused, the error as before. A 2.7 GB phone with a PowerVR GE8320 closed so at a potion, an attack, the smithy or a quest's start
   with the system's memory at 150-450 MB (#201, #139; its GPU memory was 250-410 MB, 928 MB before 0.1.8's 32 MB blocks): whether
-  a second try is taken there is unproven (no such phone here). `submitoom <n>` in `control.txt` refuses the next n tries (a test).
+  a second try is taken there is unproven (no such phone here). `submitoom <n>` in `control.txt` refuses the next n tries (a test:
+  on the PC, 1 then 3 refusals: taken at the 1st and the 3rd try again; 5: the error as before; on the Moto g06 the trims gave back a
+  staging chunk and 34 MB of vertex cache, then "taken"). The stand-in, on the Moto with `MHGU_TEST_IMAGE_MAX=512`: 20 stand-ins
+  at the start, the game went on.
 - A texture whose size no image of the GPU can have (an NVN texture made from garbage: "256x2396769997x1519567012", a cube array,
   entering area 4 of map m01d on a Mali-G57 with a Vulkan 1.1 driver, #198: out of host memory, then the RGBA8 try's error stopped the game), or one
   no image could be made for at all, gets a 1x1 stand-in (`stand_in`, `textures.c`): never uploaded (its guest memory isn't read),
