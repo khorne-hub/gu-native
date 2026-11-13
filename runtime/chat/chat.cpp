@@ -879,6 +879,7 @@ bool share(int channel, const std::string &peer, int kind, const std::string &a,
         }
     }
     std::string sa = clean(a, 128), sb = clean(b, 64);
+    if (sb.empty() && sa.empty()) return false;
     if (!rate_ok_locked(channel, peer, "\x02" + sa + sb, why)) return false;
     Line ln;
     ln.channel = channel, ln.peer = peer, ln.from = g.key, ln.name = name_locked(), ln.mine = true, ln.game = g.port.game;
@@ -894,12 +895,15 @@ bool say(int channel, const std::string &peer, const std::string &typed, std::st
     std::string text = clean(typed, MAX_TEXT);
     if (text.empty()) return false;
     std::unique_lock<std::mutex> l(g.mu);
-    if (!rate_ok_locked(channel, peer, text, why)) return false;
-    if (channel == HUB) {
+    if (channel == HUB) {  // (the limits count only what could be sent)
         auto send = g.port.hub_send;
-        bool up = g.hub_was;
+        if (!g.hub_was || !send) {
+            if (why) *why = "\x01nohub\x01";
+            return false;
+        }
+        if (!rate_ok_locked(channel, peer, text, why)) return false;
         l.unlock();
-        if (!up || !send || !send(text)) {
+        if (!send(text)) {
             if (why) *why = "\x01nohub\x01";
             return false;
         }
@@ -922,9 +926,11 @@ bool say(int channel, const std::string &peer, const std::string &typed, std::st
             if (why) *why = "\x01" "away\x01" + it->second.name;
             return false;
         }
-        if (!direct_locked(peer, "msg", text, SHARE_NONE, "", "")) return false;
-    } else
+        if (!rate_ok_locked(channel, peer, text, why) || !direct_locked(peer, "msg", text, SHARE_NONE, "", "")) return false;
+    } else {
+        if (!rate_ok_locked(channel, peer, text, why)) return false;
         queue_locked(event_locked(KIND_CHANNEL, {{"t", channel == GLOBAL ? TAG_GLOBAL : game_tag(g.port.game)}, {"n", ln.name}, {"g", g.port.game}}, text));
+    }
     push_locked(ln);
     return true;
 }
