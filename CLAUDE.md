@@ -519,9 +519,11 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   through a cave into the callee's middle, and a whole `main` with one instruction swapped for an equivalent one.
 - Forge's menu without a keyboard (S44): Mods tab, "Forge menu (plugins)" (shown when a plugin started; `MHGU_FORGE_MENU=1` shows it
   without plugins, for tests) opens it once the settings menu has closed (`overlay_open_forge`). Opened by touch it is drawn 2
-  times bigger (font and spacing, the plugins' free drawing untouched), placed in the middle each time, scrolled by a finger's drag
-  (a press on its background takes the window's move id: `frame_once`), moved only by its title bar; its x or the phone's Back
-  closes it; a field that takes text brings up the phone's keyboard (`textinput.c` state 4).
+  times bigger (font and spacing, the plugins' free drawing untouched), placed in the middle each time, scrolled by a finger's
+  up or down drag from anywhere (a pressed header or button is let go, `ClearActiveID`; a slider the press already changed keeps
+  the finger; the hover test allows a blocked window, or a pressed control hid it: `frame_once`), moved only by its title bar;
+  its x or the phone's Back closes it; a field that takes text brings up the phone's keyboard (`textinput.c` state 4). Tested on
+  the PC with the control file's `finger` lines (touch layout, row, window, x).
 - Every minute the log has a `[mem]` line: memory map entries, resident memory (own, the files mapped, shared) and VMA's blocks, what
   is allocated in them and by what (images, of those the BC textures decoded on the CPU, the vertex cache, the staging ring).
   `MHGU_MEM_LOG=<seconds>` writes it more often. Games on PowerVR closed after 5 to 15 minutes out of map entries; there VMA is told
