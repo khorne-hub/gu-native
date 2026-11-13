@@ -801,8 +801,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   logged (a keyboard's typing in a shared log).
 - The Hunter Arts' pieces on layer 100 are taken from y 560 to the canvas's end (720): a style with fewer than three arts draws
   the empty slots' frames below it (one art: rows at 676, 721, 766), out of sight on the console, and the touch arrangement lifted
-  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 103 left of x 950 (the item
-  bar's pieces start at x 1005 even with L held, its neighbours shown: hudtrace on a Moto g06), and go with the arts.
+  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 100 at x 688 and 692, left of
+  the art's button (726) on its row (hudtrace on the RG406V, Adept with one art): pieces left of x 700 go with the arts only on
+  a row an art was drawn on (`arts_row_has`); up to 0.1.9.3 nothing took them and they stayed by the item bar. Layer 103 left
+  of x 950 is taken for the arts too (the item bar's pieces start at x 1005 even with L held: hudtrace on a Moto g06).
 - Phone tests of the touch controls without the player's save: `MHGU_SAVE_DIR` to a copy and `MHGU_CONFIG` to a copy of the ini
   (`Controls = On`). On the Moto g06 adb can't read the app's save files (the app's uid, rw-rw----): copy a save from another phone's backup.
   A folder the game made in an `MHGU_SAVE_DIR` (a new game's save_0) is the app's and adb can't remove it.

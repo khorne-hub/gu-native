@@ -1881,6 +1881,33 @@ static bool target_piece(float x, float y) {
     if (fabsf(x - 1200.0f) < 1.0f) return y < 100.0f;
     return (fabsf(x - 1170.0f) < 1.0f || fabsf(x - 1230.0f) < 1.0f) && y < 70.0f;
 }
+// The Hunter Arts' rows (layer 100: the y of their pieces at x 700..900, this frame's and last frame's), so what the game
+// draws left of an art on its row goes with it: with Control Type 3 the "ZL +" before each art's button, at x 688 and 692
+// with the button at 726 and its name from 746 (hudtrace on the RG406V: Adept, one art, its row at y 681 / 696). It is
+// on layer 100, not 103, and left of x 700 nothing took it: it stayed by the item bar when the arts went to the top right
+#define ARTS_ROWS 12
+static float arts_row_y[2][ARTS_ROWS];
+static int arts_rows_n[2];
+static uint64_t arts_rows_frame;
+static void arts_rows_turn(void) {
+    if (arts_rows_frame == g_present_count) return;
+    arts_rows_frame = g_present_count;
+    memcpy(arts_row_y[1], arts_row_y[0], sizeof arts_row_y[0]);
+    arts_rows_n[1] = arts_rows_n[0], arts_rows_n[0] = 0;
+}
+static void arts_row_note(float y) {
+    arts_rows_turn();
+    for (int i = 0; i < arts_rows_n[0]; i++)
+        if (fabsf(arts_row_y[0][i] - y) < 1.0f) return;
+    if (arts_rows_n[0] < ARTS_ROWS) arts_row_y[0][arts_rows_n[0]++] = y;
+}
+static bool arts_row_has(float y) {
+    arts_rows_turn();
+    for (int f = 0; f < 2; f++)
+        for (int i = 0; i < arts_rows_n[f]; i++)
+            if (fabsf(arts_row_y[f][i] - y) < 2.0f) return true;
+    return false;
+}
 
 static bool hud_accept(int part, float z, float x, float y) {
     uint64_t now = plat_now_ns();
@@ -4803,10 +4830,14 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // style with fewer than three arts has the empty slots' frames there (one art: rows at y 676,
                         // 721, 766), out of sight on the console; taken by their top row, they came into view as blank
                         // rows under the arts (#125, Discord)
+                        // (and what is drawn left of an art on its row: arts_row_has)
                         bool flat = !(fabsf(m[0]) > 2.0f && fabsf(m[5]) > 2.0f);
-                        if (hunt_hud && flat && pos_x >= 700.0f && pos_x <= 900.0f && pos_y > 560.0f && pos_y < 720.0f &&
+                        bool arts_box = pos_x >= 700.0f && pos_x <= 900.0f;
+                        bool arts_label = pos_x >= 640.0f && pos_x < 700.0f && arts_row_has(pos_y);
+                        if (hunt_hud && flat && (arts_box || arts_label) && pos_y > 560.0f && pos_y < 720.0f &&
                             hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) {
                             part = HP_ARTS, part_touch = true;
+                            if (arts_box) arts_row_note(pos_y);
                             if (prof == HUD_TOUCH) vanchor = V_TOP;
                         } else if (hunt_hud && target_piece(pos_x, pos_y) && hud_accept(HP_TARGET, pos_z, pos_x, pos_y)) {
                             part = HP_TARGET, part_touch = true;
@@ -4826,9 +4857,10 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                                 if (hud_accept(p, pos_z, pos_x, pos_y)) part = p;
                             }
                         } else if (hunt_hud && pos_x < 950.0f && pos_y >= 560.0f && pos_y < 720.0f) {
-                            // (the Hunter Arts' "ZL +" before each art's button with Control Type 3, drawn on this
-                            // layer left of the item bar's art (x 992..): the arts' own, with them. Taken for the item
-                            // bar's, they stayed by the moved bar when the arts were moved: Discord, and a 0.1.8 shot)
+                            // (left of the item bar's pieces (x 992..), taken as the Hunter Arts' own: thought to be their
+                            // "ZL +" with Control Type 3, which a hudtrace with an art equipped found on layer 100 instead,
+                            // left of the art's row: arts_row_has. Taken for the item bar's, they stayed by the moved bar
+                            // when the arts were moved: Discord, and a 0.1.8 shot)
                             anchor = ANCHOR_RIGHT;
                             vanchor = prof == HUD_TOUCH ? V_TOP : V_BOTTOM;
                             if (hud_accept(HP_ARTS, pos_z, pos_x, pos_y)) part = HP_ARTS, part_touch = true;
