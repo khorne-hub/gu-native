@@ -4008,6 +4008,9 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             arrow = font * 1.1f;
             ImGui::RenderArrow(w->DrawList, ImVec2(p.x + rw - font * .5f - font * .7f, p.y + (h - font) * .5f), ink,
                                s.dropdown.open && s.dropdown.row == r.id ? ImGuiDir_Up : ImGuiDir_Down, .7f);
+        } else if (r.enabled && !r.id.compare(0, 5, "page.")) {  // (a page one level down: a chevron, as on a phone)
+            arrow = font * 1.1f;
+            chevron(w->DrawList, ImVec2(p.x + rw - font * .9f, p.y + h * .5f), font * .26f, 1, ink, 1.5f);
         }
         if (!r.value.empty()) {
             std::string value = r.value + (r.cold ? " *" : "");
