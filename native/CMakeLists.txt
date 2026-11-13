@@ -84,6 +84,26 @@ if(WIN32)
 endif()
 target_include_directories(main PRIVATE ${S}/runtime ${S}/third_party/vk_mem_alloc ${IMGUI} ${IMGUI}/imgui
                            ${FSR}/include ${S}/third_party/ffx-api ${LIB_INC})
+
+# Crossplay with the yuzu family's rooms (runtime/net/xroom.c): ENet 1.3.18 (MIT), the rooms' transport, and the decoder of
+# zstd 1.5.6 (BSD), for the game packets those rooms carry in zstd frames. Unmodified upstream files (THIRD_PARTY_NOTICES),
+# as a static library: on Android none of their symbols leaves libmain.so (--exclude-libs)
+set(ENET ${S}/third_party/enet)
+set(ZSTD ${S}/third_party/zstd)
+add_library(mhgunet STATIC ${ENET}/callbacks.c ${ENET}/compress.c ${ENET}/host.c ${ENET}/list.c ${ENET}/packet.c
+            ${ENET}/peer.c ${ENET}/protocol.c ${ENET}/unix.c ${ENET}/win32.c
+            ${ZSTD}/common/debug.c ${ZSTD}/common/entropy_common.c ${ZSTD}/common/error_private.c
+            ${ZSTD}/common/fse_decompress.c ${ZSTD}/common/xxhash.c ${ZSTD}/common/zstd_common.c
+            ${ZSTD}/decompress/huf_decompress.c ${ZSTD}/decompress/zstd_ddict.c ${ZSTD}/decompress/zstd_decompress.c
+            ${ZSTD}/decompress/zstd_decompress_block.c)
+target_include_directories(mhgunet PUBLIC ${ENET}/include ${ZSTD})
+target_compile_definitions(mhgunet PRIVATE ZSTD_DISABLE_ASM=1 ZSTD_LEGACY_SUPPORT=0 ZSTD_NO_TRACE=1)
+if(NOT WIN32)  # (what ENet's configure finds on Linux and Android)
+  target_compile_definitions(mhgunet PRIVATE HAS_FCNTL=1 HAS_POLL=1 HAS_GETADDRINFO=1 HAS_GETNAMEINFO=1 HAS_INET_PTON=1
+                             HAS_INET_NTOP=1 HAS_MSGHDR_FLAGS=1 HAS_SOCKLEN_T=1)
+endif()
+target_compile_options(mhgunet PRIVATE -O2 -w -fvisibility=hidden)
+target_link_libraries(main PRIVATE mhgunet)
 target_compile_definitions(main PRIVATE GAMELIB_ID="${GAMELIB_ID}" SHADER_ID="${SHADER_ID}" MHGU_VERSION="${MHGU_VERSION}"
                            FSR4_DRIVER_PATCH=0 CIMGUI_NO_EXPORT)
 if(WIN32)  # (los del Makefile para Windows)

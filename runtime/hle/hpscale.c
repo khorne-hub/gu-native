@@ -98,6 +98,7 @@ static void nando_row(Cpu *c) {
     uint32_t q = quest_no();
     bool from_hub = g_town == 0 || g_town == 7;
     if (!q || (village_quest(q) && !from_hub)) return;
+    if (ldn_crossplay_vanilla()) return;  // (crossplay: every game computes HP as the original, emulators' too: net.h)
     int n = hunters();
     bool host;
     float v = village_quest(q) ? village_factor() : 1.0f, f = v * factor(q, n, &host), hp = f32(LD32(row));

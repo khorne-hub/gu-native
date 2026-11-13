@@ -1307,6 +1307,218 @@ void key_row(std::vector<Row> &rows) {
     r.activate = [copy, names, selected, set, removable, remove]() { choices(copy, names, selected, set, removable, remove); };
     rows.push_back(std::move(r));
 }
+// ---- Crossplay with emulators (runtime/net/net.h: xroom.c, ryuldn.c): its own section of the Multiplayer page, every
+// text in English and Spanish side by side. Off, the page is as before; on, the port's own hubs (server, key, LAN) give
+// way to the emulators' room or server.
+const char *xl(const char *en, const char *es) { return (s.editing ? s.draft.language : config_language()) == 1 ? es : en; }
+// A text row of the crossplay section (a field of the draft), with its title and help in both languages
+void crossplay_text(std::vector<Row> &rows, const char *id, const char *title, char *field, size_t size,
+                    const std::string &shown, const char *key, const char *help) {
+    text(rows, id, title, field, size, shown, key);
+    rows.back().help = help;
+}
+// Saved: a room or server no longer used is left (not while the game plays in a network through it: then the next
+// search or hub uses the new settings, as a changed room does)
+void crossplay_saved(const Config &before, const Config &now) {
+    if (ldn_net_up()) return;
+    bool rooms_now = now.crossplay == XPLAY_ROOMS;
+    if (before.crossplay == XPLAY_ROOMS && (!rooms_now || strcmp(before.xroom, now.xroom) ||
+                                            strcmp(before.xroom_password, now.xroom_password) ||
+                                            strcmp(before.xnick, now.xnick) || before.xroom_host != now.xroom_host ||
+                                            before.xroom_host_port != now.xroom_host_port))
+        xroom_leave();
+    if (!rooms_now || !now.xroom_host) xroomhost_stop();
+    if (before.crossplay == XPLAY_RYUJINX && now.crossplay != XPLAY_RYUJINX) ryuldn_leave();
+}
+void crossplay_rows(std::vector<Row> &r) {
+    Config &c = s.draft;
+    header(r, "xplay.header", xl("Crossplay with emulators", "Juego cruzado con emuladores"));
+    add_choice(r, "xplay", xl("Play online with", "Jugar en línea con"), c.crossplay,
+               {xl("This app's hubs", "Las salas de esta app"),
+                xl("Emulator rooms (Eden, Citron, Sudachi, yuzu)", "Salas de emuladores (Eden, Citron, Sudachi, yuzu)"),
+                xl("Ryujinx (LDN)", "Ryujinx (LDN)")},
+               [](int v) { s.draft.crossplay = v; }, ini("Crossplay"));
+    r.back().title = xl("Play online with", "Jugar en línea con");
+    r.back().help = xl("This app's hubs: players of this app, on phones and PCs (the hub server and key below). Emulator rooms: "
+                       "the multiplayer rooms of Eden, Citron, Sudachi, Suyu and yuzu, with the players of those emulators "
+                       "and of this app. Ryujinx: the LDN servers of Ryujinx (and Ryubing). Everyone needs version "
+                       XPLAY_GAME_VERSION " of the game. Then Create Hub and Search Hubs work as usual.",
+                       "Las salas de esta app: jugadores de esta app, en teléfonos y PC (el servidor de salas y la clave de "
+                       "abajo). Salas de emuladores: las salas multijugador de Eden, Citron, Sudachi, Suyu y yuzu, con los "
+                       "jugadores de esos emuladores y de esta app. Ryujinx: los servidores LDN de Ryujinx (y Ryubing). Todos "
+                       "necesitan la versión " XPLAY_GAME_VERSION " del juego. Después, Crear sala y Buscar salas funcionan "
+                       "como siempre.");
+    if (!c.crossplay) return;
+    XStatus st;
+    bool rooms = c.crossplay == XPLAY_ROOMS;
+    if (rooms) {
+        add_bool(r, "xplay.host", xl("Host the room on this device", "Crear la sala en este dispositivo"), &c.xroom_host,
+                 ini("RoomHost"));
+        r.back().title = xl("Host the room on this device", "Crear la sala en este dispositivo");
+        r.back().help = xl("This app opens a room of the same kind as the emulators' (their Create Room) and joins it: players "
+                           "of Eden, Citron, Sudachi, yuzu and of this app join it at this device's address. On the same "
+                           "Wi-Fi that's all; from the internet, the room's UDP port must be forwarded to this device in the "
+                           "router. The room closes with the app.",
+                           "Esta app abre una sala del mismo tipo que las de los emuladores (su Crear sala) y entra en ella: "
+                           "los jugadores de Eden, Citron, Sudachi, yuzu y de esta app entran con la dirección de este "
+                           "dispositivo. En el mismo Wi-Fi no hace falta nada más; desde internet, hay que redirigir el puerto "
+                           "UDP de la sala a este dispositivo en el router. La sala se cierra con la app.");
+    }
+    if (rooms && c.xroom_host) {
+        number(r, "xplay.hostport", xl("Room port (UDP)", "Puerto de la sala (UDP)"), &c.xroom_host_port, 0, 65535, 1,
+               ini("RoomHostPort"));
+        r.back().title = xl("Room port (UDP)", "Puerto de la sala (UDP)");
+        r.back().value = c.xroom_host_port ? std::to_string(c.xroom_host_port) : std::string("24872");
+        r.back().help = xl("0: 24872, the rooms' usual port.", "0: 24872, el puerto habitual de las salas.");
+        char ips[4][48];
+        int n = xroomhost_addresses(ips, 4);
+        std::string where;
+        for (int i = 0; i < n; i++)
+            where += (i ? ", " : "") + std::string(ips[i]) + ":" + std::to_string(c.xroom_host_port ? c.xroom_host_port : 24872);
+        note(r, "xplay.where", fmt(xl("Others join this room at: %s", "Los demás entran a esta sala en: %s"),
+                                   n ? where.c_str() : xl("(no network)", "(sin red)")));
+    }
+    if (rooms && !c.xroom_host) {
+        crossplay_text(r, "xplay.room", xl("Room", "Sala"), c.xroom, sizeof c.xroom,
+                       *c.xroom ? c.xroom : xl("Not set", "Sin elegir"), ini("Room"),
+                       xl("The room's address, as its host gives it: a name or an IP, and :port if it isn't 24872. Rooms are "
+                          "made with an emulator's Create Room, or its dedicated room program.",
+                          "La dirección de la sala, como la da su anfitrión: un nombre o una IP, y :puerto si no es 24872. Las "
+                          "salas se crean con Crear sala de un emulador, o con su programa de sala dedicada."));
+        // the public rooms where this game is played (runtime/net/xlobby.c): picked, one becomes the Room above
+        {
+            static std::vector<XLobbyRoom> listed;
+            static bool asked;  // (the list opens by itself when the answer comes after a tap)
+            XLobbyRoom found[XLOBBY_MAX];
+            int lstate = XL_NONE, n = xlobby_rooms(found, XLOBBY_MAX, &lstate);
+            Row row;
+            row.id = "xplay.lobby";
+            row.title = xl("Public rooms", "Salas públicas");
+            row.value = lstate == XL_BUSY ? xl("Searching...", "Buscando...")
+                        : lstate == XL_FAILED ? xl("The list didn't come: try again", "La lista no llegó: prueba otra vez")
+                        : lstate == XL_DONE ? fmt(xl("%d with this game", "%d con este juego"), n)
+                                            : xl("Tap to see them", "Toca para verlas");
+            row.help = xl("The public rooms of the yuzu family's lobby (" XLOBBY_HOST ", run by players, not by this project) "
+                          "where this game is played: pick one to make it the Room. Those marked \"password\" need theirs.",
+                          "Las salas públicas del lobby de la familia de yuzu (" XLOBBY_HOST ", lo mantienen jugadores, no "
+                          "este proyecto) donde se juega este juego: elige una para que sea la Sala. Las marcadas "
+                          "\"contraseña\" necesitan la suya.");
+            Row copy = row;
+            auto open_list = [copy]() {
+                XLobbyRoom all[XLOBBY_MAX];
+                int st = XL_NONE, k = xlobby_rooms(all, XLOBBY_MAX, &st);
+                listed.assign(all, all + k);
+                if (!k) return;
+                std::vector<std::string> names;
+                for (const XLobbyRoom &x : listed)
+                    names.push_back(fmt("%s - %d/%d (%d %s)%s", x.name, x.players, x.slots, x.this_game,
+                                        xl("in this game", "en este juego"), x.password ? xl(", password", ", contraseña") : ""));
+                choices(copy, names, -1, [](int i) {
+                    if (i < 0 || i >= (int)listed.size()) return;
+                    snprintf(s.draft.xroom, sizeof s.draft.xroom, "%s:%d", listed[i].address, listed[i].port);
+                });
+            };
+            if (asked && lstate == XL_DONE && n) {
+                asked = false;
+                open_list();
+            }
+            row.activate = [lstate, n, open_list]() {
+                if (lstate == XL_DONE && n) {
+                    open_list();
+                    xlobby_fetch();  // (and fresher for the next time)
+                    return;
+                }
+                online_then(XLOBBY_HOST, []() {
+                    asked = true;
+                    xlobby_fetch();
+                });
+            };
+            r.push_back(std::move(row));
+        }
+    }
+    if (rooms) {
+        crossplay_text(r, "xplay.password", xl("Room password", "Contraseña de la sala"), c.xroom_password,
+                       sizeof c.xroom_password, *c.xroom_password ? "****" : xl("None", "Ninguna"), ini("RoomPassword"),
+                       c.xroom_host ? xl("The room's password, for those who join it (empty: none).",
+                                         "La contraseña de la sala, para quienes entran (vacía: ninguna).")
+                                    : xl("Only if the room has one.", "Solo si la sala tiene una."));
+        crossplay_text(r, "xplay.nick", xl("Nickname", "Apodo"), c.xnick, sizeof c.xnick,
+                       *c.xnick ? c.xnick : xl("Made up (Hunter-1234)", "Inventado (Hunter-1234)"), ini("Nickname"),
+                       xl("Your name in the room: 4 to 20 letters, digits, spaces, '.', '_' or '-'. It must be free there.",
+                          "Tu nombre en la sala: de 4 a 20 letras, números, espacios, '.', '_' o '-'. Tiene que estar libre allí."));
+        xroom_status(&st);
+    } else {
+        crossplay_text(r, "xplay.ryuserver", xl("Ryujinx server", "Servidor de Ryujinx"), c.ryu_server, sizeof c.ryu_server,
+                       *c.ryu_server ? c.ryu_server : xl("None (type one)", "Ninguno (escribe uno)"), ini("RyujinxServer"),
+                       xl("The LDN server the Ryujinx players use (Ryujinx's Multiplayer settings show it): a name or an IP, "
+                          "and :port if it isn't 30456. None is set: you choose. The rules of Ryujinx's official server say "
+                          "it is meant for Ryujinx players only, and that other programs may get their IP address banned "
+                          "there. A server of your own (the public ldn-server program) works for Ryujinx and this app alike. "
+                          "Which server you join is your own decision and your own responsibility.",
+                          "El servidor LDN que usan los jugadores de Ryujinx (lo muestra la configuración Multijugador de "
+                          "Ryujinx): un nombre o una IP, y :puerto si no es 30456. No viene ninguno: lo eliges tú. Las reglas "
+                          "del servidor oficial de Ryujinx dicen que es solo para jugadores de Ryujinx, y que otros programas "
+                          "pueden recibir allí una prohibición de su dirección IP. Un servidor propio (el programa público "
+                          "ldn-server) sirve igual para Ryujinx y para esta app. A qué servidor entras es decisión tuya y "
+                          "responsabilidad tuya."));
+        crossplay_text(r, "xplay.passphrase", xl("Passphrase", "Frase de acceso"), c.ryu_passphrase, sizeof c.ryu_passphrase,
+                       *c.ryu_passphrase ? c.ryu_passphrase : xl("None (public)", "Ninguna (público)"),
+                       ini("RyujinxPassphrase"),
+                       xl("Ryujinx's private games: only players with the same passphrase see your hubs and you theirs. "
+                          "It is \"Ryujinx-\" and 8 characters from 0-9 and a-f, as Ryujinx makes it. Empty: public.",
+                          "Las partidas privadas de Ryujinx: solo los jugadores con la misma frase ven tus salas y tú las "
+                          "suyas. Es \"Ryujinx-\" y 8 caracteres de 0-9 y a-f, como la crea Ryujinx. Vacía: público."));
+        ryuldn_status(&st);
+    }
+    // the state of the room / server as saved (a change is used once saved)
+    const Config &saved = s.saved;
+    bool unsaved = c.crossplay != saved.crossplay || strcmp(c.xroom, saved.xroom) ||
+                   strcmp(c.xroom_password, saved.xroom_password) || strcmp(c.xnick, saved.xnick) ||
+                   strcmp(c.ryu_server, saved.ryu_server) || strcmp(c.ryu_passphrase, saved.ryu_passphrase) ||
+                   c.xroom_host != saved.xroom_host || c.xroom_host_port != saved.xroom_host_port;
+    std::string state;
+    if (unsaved) state = xl("Save to use these settings", "Guarda para usar estos ajustes");
+    else switch (st.state) {
+    case XS_CONNECTING: state = xl("Connecting...", "Conectando..."); break;
+    case XS_IN:
+        state = st.members >= 0 ? fmt(xl("In %s: %d of %d", "En %s: %d de %d"), st.room, st.members, st.slots)
+                                : fmt(xl("Connected to %s", "Conectado a %s"), st.room);
+        break;
+    case XS_FAILED: state = st.error; break;
+    default: state = xl("Not connected (tap to connect)", "Sin conectar (toca para conectar)"); break;
+    }
+    Row row;
+    row.id = "xplay.state";
+    row.title = rooms ? xl("Room", "Sala") : xl("Server", "Servidor");
+    row.title += xl(": state", ": estado");
+    row.value = state;
+    row.warn = st.state == XS_FAILED && !unsaved;
+    row.help = xl("Connects to the room or server above (as saved) and shows what it answers. Creating or searching for "
+                  "hubs in the game connects too.",
+                  "Se conecta a la sala o al servidor de arriba (como están guardados) y muestra lo que responde. Crear o "
+                  "buscar salas en el juego también conecta.");
+    row.activate = [rooms]() {
+        XplayLive x;
+        config_live_crossplay(&x);
+        std::string where = rooms ? x.room : (*x.ryu_server ? x.ryu_server : "Ryujinx");
+        online_then(where.c_str(), [rooms]() {
+            if (rooms) g_xroom.ready(0);
+            else g_ryuldn.ready(0);
+        });
+    };
+    r.push_back(std::move(row));
+    if (st.other_version)
+        note(r, "xplay.version",
+             fmt(xl("%s plays another version of the game: only " XPLAY_GAME_VERSION " plays with this app.",
+                    "%s juega otra versión del juego: solo la " XPLAY_GAME_VERSION " juega con esta app."),
+                 st.other_detail));
+    note(r, "xplay.note",
+         xl("Everyone needs version " XPLAY_GAME_VERSION " of the game. While crossplay is on the game plays as the original: "
+            "small monster sync, the monster HP settings and Village quests in the Hub stay off.",
+            "Todos necesitan la versión " XPLAY_GAME_VERSION " del juego. Con el juego cruzado el juego funciona como el "
+            "original: la sincronización de monstruos pequeños, los ajustes de vida de los monstruos y las misiones de la "
+            "Aldea en la sala quedan apagados."));
+}
 // The hub server and key being edited: checked as the page shows them (once the notice about playing online was
 // closed: settings_panel_online_ok) and on request (runtime/net/ldn.c); the value: the server's last known state, from
 // the check or from the game's own searches and hubs
@@ -2419,13 +2631,16 @@ std::vector<Row> main_rows() {
         break;
     }
     case NET_PAGE:  // Multiplayer: the internet first (a hub server, the default one already set), then the local network
-        header(r, "online.header", tr("Over the internet"));
-        server_row(r);
-        key_row(r);
-        hub_check(r);
-        header(r, "lan.header", tr("Local network"));
-        number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
-        text(r, "hosts", "Search hosts", c.ldn_join, sizeof c.ldn_join, *c.ldn_join ? c.ldn_join : tr("LAN"), ini("Join"));
+        crossplay_rows(r);  // (with emulators: when on, it takes the place of the port's own hubs)
+        if (!c.crossplay) {
+            header(r, "online.header", tr("Over the internet"));
+            server_row(r);
+            key_row(r);
+            hub_check(r);
+            header(r, "lan.header", tr("Local network"));
+            number(r, "port", "Host port (TCP / UDP)", &c.ldn_port, (int)lo("Port"), (int)hi("Port"), 1, ini("Port"));
+            text(r, "hosts", "Search hosts", c.ldn_join, sizeof c.ldn_join, *c.ldn_join ? c.ldn_join : tr("LAN"), ini("Join"));
+        }
         header(r, "hub.header", tr("In the hub"));
         add_bool(r, "sync", "Sync small monsters", &c.sync_small_monsters, ini("SyncSmallMonsters"));
         add_bool(r, "village", "Village quests in Hub", &c.village_in_hub, ini("VillageQuestsInHub"));
@@ -2635,6 +2850,7 @@ bool save() {
         s.error = settings_text(s.draft.language, error);
         return false;
     }
+    crossplay_saved(s.saved, s.draft);  // (a room or server no longer used is left)
     if (mods_dirty()) {
         if (!mods_save_order(mods.draft.data(), (int)mods.draft.size(), error, sizeof error)) {
             s.error = settings_text(s.draft.language, error);
