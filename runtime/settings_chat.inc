@@ -174,6 +174,13 @@ void chat_page_rows(std::vector<Row> &r) {
     cs("", "");  // (the language)
     std::vector<chat::Person> people = chat::people();
     if (g_chat < 0) g_chat = chat::hub_chat() && chat::hub_up() ? chat::HUB : chat::GLOBAL;
+    {  // (a hub up since the page last showed and the online chat off: the hub's chat, not the Global or General that a
+       // page first seen in town had picked, which only says to turn the online chat on; picking them again stays)
+        static bool hub_was_up;
+        const bool hub_now = chat::hub_chat() && chat::hub_up();
+        if (hub_now && !hub_was_up && !chat::enabled() && (g_chat == chat::GLOBAL || g_chat == chat::GENERAL)) g_chat = chat::HUB;
+        hub_was_up = hub_now;
+    }
     bool found = g_chat != chat::FRIEND;
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
