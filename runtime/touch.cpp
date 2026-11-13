@@ -4778,7 +4778,7 @@ void draw_profiles(ImDrawList *dl, ImFont *font, const State &s, float w, float 
         float cx = (r.x0 + r.x1) * .5f, rh = r.y1 - r.y0;
         text_center(dl, font, rh * .34f, ImVec2(cx, r.y0 + rh * .3f), pick ? GLOW : used || editing ? GOLD : fade(INK, .5f), num);
         int kind = editing ? s.layout.kind : s.prof_kind[i];
-        const char *what = used || editing ? T(kind == KIND_EMU ? "Emulator layout" : "Port layout") : T("Empty");
+        const char *what = used || editing ? T(kind == KIND_EMU ? "Emulator style" : "Ours") : T("Empty");
         float fs = rh * .13f, tw = font->CalcTextSizeA(fs, FLT_MAX, 0, what).x, room = (r.x1 - r.x0) * .9f;
         text_center(dl, font, tw > room ? fs * room / tw : fs, ImVec2(cx, r.y0 + rh * .63f), used || editing ? INK : fade(INK, .55f), what);
         const char *tag = editing ? T("Editing") : use ? T("In use") : nullptr;
@@ -4789,7 +4789,7 @@ void draw_profiles(ImDrawList *dl, ImFont *font, const State &s, float w, float 
         }
     }
     window_line(dl, font, win, say_y, h, s.prof_say, s.prof_arm >= 0 ? GLOW : INK);
-    const char *const LABEL[PA_COUNT] = {"Load", "Save here", "New: port layout", "New: emulator layout", "Delete", "Close"};
+    const char *const LABEL[PA_COUNT] = {"Load", "Save here", "New: ours", "New: emulator style", "Delete", "Close"};
     int n = s.prof_pick + 1;
     bool used = s.prof_used[s.prof_pick];
     for (int i = 0; i < PA_COUNT; i++) {
@@ -4997,7 +4997,7 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     static const char *const STYLE_LABEL[STYLE_COUNT] = {"Attacks: pill", "Attacks: buttons", "Attacks: corner"};
     bool shown_hidden = (part >= 0 && hud[part].hidden) || (ctl >= 0 && hideable(ctl) && (s.layout.off >> ctl & 1));
     char prof_label[64];
-    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator" : "Profile %d: port"), s.layout.profile);
+    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator style" : "Profile %d: ours"), s.layout.profile);
     const char *const LABEL[E_COUNT] = {"-", "+", shown_hidden ? "Show" : "Hide", "Reset",
                                         ctl >= 0 && (s.layout.hold >> ctl & 1) ? "Hold: On" : "Hold: Off", "Picture", prof_label,
                                         ranged_layout() ? "Layout: ranged" : "Layout: melee", STYLE_LABEL[s.layout.style],
@@ -5112,7 +5112,7 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
     if (wide > room) ss *= room / wide;  // (a narrow window, a long sentence: on one line, smaller)
     text_center(dl, font, ss, ImVec2(mid, panel.y0 + .078f * h), INK, say);
     char prof_label[64];
-    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator" : "Profile %d: port"), s.layout.profile);
+    snprintf(prof_label, sizeof prof_label, T(s.layout.kind == KIND_EMU ? "Profile %d: emulator style" : "Profile %d: ours"), s.layout.profile);
     const char *const LABEL[H_COUNT] = {"-", "+", part >= 0 && hud[part].hidden ? "Show" : "Hide", "Reset", prof_label, "Defaults", "Cancel", "Save"};
     // (on Cancel what cancels it too: a controller's B when a controller is read and was the last thing used
     // (host_input.c), else Esc)

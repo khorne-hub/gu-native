@@ -3739,7 +3739,7 @@ std::string s_prof_arm;   // the row tapped once that a second tap confirms ("" 
 std::string s_prof_said;  // what the last action did (a note under the rows)
 std::string profile_what(int n) {
     int kind = touch_profile_kind(n);
-    std::string t = tr(kind < 0 ? "Empty" : kind == 1 ? "Emulator layout" : "Port layout");
+    std::string t = tr(kind < 0 ? "Empty" : kind == 1 ? "Emulator style" : "Ours");
     if (n == touch_profile_active()) t += std::string("  \xC2\xB7  ") + tr("In use");
     return t;
 }
@@ -3756,7 +3756,7 @@ void control_profile_row(std::vector<Row> &r) {
         push(View::Profiles, "pf.1");
     });
     int n = touch_profile_active(), kind = touch_profile_kind(n);
-    r.back().value = fmt(kind == 1 ? "Profile %d: emulator" : "Profile %d: port", n);
+    r.back().value = fmt(kind == 1 ? "Profile %d: emulator style" : "Profile %d: ours", n);
     r.back().help = tr("Ten slots, each a whole layout of the touch controls and the HUD: the port's own or an emulator-style one. Use one, save the one you play with in another, or edit it. A design by tabarong.");
 }
 void profile_rows(std::vector<Row> &r) {
@@ -3795,8 +3795,8 @@ void profile_slot_rows(std::vector<Row> &r) {
     armed("ps.save", "Save the current layout here", "Tap again to replace it", used && !in_use, [n]() { return touch_profile_store(n); },
           "Saved");
     r.back().help = tr("The layout you play with now goes into this profile, which is the one in use from then on.");
-    armed("ps.new", "New: port layout", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 0); }, "In use");
-    armed("ps.emu", "New: emulator layout", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 1); }, "In use");
+    armed("ps.new", "New: ours", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 0); }, "In use");
+    armed("ps.emu", "New: emulator style", "Tap again to start it over", used, [n]() { return touch_profile_new(n, 1); }, "In use");
     r.back().help = tr("Each button presses only its own button of the game's, as an emulator's pad on the screen, laid out the same way. Move, resize and hide each one in the editor.");
     action(r, "ps.edit", tr("Edit"), [n, in_use]() {
         if (!in_use && !touch_profile_use(n)) {
