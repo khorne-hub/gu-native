@@ -12,6 +12,9 @@ Android NDK (about 1.8 GB) and llvm-mingw (about 150 MB).
 Options: --android  only the phone's   --pc  only the PC's   --force  make them again even if up to date
          --ndk <path>  an NDK of your own   --llvm-mingw <path>  an llvm-mingw of your own
          --jobs <n>  compile with n jobs   --keep  keep the work folder
+         --work <folder>  a work folder that is kept: a run cut short goes on from where it stopped
+         --zig-cc <cc>  the phone's library with Zig's C compiler (`zig cc`) instead of the NDK (the app's on-phone
+                        builder, tools/phone_build.py, runs it so)
 """
 import argparse
 import hashlib
@@ -49,6 +52,13 @@ PC_CFLAGS = ['-DNDEBUG', '-D_FILE_OFFSET_BITS=64', '-O2', '-fno-strict-aliasing'
              '-fvisibility=hidden', '-march=x86-64-v2', '-w', '-fno-stack-protector', '-U_FORTIFY_SOURCE', '-g0']
 PC_EXE = 'MHGU.exe'
 LLVM_MINGW_RELEASE = '20241217'
+# --zig-cc: the same code as the NDK's clang makes with CFLAGS, from Zig's clang (LLVM 18 too) without the NDK: Zig names
+# the CPU as generic+v8_2a (-march=armv8.2-a), and the C library's few headers the game code includes come from
+# tools/android_libc (memcpy, the math functions: Android's own libc.so and libm.so give them at run time), as mh4n's
+# tools/recomp/runtime/android does for MH4U. The library links against stand-ins of libc.so, libm.so, libdl.so and
+# libmain.so made in the work folder (only their names count) and Zig's compiler-rt; it is stripped by its link.
+ZIG_CFLAGS = [f for f in CFLAGS if f not in ('-march=armv8.2-a', '-no-canonical-prefixes')] + [
+    '-mcpu=generic+v8_2a', '-nostdlibinc', '-isystem', os.path.join(TOOLS, 'android_libc')]
 
 
 def say(text):
@@ -264,6 +274,42 @@ def run(cmd, cwd=None, env=None):
     return r.returncode, r.stdout
 
 
+def run_translator(cmd, cwd, env, name):
+    """gen.py, with its progress said as it goes ("main: 1234 of 98765 functions"), now and then: on a phone the
+    translation takes minutes."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
+    out, last = [], 0
+    for line in p.stdout:
+        out.append(line)
+        m = re.search(r'progress (\d+)/(\d+)', line)
+        if m and (time.time() - last > 5 or m.group(1) == m.group(2)):
+            say(f'  {name}: {m.group(1)} of {m.group(2)} functions')
+            last = time.time()
+    return p.wait(), ''.join(out[-200:])
+
+
+def whole_object(path):
+    """An ELF object whose section headers are all inside the file: one a cut run left half written isn't."""
+    try:
+        size = os.path.getsize(path)
+        with open(path, 'rb') as f:
+            head = f.read(64)
+        if len(head) < 64 or head[:4] != b'\x7fELF':
+            return False
+        shoff = int.from_bytes(head[40:48], 'little')
+        shentsize, shnum = int.from_bytes(head[58:60], 'little'), int.from_bytes(head[60:62], 'little')
+        return 0 < shoff and shoff + shentsize * shnum <= size
+    except OSError:
+        return False
+
+
+def install(src, dest):
+    """A file into the game folder whole: written beside it, then renamed (a cut leaves the old one or the new one)."""
+    part = dest + '.part'
+    shutil.copyfile(src, part)
+    os.replace(part, dest)
+
+
 def link_pc(clang, nm, dlltool, objs, work):
     """--pc: links mhgugame.dll. The game code calls a few of the runtime's functions (rt_dispatch, the NEON helpers...),
     which MHGU.exe exports: a first link tells which ones nothing else provides, and an import library for MHGU.exe
@@ -289,6 +335,26 @@ def link_pc(clang, nm, dlltool, objs, work):
     if code:
         fail('linking failed:\n' + out[-1500:])
     code, out = run([clang, '-shared', '-s', '-o', lib, '@' + rsp, implib, '-static'])
+    if code:
+        fail('linking failed:\n' + out[-1500:])
+    return lib
+
+
+def link_android_zig(clang, target, objs, work):
+    """--zig-cc: links libmhgugame.so as link_android does, against stand-ins of the device's libraries (no NDK)."""
+    stub_c = os.path.join(work, 'stub.c')
+    open(stub_c, 'w').close()
+    for name in ('libmain.so', 'libc.so', 'libm.so', 'libdl.so'):
+        code, out = run([clang] + target + ['-shared', '-nostdlib', f'-Wl,-soname,{name}', stub_c, '-o', os.path.join(work, name)])
+        if code:
+            fail('linking failed:\n' + out[-1500:])
+    rsp = os.path.join(work, 'objs.rsp')
+    with open(rsp, 'w', encoding='utf-8') as f:
+        f.write('\n'.join('"' + o.replace('\\', '/') + '"' for o in objs))
+    lib = os.path.join(work, 'libmhgugame.so')
+    code, out = run([clang] + target + ['-shared', '-nostdlib', '-fPIC', '-Wl,-soname,libmhgugame.so', '-Wl,--build-id=sha1',
+                     '-Wl,--no-rosegment', '-Wl,--gc-sections', '-Wl,-z,max-page-size=16384', '-Wl,--allow-shlib-undefined',
+                     '-Wl,-s', '-o', lib, '@' + rsp, '-L' + work, '-lmain', '-lm', '-lc', '-ldl'])
     if code:
         fail('linking failed:\n' + out[-1500:])
     return lib
@@ -330,7 +396,7 @@ def up_to_date(game, t):
         return False
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser(description='Make the game code for the app from your own copy of the game.')
     ap.add_argument('game', help='the folder that holds exefs and romfs')
     ap.add_argument('--android', action='store_true', help='only the Android library (libmhgugame.so)')
@@ -340,7 +406,10 @@ def main():
     ap.add_argument('--llvm-mingw', help='an llvm-mingw of your own (PC)')
     ap.add_argument('--jobs', type=int, default=os.cpu_count() or 4)
     ap.add_argument('--keep', action='store_true', help='keep the work folder')
-    a = ap.parse_args()
+    ap.add_argument('--work', help='a work folder of your own, kept: a run cut short goes on from where it stopped')
+    ap.add_argument('--zig-cc', help="the Android library with Zig's C compiler (zig cc) instead of the NDK")
+    ap.add_argument('--no-pip', action='store_true', help=argparse.SUPPRESS)  # (the phone: no pip, the own LZ4 reader)
+    a = ap.parse_args(argv)
 
     # (a build_game.py moved out of its download, or a download unzipped in part, finds none of the files it reads: say so
     # in plain words instead of a FileNotFoundError on runtime/hle/hle_symbols.txt)
@@ -363,11 +432,13 @@ def main():
     if not todo:
         say('Nothing to do.')
         return
-    have_lz4 = ensure_lz4()
+    have_lz4 = False if a.no_pip else ensure_lz4()
     # the compilers first: a missing download stops the run before the long part
     exe = '.exe' if platform.system() == 'Windows' else ''
     tools = {}
-    if 'android' in todo:
+    if 'android' in todo and a.zig_cc:
+        tools['android'] = {'clang': a.zig_cc, 'target': ['-target', 'aarch64-linux-android'], 'cflags': ZIG_CFLAGS, 'zig': True}
+    elif 'android' in todo:
         ndk = find_ndk(a.ndk)
         bin_dir = os.path.join(ndk, 'toolchains', 'llvm', 'prebuilt', host_tag()[1], 'bin')
         tools['android'] = {'clang': os.path.join(bin_dir, 'clang' + exe), 'strip': os.path.join(bin_dir, 'llvm-strip' + exe),
@@ -381,9 +452,15 @@ def main():
             fail(f'no compiler at {tl["clang"]}')
 
     # room to work: the C it writes takes 300 MB, its objects a few hundred more
-    work = tempfile.mkdtemp(prefix='mhgu_')
-    if shutil.disk_usage(work).free < 3 << 30:
-        fail('at least 3 GB of free disk space are needed.')
+    if a.work:
+        work = os.path.abspath(a.work)
+        os.makedirs(work, exist_ok=True)
+        a.keep = True
+    else:
+        work = tempfile.mkdtemp(prefix='mhgu_')
+    used = sum(os.path.getsize(os.path.join(r, f)) for r, _, fs in os.walk(work) for f in fs)
+    if shutil.disk_usage(work).free + used < (1500 << 20 if a.zig_cc else 3 << 30):
+        fail(f'at least {"1.5" if a.zig_cc else "3"} GB of free disk space are needed.')
     say(f'Working in {work}')
     gen_env = None if have_lz4 else lz4_env(work)
     steps = 1 + len(todo)
@@ -391,11 +468,25 @@ def main():
     say(f'Step 1 of {steps}: translating the game code...')
     gen = os.path.join(work, 'gen')
     hle = os.path.join(ROOT, 'runtime', 'hle', 'hle_symbols.txt')
-    for cmd in ([sys.executable, 'gen.py', 'sdk', os.path.join(game, 'exefs', 'sdk'), '0x02400000', os.path.join(gen, 'sdk'), '--hle', hle],
-                [sys.executable, 'gen.py', 'main', os.path.join(game, 'exefs', 'main'), '0x00200000', os.path.join(gen, 'main')]):
-        code, out = run(cmd, cwd=TOOLS, env=gen_env)
+    for name, base, extra in (('sdk', '0x02400000', ['--hle', hle]), ('main', '0x00200000', [])):
+        src = os.path.join(game, 'exefs', name)
+        # (a work folder of an earlier run: the same input and the same translator need no translation again)
+        with open(src, 'rb') as f:
+            stamp = gamelib_id() + ' ' + hashlib.sha1(f.read()).hexdigest()
+        done = os.path.join(gen, f'{name}.done')
+        try:
+            with open(done) as f:
+                if f.read().strip() == stamp:
+                    say(f'  {name}: already translated')
+                    continue
+        except OSError:
+            pass
+        cmd = [sys.executable, 'gen.py', name, src, base, os.path.join(gen, name)] + extra
+        code, out = run_translator(cmd, TOOLS, gen_env, name)
         if code:
             fail('the translation failed:\n' + out[-2000:])
+        with open(done, 'w') as f:
+            f.write(stamp + '\n')
 
     sources = []
     for sub in ('main', 'sdk'):
@@ -409,12 +500,26 @@ def main():
         say(f'Step {step} of {steps}: the code for {t["name"]} ({t["lib"]}, id {gid}): compiling {len(sources)} files with '
             f'{a.jobs} jobs (this is the long part)...')
         objs_dir = os.path.join(work, 'obj_' + k)
-        os.makedirs(objs_dir)
+        os.makedirs(objs_dir, exist_ok=True)
+        # (an object of an earlier run is kept when it was made with the same compiler and flags from the same C)
+        flags_file, flags_now = os.path.join(objs_dir, 'flags.txt'), ' '.join([tl['clang']] + tl['target'] + tl['cflags'] + [gid])
+        try:
+            same = open(flags_file).read() == flags_now
+        except OSError:
+            same = False
+        if not same:
+            for f in os.listdir(objs_dir):
+                os.remove(os.path.join(objs_dir, f))
+            with open(flags_file, 'w') as f:
+                f.write(flags_now)
         done = [0]
 
         def compile_one(i_src):
             i, src = i_src
             obj = os.path.join(objs_dir, f'{i}.o')
+            if os.path.exists(obj) and os.path.getmtime(obj) >= os.path.getmtime(src) and whole_object(obj):
+                done[0] += 1
+                return obj
             cmd = [tl['clang']] + tl['target'] + tl['cflags'] + ['-I' + os.path.join(ROOT, 'runtime'), f'-DGAMELIB_ID="{gid}"',
                                                                  '-c', src, '-o', obj]
             code, out = run(cmd)
@@ -433,11 +538,14 @@ def main():
         say('  linking...')
         if k == 'pc':
             lib = link_pc(tl['clang'], tl['nm'], tl['dlltool'], objs, work)
+        elif tl.get('zig'):
+            lib = link_android_zig(tl['clang'], tl['target'], objs, work)
         else:
             lib = link_android(tl['clang'], tl['strip'], tl['target'], objs, work)
-        shutil.copyfile(lib, os.path.join(game, t['lib']))
-        with open(os.path.join(game, t['id']), 'w') as f:
+        install(lib, os.path.join(game, t['lib']))
+        with open(os.path.join(work, t['id']), 'w') as f:
             f.write(gid)
+        install(os.path.join(work, t['id']), os.path.join(game, t['id']))
         say(f'  {t["lib"]}: {os.path.getsize(os.path.join(game, t["lib"])) >> 20} MB')
         if not a.keep:
             shutil.rmtree(objs_dir, ignore_errors=True)
