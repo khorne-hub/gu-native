@@ -1819,6 +1819,7 @@ static uint64_t ui_window_frame;  // the frame (g_present_count) that drew one o
 static struct { float x, y; uint8_t vanchor, hanchor; } ui_recent[UI_RECENT];
 static uint32_t ui_nrecent;  // (quads recorded this pass; the slot is the count modulo UI_RECENT)
 static bool ui_loading_pass;  // this pass draws the loading screen (its backdrop, layer 110, came first)
+extern volatile uint64_t g_town_ns;  // (hle/quickhunt.c: when a town's walking-around update last ran)
 static bool ui_title_pass;  // this pass draws the title screen (its layout, layer 108 at the canvas centre, came first)
 static bool ui_frontend_pass;  // this pass draws a front-end screen (Main Menu, Character Select: its 16:9 backdrop, layer
                                // 250 at the canvas centre, came first)
@@ -4829,6 +4830,13 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         // Effects over the Felyne skills, #167). Not a cinematic's bar, nor the Meownster screen's frame
                         if (window_lately && !ui_meownster_pass && pos_x < 630.0f && pos_y >= 10.0f && pos_y < 560.0f)
                             anchor = ANCHOR_CENTER, window_before = !ui_window_pass;
+                        // A town's windows here, the world map (X) and the "Choose a destination" list after it (x 291..985,
+                        // y 192..522), keep the middle 16:9 too: Right, at 21:9 / Edges they sat right of the middle (GU#219;
+                        // RG406V, Edges at 1600:720: 128 of the canvas's units). A town's prompts at the bottom right (x 1102..,
+                        // y 640..) stay at the edge; a hunt's pieces (no town's update just now) as before
+                        else if (!ui_meownster_pass && pos_x < 1000.0f && pos_y >= 10.0f && pos_y < 600.0f &&
+                                 plat_now_ns() - g_town_ns < 500000000ull)
+                            anchor = ANCHOR_CENTER;
                         // Touch controls (runtime/touch.cpp): the hunt's Hunter Arts panels (x 726..842, y 560..720: up
                         // to three rows) to the top right, the target camera's icons (target_piece) left of them
                         // (not a stretched panel: the multiplayer menu's, the hub form's). Not below the canvas: a

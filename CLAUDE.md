@@ -322,6 +322,10 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
 - A menu's left windows on layer 100 keep the middle 16:9 with its windows at 21:9 and Edges. Some are drawn before the menu's windows
   in the frame (the smithy's parchment and its model, the quest counter's quest card: under the window beside them), so a window of
   this frame or the two before tells (`ui_window_frame`); by the pass alone they went Right, over that window. hudtrace marks them.
+  A town's world map (X) and its "Choose a destination" list are on layer 100 too (x 291..985, y 192..522), with no window of
+  layer 97 beside them: in a town (`g_town_ns`, its update within 500 ms) layer 100 above y 600 and left of x 1000 keeps the
+  middle as well, its prompts at the bottom right the edge. Up to 0.1.9.3 the map and the list sat right of the middle with
+  Edges / 21:9 (128 of the canvas's units at 1600:720, hudtrace on the RG406V: GU#219).
 - Layer 110 holds the loading screen's strips (y 168, 433, 570, the 168 ones first in the pass) and, in the field, a gun's
   quick-aim reticle (one piece at about 650, 433), the lock-on markers and effects: those keep the middle at any HUD anchor, as
   the 3D picture they are on does. Up to 0.1.9.3 the reticle went right by place with Edges / 21:9, and in frames where its y
