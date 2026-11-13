@@ -203,6 +203,7 @@ void vk_save_png(const char *path, const uint8_t *rgba, uint32_t w, uint32_t h);
 int vk_gpu_list(const char **names, int max, int *in_use);
 // A PowerVR (or MHGU_VK_POWERVR=1): one driver compile at a time, on one worker (device.c one_compiler_install)
 bool vk_gpu_powervr(void);
+bool vk_shader_progress(int *done, int *total);  // (exec.c) the start's shader builds not done yet, and how far: the overlay's plate
 // An Arm Mali (MHGU_VK_MALI=1 / 0 for tests)
 bool vk_gpu_mali(void);
 // Which of 0.1.9's render switches are on by default (each MHGU_PERF_<NAME> still overrides its own): all of them with a

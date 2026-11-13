@@ -37,6 +37,7 @@ void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime
 void rewards_init(void);  // [Quest Rewards] SendAllRewards: every quest reward to the item box at once (runtime/hle/rewards.c)
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void grass_init(void);  // [Performance] Grass: the game's grass unit (uGrass2) not drawn while Off (runtime/hle/grass.c)
+void effects_init(void);  // [Performance] Effects: the game's particle effects not drawn while Off (runtime/hle/effects.c)
 void guimark_init(void);  // the HUD's markers over the world (bubbles, quest icons) tested against the canvas (runtime/hle/guimark.c)
 void limiter_init(void);  // (MHGU_PERF_LIMITER, on by default) the engine's frame limiter sleeps to its frame's time (runtime/hle/limiter.c)
 void inflate_init(void);  // zlib's inflate_fast as host code: archives decompress faster (runtime/hle/inflate.c)

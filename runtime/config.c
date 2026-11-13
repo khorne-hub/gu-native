@@ -62,13 +62,13 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #define CONFIG_DEFAULT_FXAA 1
 #endif
 #define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
-    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f, 0
+    1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f, 1
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
 // thank-you not shown yet, then the combined buttons, none, gpu, the menu's hint not seen yet, the mouse in the game's
 // menus, the grass, the lock-on's buttons shown, the notice about playing online not shown yet, the pause in the menu, and
-// no hub server or matchmaking key remembered yet; the gyro's aim off, at its usual sensitivity; the rewards sent one at a
-// time, as the game does)
+// no hub server or matchmaking key remembered yet; the gyro's aim off, at its usual sensitivity; the effects drawn. The fields
+// after it are zero by default, with no value here: crossplay off, the rewards sent one at a time, as the game does)
 Config g_config = {CONFIG_DEFAULT_VALUES};
 Config config_defaults(void) { Config c = {CONFIG_DEFAULT_VALUES}; return c; }
 uint32_t g_render_size[2] = {1920, 1080};
@@ -100,7 +100,7 @@ static const char DEFAULT_INI[] =
 #ifndef __ANDROID__  // (config_load: below 100, fsr.c's plain scaling with the HUD at the screen's size)
     "; Below 100 the HUD and the text stay sharp: they are drawn at the screen's full resolution over the 3D picture\n"
 #endif
-    "; Between 25 and 100\n"
+    "; Between 10 and 100 (any percent; the 3D picture is never smaller than 320x180)\n"
     "; Default: 100\n"
     "RenderScale = 100\n"
     "\n"
@@ -257,6 +257,11 @@ static const char DEFAULT_INI[] =
     "; ground stay). Off: faster where there is a lot of it on a weak GPU\n"
     "; Default: On\n"
     "Grass = On\n"
+    "\n"
+    "; The game's particle effects: hits, sparks, fire, breath, dust, rain. Off: faster on a weak GPU, but the effects\n"
+    "; that warn of a monster's attack go too\n"
+    "; Default: On\n"
+    "Effects = On\n"
     "\n"
     "; An Adreno GPU with a Vulkan 1.1 driver can show the 3D picture repeated in a grid below 720 lines without MSAA.\n"
     "; Auto keeps 2x MSAA there; Off leaves MSAA as set (faster, and some of those drivers look better without it)\n"
@@ -819,7 +824,7 @@ const ConfigSetting g_settings[] = {
      "Windowed|window,Fullscreen|exclusive|exclusivefullscreen,Borderless|borderless*", NULL, true, ERR_SIZE},
     {"Display", "Resolution", SET_SIZE, F(width), F(height), 0, 0, "Desktop|auto", NULL, true, ERR_SIZE},
     {"Display", "RenderResolution", SET_SIZE, F(render_w), F(render_h), 0, 0, "Auto", NULL, true, ERR_SIZE},
-    {"Display", "RenderScale", SET_INT, F(render_scale), 0, 25, 100, NULL, NULL, true, ERR_SIZE},
+    {"Display", "RenderScale", SET_INT, F(render_scale), 0, RENDER_SCALE_MIN, 100, NULL, NULL, true, ERR_SIZE},
     {"Display", "AspectRatio", SET_ASPECT, F(aspect_ratio), 0, 0.5f, 10.0f, NULL, NULL, true, ERR_ASPECT},
     {"Display", "FOV", SET_FLOAT, F(fov), 0, 0.5f, 2.0f, NULL, NULL, false, ERR_VIEW},
     {"Display", "UIAnchor", SET_CHOICE, F(ui_anchor), 0, 0, 0, "Center|1|16:9,21:9|2,32:9|3,Edges", anchor_values, true,
@@ -846,6 +851,7 @@ const ConfigSetting g_settings[] = {
      ERR_MISC},
     ON_OFF("Performance", "Shadows", shadows, false),
     ON_OFF("Performance", "Grass", grass, false),
+    ON_OFF("Performance", "Effects", effects, false),
     ON_OFF("Performance", "Bloom", bloom, false),
     {"Performance", "AdrenoFix", SET_CHOICE, F(adreno_fix), 0, 0, 0, "Auto,Off", NULL, true, ERR_MISC},
 #ifdef __ANDROID__
@@ -1388,6 +1394,19 @@ static void fit_aspect(int w, int h, float aspect, int *rw, int *rh) {
     *rw = w & ~1, *rh = h & ~1;
 }
 
+#ifdef __ANDROID__
+// (a phone's Low-end mode below 100 %, a percent's or an exact size's 3D picture h lines tall: the HUD stays sharp over it,
+// fsr.c vk_fsr_init: at the screen's size up to 720 lines or twice the 3D's, whichever is more. At a 2712x1220 screen's
+// whole size it drew 9 times the pixels of the 3D at 33%, and a phone with an Adreno 710 was slower with LowEnd than
+// without; Toaster: at most TOASTER_HUD_LINES, for the HUD, the game's last draw and the window's copy)
+static void lowend_hud(int h, int tw, int th, float aspect) {
+    int ow, oh, cap = g_config.low_end == LOW_END_TOASTER ? TOASTER_HUD_LINES : h * 2 > 720 ? h * 2 : 720;
+    if (th > cap) fit_aspect(tw * cap / th, cap, aspect, &ow, &oh);
+    else fit_aspect(tw, th, aspect, &ow, &oh);
+    g_fsr_output[0] = (uint32_t)ow, g_fsr_output[1] = (uint32_t)oh;
+}
+#endif
+
 #ifndef __ANDROID__
 // (a desktop) What the menu's Low-end mode (1) or Toaster (LOW_END_TOASTER) sets RenderScale to: the 3D picture about
 // LOW_END_LINES or TOASTER_LINES tall whatever the screen - Low-end 66% at 1080p, 50% at 1440p, 33% at 4K, 93% at 768p;
@@ -1554,6 +1573,7 @@ void config_load(void) {
     if ((e = getenv("MHGU_LOWEND"))) g_config.low_end = atoi(e) < 0 ? 0 : atoi(e) > 2 ? 2 : atoi(e);
     if ((e = getenv("MHGU_BLOOM"))) g_config.bloom = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_GRASS"))) g_config.grass = atoi(e) != 0, config_live_test(&g_config);
+    if ((e = getenv("MHGU_EFFECTS"))) g_config.effects = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FPS_LIMIT")) && atoi(e) >= 30 && atoi(e) <= FPS_MAX) g_config.fps = atoi(e), config_live_test(&g_config);
     if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= 100) g_config.render_scale = atoi(e);
     if ((e = getenv("MHGU_SHADOWS"))) g_config.shadows = atoi(e) != 0, config_live_test(&g_config);
@@ -1617,16 +1637,7 @@ void config_load(void) {
 #endif
         if (s < 100) LOG("[config] RenderScale %d%%: the 3D picture at %dx%d (screen %dx%d)\n", s, w, h, tw, th);
 #ifdef __ANDROID__
-        if (g_config.low_end && !g_config.fsr && s < 100) {
-            // (LowEnd: the HUD stays sharp over the smaller 3D picture, fsr.c vk_fsr_init: at the screen's size up to
-            // 720 lines or twice the 3D's, whichever is more. At a 2712x1220 screen's whole size it drew 9 times the
-            // pixels of the 3D at 33%, and a phone with an Adreno 710 was slower with LowEnd than without)
-            // (Toaster: at most TOASTER_HUD_LINES, for the HUD, the game's last draw and the window's copy)
-            int ow, oh, cap = g_config.low_end == LOW_END_TOASTER ? TOASTER_HUD_LINES : h * 2 > 720 ? h * 2 : 720;
-            if (th > cap) fit_aspect(tw * cap / th, cap, aspect, &ow, &oh);
-            else fit_aspect(tw, th, aspect, &ow, &oh);
-            g_fsr_output[0] = (uint32_t)ow, g_fsr_output[1] = (uint32_t)oh;
-        }
+        if (g_config.low_end && !g_config.fsr && s < 100) lowend_hud(h, tw, th, aspect);
 #else
         // (a desktop, any RenderScale below 100 with or without Low-end mode: the HUD and the text stay sharp over the
         // smaller 3D picture, drawn at the screen's whole size (fsr.c's plain scaling, vk_fsr_init). A PC's GPU affords
@@ -1645,10 +1656,20 @@ void config_load(void) {
         }
 #endif
     } else {
-        fit_aspect(g_config.render_w, g_config.render_h, aspect, &w, &h);
+        int rw = g_config.render_w, rh = g_config.render_h;
+#ifdef __ANDROID__
+        // (a phone's exact size, the menu's 3D resolution "Exact size": 320x180 to the screen's own)
+        rw = rw < 320 ? 320 : rw > tw ? tw : rw;
+        rh = rh < 180 ? 180 : rh > th ? th : rh;
+#endif
+        fit_aspect(rw, rh, aspect, &w, &h);
         if (w != g_config.render_w || h != g_config.render_h)
             LOG("[config] RenderResolution %dx%d is not the picture's shape (%.3f): using %dx%d\n", g_config.render_w,
                 g_config.render_h, aspect, w, h);
+#ifdef __ANDROID__
+        LOG("[config] RenderResolution: the 3D picture at %dx%d (screen %dx%d)\n", w, h, tw, th);
+        if (g_config.low_end && !g_config.fsr && h < th) lowend_hud(h, tw, th, aspect);  // (as a percent's)
+#endif
     }
     if (render_auto && g_config.fsr && g_config.render_scale < 100)
         LOG("[config] RenderScale %d%% not used: FSR is on (FSRQuality sets the 3D size)\n", g_config.render_scale);

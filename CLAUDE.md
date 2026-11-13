@@ -1030,3 +1030,42 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
     at least) of the stick's place brings its base there (`stick_reach`, `lock_geo` for the sprint lock); never the whole
     left half (the owner's call).
 - Bugs that only show on some devices are common here. Test on a real phone, and on a device without Snapdragon.
+- `[Performance] Effects` (1.0, `runtime/hle/effects.c`, live, On by default; the MH4U port has the same row): the game's
+  effects are units of a few classes (the DTI names: each `MtDTI` constructor call, 0x9aedcc, gives the DTI object; a
+  class's getDti returns it and sits at +0x14 of its vtable, so the vtable is found by that function; slot +0x30 draws the
+  unit into a pass, as uGrass2's): uEffect (vtable 0x198d620, draw 0xbba5b0; uProofEffect and uMHProofEffect inherit it,
+  uProjectionEffect's 0xbc0b84 calls it), uSimpleEffect (0xe667a0), uCameraEffect (0xbb827c). Off, those draws aren't run
+  (fnhook, as Grass): the effects still play, nothing of their particles is drawn. uEffect2D (0xe5c80c, the HUD's 2D
+  effects) and uProofEffectModel (0x52b8c0) stay (`MHGU_EFFECTS_HOOKS=<bits>` tries them). `MHGU_EFFECTS_LOG=1` logs each
+  class's first draw and every 10 s how many times each drew (PC, quest 301's area 6: uEffect about 2000 draws in 10 s, none
+  of the other two); `MHGU_EFFECTS_FLIP=<s>` turns them on and off in turns (a test). The volcano's smoke in Jurassic
+  Frontier's sky and the cooking pot's steam in Bherna stay with Effects off: part of the stage's models, not effect units.
+  `MHGU_EFFECTS=0|1` overrides the ini in a test run. The scripts that found the classes and vtables (from a decompressed
+  `main` and `generated/main`): E:\claude_trabajo\v1.0\out\gfx\tools (dtis.py, props.py, strrefs.py).
+- 3D resolution (1.0): `[Display] RenderScale` takes any percent from `RENDER_SCALE_MIN` (10) to 100, the 3D picture never
+  under 320x180 (`config_load`). The menu's row (`scale_row`) is a number: left / right one percent, a tap the usual ones
+  (100 ... 20); on a phone the list ends with Exact size, which sets `[Display] RenderResolution` to the percent's size and
+  shows Width and Height rows (a desktop has them as Render resolution Custom). A phone's exact size is kept within 320x180
+  and the screen, and with Low-end mode gets its HUD stand-ins as a percent does (`lowend_hud`). The phone's help says why
+  the HUD softens with it: it is drawn at the 3D size unless Low-end mode or FSR draws it at the screen's (1.0's S22: kept so,
+  a full-size HUD costs a weak GPU more than it gains).
+- Clear shader cache (1.0, `runtime/cache_clear.c`, both platforms, Graphics & Audio's last row): a tap writes
+  `cache/clear_at_start` (another tap removes it); the next start deletes `cache/programs.bin`, `programs.src`,
+  `pipelines.bin`, `vk_pipelines.bin`, `spirv/` and `arcmerge/` before anything reads them (`main.c`) and logs "[cache] the
+  shader cache cleared ...". PC: 2947 files, 367.5 MB. The overlay's plate "Building shaders" (`overlay.cpp shader_plate`,
+  `exec.c vk_shader_progress`: the start's queued builds and the prewarm's translations, done of total) shows once they
+  have taken 3 s and while they last, then "Shaders built" for a moment; the log says when it showed and when it ended.
+  PC after a clear: "353 of 6627 built 3.0 s after the overlay's first frame".
+- What the PC showed of the 1.0 graphics work (E:\claude_trabajo\v1.0\out\gfx: `pc_run.sh`, `evidence\`): the menu's rows
+  and their EN/ES help (Effects, the 3D resolution at 95 % with its size and the presets list, Clear shader cache with its
+  size), the clear at the next start and the plate ("965 de 7021 (13 %)" over the first start's credits). Effects Off: the log
+  says each class's draws left out, and uEffect's draw is what reaches its particle managers (it walks the unit's list at
+  +0x1f0 and calls each one's +0x54); no scene tried on the PC (Jurassic Frontier's camp, Bherna, the Deserted Island's area 6
+  with Jaggi near, a great sword's charge) showed a particle big enough to see go, so the picture with and without is still
+  to be seen in a hunt with hits on a phone (the MH4U port's same switch removes the sand ship's dust and the sun's flare in
+  its PC runner's deterministic G2). Owed on a phone (the 2026-11-13 phones had a Play Protect dialog in front; nothing was
+  installed): E:\claude_trabajo\v1.0\out\gfx\phone_tests.sh <serial> gu (Effects in quest 301's area 6, the menu's rows on
+  a phone, 57 %, the clear and the plate, and MHGU_PERF_MENU_PRESENT 0 / 1 for 1.0's S25), and Exact size by hand.
+- Texture packs are romfs mods (they replace the game's `.tex` files): `[romfs] mod <name>: N files (X MB), T of them
+  textures (Y MB as files ...)` says what each brings. No pack format of the emulators' (KTX2 and the like) applies here: the
+  game reads its own `.tex` files, and a pack's BC textures are decoded on the CPU on a Mali as the game's own are.
