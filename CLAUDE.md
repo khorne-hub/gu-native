@@ -814,6 +814,33 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   keyboard's), at the start and when a device comes or goes or such a key first comes (`GameActivity.inputReport`,
   `SDLControllerManager.keySeen`): an Ipega PG-9025 Android calls "... Keyboard" left no line at all (#87, #29). Letters aren't
   logged (a keyboard's typing in a shared log).
+- 1.0's input group (branch `feat-input`): no double tap on the camera's part does anything (it pressed L, the camera's
+  centring: by accident in a fight it turned the camera away, #130, #132; the L button does it). Three `[Touch]` switches, the
+  touch_show array's last (`TB_MENU_LR`, `TB_DPAD_MENUS`, `TB_ARTS_PAD`): `ShowMenuLR` (On: the menu pad's L and R tabs),
+  `DpadInMenus` (Off: On keeps the hunt's d-pad on the screen in the game's menus, taking fingers, `under_mpad` / `hit`;
+  #196), `ArtsWithController` (On: a tap on a Hunter Art's panel while a controller hides the controls, 0.1.9's #48; Off: no
+  taps there). MH4U for Android has the first two (`show_menu_lr`, `show_dpad_menus`). A keyboard and a mouse on a phone
+  (`GameActivity.keyboardMouse`: an external keyboard with letters and an external mouse; `host_input_keyboard_mouse`, asked
+  every 2 s and as one comes or goes, logged `[input] keyboard ..., mouse ...`): with both, Controls shows a Keyboard and
+  mouse header with the PC's Keybinds view and Mouse sensitivity, a combined button's view its Key row, and the key capture
+  takes a mouse button (never a finger's tap: `overlay.cpp finger_mouse`). Nothing else changes: the keys and the click
+  that captures the mouse worked on a phone before, with a phone's default keys (`DEFAULT_*_KEYS`, `#ifdef __ANDROID__`).
+  The lock-on by a tap on the target camera's icon is gone since 0.1.9.3's Lock-on button (the icons take no taps; config.c
+  turns L and ZL on once for an older file): nothing of it is left.
+  A captured mouse on Android sends ACTION_MOVE and ACTION_BUTTON_PRESS / RELEASE from SOURCE_MOUSE_RELATIVE: SDLSurface's
+  onCapturedPointerEvent now gives them to SDL as relative mouse events (it passed them to onGenericMotion, which takes a
+  free pointer's HOVER_MOVE only, so a phone's mouse never turned the camera), and keyboardMouse counts a captured mouse
+  (SOURCE_MOUSE_RELATIVE) as one. Seen on the RG406V (2026-11-13) with a keyboard and a mouse made by the shell's `hid` tool
+  (`hid <file>`: JSON lines `register` with a boot keyboard's or a 3-button mouse's descriptor and `"bus": "bluetooth"`,
+  `report`, `delay`; external devices for Android): the log's device lines and "[input] keyboard connected, mouse
+  connected", Keybinds and Mouse sensitivity under Keyboard and mouse, a key chosen in Keybinds (F), a click in the game
+  "[input] capturing the mouse", 60 reports of 30 counts turning the hunt camera in quest 101 (nothing before the fix),
+  Escape "[input] mouse released". A click at the screen's very corner reaches no app (the system's edge). Also seen
+  there: no double tap centres the camera; with DpadInMenus the hunt's d-pad stays in the pause menu and moves its cursor,
+  and the menu pad shows without L and R with ShowMenuLR Off; with the lock-on a bow's draw from the stance turned the
+  hunter to the monster ("[lock] a bow's locked shot: heading bf1c -> 02c1 (action 0010:002)", training quest 30256 with
+  MHGU_QUICKHUNT_AREA=1). The tutorial's and the pause menu's pages ("< 1 / 3 >") turn with left and right, not with R:
+  the menu pad's R tab and a keyboard's R did nothing there, the pad's right turned them (the game's own).
 - The Hunter Arts' pieces on layer 100 are taken from y 560 to the canvas's end (720): a style with fewer than three arts draws
   the empty slots' frames below it (one art: rows at 676, 721, 766), out of sight on the console, and the touch arrangement lifted
   them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 100 at x 688 and 692, left of

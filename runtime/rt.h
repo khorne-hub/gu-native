@@ -143,6 +143,8 @@ enum { HIB_OUTPUT = 1, HIB_PADMAP, HIB_SCRIPT, HIB_PAD, HIB_RUMBLE, HIB_MENU, HI
 void ui_loop_wake(void);                 // (MHGU_PERF_INPUT_WAKE) any thread: the window loop runs a pass now (a frame, a rumble)
 bool host_input_press(const char *button, unsigned frames);  // scripted press from the next frame (UI thread)
 bool host_input_real_pad(void);          // a controller in the player's hands is connected (the touch controls' rule; any thread)
+bool host_input_keyboard_mouse(void);    // a keyboard and a mouse are connected (a desktop: always; a phone: the settings show
+                                         // Keybinds and the mouse's rows then; any thread)
 void quickhunt_poll(void);               // (debug) MHGU_QUICKHUNT's presses (runtime/hle/quickhunt.c; UI thread)
 
 // ---- helpers

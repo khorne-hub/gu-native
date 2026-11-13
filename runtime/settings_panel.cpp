@@ -39,6 +39,7 @@
 extern "C" int vk_gpu_list(const char **names, int max, int *in_use);
 #endif
 extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
+extern "C" bool host_input_keyboard_mouse(void);  // (runtime/host_input.c: a phone's keyboard and mouse, S14)
 
 namespace {
 // (Page: a page one level down from a section's, State::at; MENU.md)
@@ -196,9 +197,9 @@ bool touch_screen() {
 // The touch controls' rows: with a touch screen, or with the controls shown anyway ([Touch] Controls On, as saved:
 // their rows stay, to turn them off)
 bool touch_rows() { return touch_screen() || s.saved.touch_controls == TOUCH_ON; }
-// The touch settings of the TB_ list with a row of their own elsewhere (MENU.md: the floating stick on Touch controls),
-// not in Buttons on the screen nor in its count
-bool tb_elsewhere(int i) { return i == TB_FLOAT_STICK; }
+// The touch settings of the TB_ list with a row of their own elsewhere (MENU.md: the floating stick on Touch controls, the
+// Hunter Arts' taps with a controller on Controller), not in Buttons on the screen nor in its count
+bool tb_elsewhere(int i) { return i == TB_FLOAT_STICK || i == TB_ARTS_PAD; }
 struct Row;
 void control_profile_row(std::vector<Row> &r);  // (the Controls page's link to the control profiles: further down)
 void button_images_row(std::vector<Row> &r);    // (...and to the buttons' pictures)
@@ -1631,6 +1632,19 @@ Row bind_row(int i, const char *what = nullptr) {
     };
     return row;
 }
+#ifdef __ANDROID__
+// (S14) A keyboard and a mouse connected to the phone (host_input_keyboard_mouse): the PC's Keybinds and the mouse's
+// speed, on Controls > Keyboard and mouse; none of it (nor the page's row) shows without both. The keys and the mouse work as they
+// did either way: a click in the game captures the mouse for the camera, Esc lets it go. The MH4U port's the same rows
+void keyboard_mouse_rows(std::vector<Row> &r) {
+    if (!host_input_keyboard_mouse())
+        return;
+    action(r, "keybinds", tr("Keybinds"), []() { push(View::Keybinds, "bind.0"); });
+    r.back().help = tr("The keys and mouse buttons for the game's buttons, for moving, the camera, the item bar and the combined buttons. A click in the game captures the mouse: it turns the camera until Esc lets it go. These rows show while a keyboard and a mouse are connected.");
+    number(r, "mouse", tr("Mouse sensitivity"), &s.draft.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
+    r.back().value = fmt("%.2fx", s.draft.mouse_sensitivity);
+}
+#endif
 // The Keybinds submenu: a row per keybind, the chat key
 void keybind_rows(std::vector<Row> &r) {
     for (int i = 0; i < BINDS; i++) {
@@ -2260,7 +2274,7 @@ void rows_controls_keys_10(std::vector<Row> &r) {
     number(r, "mouse", tr("Mouse sensitivity"), &c.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
     add_bool(r, "mouse.menus", "Mouse in the game's menus", &c.mouse_menus, ini("MouseMenus"));  // (hle/mousemenu.c)
 #else
-    (void)r;
+    keyboard_mouse_rows(r);  // (S14: a phone's, only while a keyboard and a mouse are connected)
 #endif
 }
 void reset_controls_keys_10() {
@@ -2272,7 +2286,7 @@ void reset_controls_keys_10() {
 }
 bool shown_controls_keys_10() {
 #ifdef __ANDROID__
-    return false;
+    return host_input_keyboard_mouse();  // (S14)
 #else
     return true;
 #endif
@@ -3143,17 +3157,21 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
-                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick"};
+                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick",
+                                         "L and R in menus", "D-pad in menus", "Hunter Arts with a controller"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
-                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick"};
-// (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick -, the menu pad before
-// the tabs that go with it)
-const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L,
-                                TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
-                                TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_ZL, TB_MENU_ZR};
-static_assert(TB_COUNT == 27, "TB_ORDER: a place for each of the touch settings");
+                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick",
+                                       "ShowMenuLR", "DpadInMenus", "ArtsWithController"};
+// (their rows' order: each way of a button by it - keeping the guard by Guard, the run and the floating stick by the stick,
+// the D-pad in menus by the D-pad -, the menu pad before the tabs that go with it; the Hunter Arts' taps with a controller
+// last, a controller's way. The floating stick and the Arts' taps have rows of their own elsewhere: tb_elsewhere)
+const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD,
+                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN,
+                                TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_LR,
+                                TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD};
+static_assert(TB_COUNT == 30, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -3168,7 +3186,14 @@ void touch_button_rows(std::vector<Row> &r) {
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
                 r.back().help = tr("The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.");
             if (i == TB_DPAD)  // (both platforms, the MH4U port's words: the menu pad takes its place, touch.cpp under_mpad)
-                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place.");
+                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place, unless D-pad in menus is on.");
+            // (S08: the menus' and a controller's ways, each with its own words; the MH4U port's the same but the Arts')
+            if (i == TB_DPAD_MENUS)
+                r.back().help = tr("On: the D-pad stays on the screen in the game's menus too, beside the menu pad, and moves their cursor. Off: the menu pad takes its place while a menu is open.");
+            if (i == TB_MENU_LR)
+                r.back().help = tr("The menu pad's L and R tabs above it, which turn the menus' pages (ZL and ZR when the game's options turn pages with them). Off: the menu pad without them.");
+            if (i == TB_ARTS_PAD)
+                r.back().help = tr("With a controller connected (the touch controls hidden), a tap on a Hunter Art's panel performs it, with what your Control Type uses for it. Off: the panel takes no taps then.");
 #ifndef __ANDROID__  // (the default ini says nothing of these two; a phone's: PHONE_HELP)
             if (i == TB_MENU_ZL)
                 r.back().help = tr("With the menu pad, a ZL tab above its left one (L when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.");
@@ -3298,6 +3323,14 @@ void rows_controls_touch_60(std::vector<Row> &r) {
 void reset_controls_touch_60() { s.draft.touch_show[TB_FLOAT_STICK] = config_defaults().touch_show[TB_FLOAT_STICK]; }
 MENU_ENTRY("controls/touch", 60, rows_controls_touch_60, reset_controls_touch_60);
 MENU_ENTRY("controls/touch", 70, button_images_row);
+// The input group's (S08): the Hunter Arts' taps with a controller on Controls > Controller (MENU.md 3.1); the menu pad's
+// L and R and the D-pad in menus stay in Buttons on the screen
+void rows_controls_pad_150(std::vector<Row> &r) {
+    add_bool(r, "tb.arts", "Hunter Arts with a controller", &s.draft.touch_show[TB_ARTS_PAD], ini("ArtsWithController"));
+    r.back().help = tr("With a controller connected (the touch controls hidden), a tap on a Hunter Art's panel performs it, with what your Control Type uses for it. Off: the panel takes no taps then.");
+}
+void reset_controls_pad_150() { s.draft.touch_show[TB_ARTS_PAD] = config_defaults().touch_show[TB_ARTS_PAD]; }
+MENU_ENTRY("controls/pad", 150, rows_controls_pad_150, reset_controls_pad_150, touch_rows);
 void combo_rows(std::vector<Row> &r) {
     static const char *const NAMES[16] = {"A", "B", "X", "Y", "L3", "R3", "L", "R", "ZL", "ZR", "Plus", "Minus", "Left", "Up", "Right", "Down"};
     static const int ORDER[16] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 13, 15, 12, 14, 4, 5};  // (the face buttons first)
@@ -3320,11 +3353,14 @@ void combo_rows(std::vector<Row> &r) {
                {tr("None"), "L3", "R3", tr("Minus"), "Guide", "Misc", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad"},
                [k](int v) { s.draft.touch_combo_pad[k] = v; });
     r.back().help = tr("That button of a controller does the same, and no longer does what it did.");
-#ifndef __ANDROID__  // (a key does the same while held: [Keybinds] Combo<n>Key, also in Keybinds)
-    r.push_back(bind_row(BIND_COMBO1 + k, tr("A key or mouse button that presses these buttons while held. Keybinds has it too.")));
-    r.back().id = "ce.key";
-    r.back().title = tr("Key");
+#ifdef __ANDROID__  // (a key does the same while held: [Keybinds] Combo<n>Key, also in Keybinds; a phone's with a keyboard
+    if (host_input_keyboard_mouse())  // and a mouse connected, S14)
 #endif
+    {
+        r.push_back(bind_row(BIND_COMBO1 + k, tr("A key or mouse button that presses these buttons while held. Keybinds has it too.")));
+        r.back().id = "ce.key";
+        r.back().title = tr("Key");
+    }
     action(r, "ce.clear", tr("Clear"), [k]() {
         s.draft.touch_combo[k][0] = 0;
         s.draft.touch_combo_pad[k] = 0;
@@ -5080,7 +5116,11 @@ void report(bool *open) {
     is_capturing = *open && s.view == View::KeyCapture;
     // (a click on the capture view's buttons is theirs; anywhere else it is the mouse button chosen - a finger's tap
     // is no mouse button)
+#ifdef __ANDROID__  // (S14: a phone's mouse, with a keyboard connected: a finger's tap is never a mouse button, overlay.cpp)
+    capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing && host_input_keyboard_mouse();
+#else
     capture_mouse = is_capturing && s.capture_bind >= 0 && !s.pointing && !touch_ui();
+#endif
     capture_wheel = is_capturing && s.capture_bind >= 0;  // (the capture view doesn't scroll)
     textinput_menu_keyboard(*open && s.view == View::Keyboard && s.keyboard.phone);  // (its key asked for it: textinput.c)
     if (!*open)

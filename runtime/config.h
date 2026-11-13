@@ -42,12 +42,17 @@ enum {
 // The game's buttons, for showing each on the screen or not ([Touch] Show*: runtime/touch.cpp); and two of the touch
 // controls' ways, kept with them: [Touch] StickRun (the stick pushed far out runs, locked; Off: a Run button instead) and
 // GuardSlide (a thumb from Guard keeps R as it slides onto the attacks); and the port's own Lock-on button (ShowLockOn: no
-// button of the game's, runtime/touch.cpp C_LOCKON); FloatingStick (the stick comes to where the thumb lands near it)
+// button of the game's, runtime/touch.cpp C_LOCKON); FloatingStick (the stick comes to where the thumb lands near it). And
+// three of the menus' and a controller's ways: ShowMenuLR (the menu pad's L and R tabs), DpadInMenus (the hunt's D-pad
+// stays in the game's menus, beside the menu pad) and ArtsWithController (a tap on a Hunter Art's panel performs it while
+// a controller hides the touch controls)
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
-       TB_STICK_RUN, TB_GUARD_SLIDE, TB_LOCKON, TB_FLOAT_STICK, TB_COUNT };
-// (the item bar's arrows on by default, as in the MH4U port; the Lock-on button too; the floating stick off)
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0}
+       TB_STICK_RUN, TB_GUARD_SLIDE, TB_LOCKON, TB_FLOAT_STICK, TB_MENU_LR, TB_DPAD_MENUS, TB_ARTS_PAD, TB_COUNT };
+// (the item bar's arrows on by default, as in the MH4U port; the Lock-on button too; the floating stick off; the menu
+// pad's L and R and the Hunter Arts' taps with a controller as up to 0.1.9.3, the D-pad in menus off: the menu pad takes
+// its place, as then)
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1}
 #define TOUCH_COMBOS 6
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,

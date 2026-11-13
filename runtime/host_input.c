@@ -52,8 +52,11 @@
 #include <jni.h>
 static void report_soon(void);  // (the input report: a device came or went)
 #define REPORT_SOON() report_soon()
+static void kbm_soon(void);     // (a keyboard and a mouse: asked again)
+#define KBM_SOON() kbm_soon()
 #else
 #define REPORT_SOON() ((void)0)
+#define KBM_SOON() ((void)0)
 #endif
 
 #define B(x) (1ull << (x))
@@ -1077,6 +1080,9 @@ void host_input_event(const SDL_Event *e) {
         open_pad(e->gdevice.which);
         REPORT_SOON();
         break;
+    case SDL_EVENT_KEYBOARD_ADDED: case SDL_EVENT_KEYBOARD_REMOVED: case SDL_EVENT_MOUSE_ADDED: case SDL_EVENT_MOUSE_REMOVED:
+        KBM_SOON();  // (a keyboard or a mouse came or went: asked again soon)
+        break;
     case SDL_EVENT_JOYSTICK_ADDED:  // (also sent for gamepads, before their GAMEPAD_ADDED: joystick_seen skips those)
         joystick_seen(e->jdevice.which);
         REPORT_SOON();
@@ -1350,10 +1356,50 @@ static void input_report(void) {
 }
 #endif
 
+#ifdef __ANDROID__
+// A physical keyboard and a mouse connected to the phone (GameActivity.keyboardMouse: an external keyboard with letters,
+// an external mouse), asked at the start, soon after a keyboard or a mouse comes or goes (kbm_soon), and every 2 s: with
+// both, the settings show Keybinds and the mouse's rows (settings_panel.cpp), the PC's (gu-native #31, Discord). The
+// keys and the mouse work as they did either way: a click in the game captures the mouse for the camera, Esc lets it go
+static SDL_AtomicInt kbm_seen;  // (1 a keyboard, 2 a mouse: GameActivity's bits)
+static uint64_t kbm_next;
+static void kbm_soon(void) { kbm_next = plat_now_ns() + 500000000ull; }
+static void kbm_poll(void) {
+    static bool failed;
+    static int said = -1;
+    uint64_t now = plat_now_ns();
+    if (failed || now < kbm_next) return;
+    kbm_next = now + 2000000000ull;
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject act = env ? (jobject)SDL_GetAndroidActivity() : NULL;
+    if (!act) return;
+    jclass cls = (*env)->GetObjectClass(env, act);
+    jmethodID m = cls ? (*env)->GetStaticMethodID(env, cls, "keyboardMouse", "()I") : NULL;
+    int bits = 0;
+    if (!(*env)->ExceptionCheck(env) && m) bits = (int)(*env)->CallStaticIntMethod(env, cls, m);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env), (*env)->ExceptionClear(env);
+        if (!m) failed = true, LOG("[input] GameActivity.keyboardMouse is missing: no Keybinds on the phone\n");
+        bits = 0;
+    }
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, act);
+    SDL_SetAtomicInt(&kbm_seen, bits);
+    if (bits != said)
+        LOG("[input] keyboard %s, mouse %s%s\n", bits & 1 ? "connected" : "none", bits & 2 ? "connected" : "none",
+            bits == 3 ? ": the settings' Controls show Keybinds and the mouse's speed" : said == 3 ? ": Keybinds hidden again" : "");
+    said = bits;
+}
+bool host_input_keyboard_mouse(void) { return SDL_GetAtomicInt(&kbm_seen) == 3; }
+#else
+bool host_input_keyboard_mouse(void) { return true; }
+#endif
+
 void host_input_update(void) {
     if (nscript < 0) script_parse(), padmap_init();
 #ifdef __ANDROID__
     input_report();
+    kbm_poll();
 #endif
     padmap_poll();
     rumble_update();
