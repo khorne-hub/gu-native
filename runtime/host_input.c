@@ -48,6 +48,13 @@
 #include "rt.h"
 #include "textinput.h"
 #include "touch.h"
+#ifdef __ANDROID__
+#include <jni.h>
+static void report_soon(void);  // (the input report: a device came or went)
+#define REPORT_SOON() report_soon()
+#else
+#define REPORT_SOON() ((void)0)
+#endif
 
 #define B(x) (1ull << (x))
 
@@ -1068,12 +1075,15 @@ void host_input_event(const SDL_Event *e) {
 #endif
     case SDL_EVENT_GAMEPAD_ADDED:
         open_pad(e->gdevice.which);
+        REPORT_SOON();
         break;
     case SDL_EVENT_JOYSTICK_ADDED:  // (also sent for gamepads, before their GAMEPAD_ADDED: joystick_seen skips those)
         joystick_seen(e->jdevice.which);
+        REPORT_SOON();
         break;
     case SDL_EVENT_GAMEPAD_REMOVED:
         close_pad(e->gdevice.which);
+        REPORT_SOON();
         break;
     case SDL_EVENT_GAMEPAD_REMAPPED: {  // (the player mapped it: runtime/padmap.c)
         int i = find_pad(e->gdevice.which);
@@ -1299,8 +1309,52 @@ static bool mouse_a_ok(void) {
 }
 #endif
 
+#ifdef __ANDROID__
+// The input devices as Android lists them, in the log (GameActivity.inputReport: their sources, a gamepad's keys, read
+// as a controller or not, and the gamepad keys that came from an external device that isn't, which SDL gave the game as
+// a keyboard's). A controller that "isn't read" left no line at all when SDL never listed it as a joystick (#87: an Ipega
+// PG-9025 Android calls "... Keyboard"; #29). At the start, soon after a device comes or goes (report_soon), then every
+// 5 s only if something changed
+static uint64_t report_next;
+static bool report_all = true;  // (the whole report: the start, a device came or went)
+static void report_soon(void) { report_all = true, report_next = plat_now_ns() + 1000000000ull; }
+static void input_report(void) {
+    static bool failed;
+    uint64_t now = plat_now_ns();
+    if (failed || now < report_next) return;
+    report_next = now + 5000000000ull;
+    JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+    jobject act = env ? (jobject)SDL_GetAndroidActivity() : NULL;
+    if (!act) return;
+    jclass cls = (*env)->GetObjectClass(env, act);
+    jmethodID m = cls ? (*env)->GetStaticMethodID(env, cls, "inputReport", "(Z)Ljava/lang/String;") : NULL;
+    jstring s = NULL;
+    if (!(*env)->ExceptionCheck(env) && m) s = (jstring)(*env)->CallStaticObjectMethod(env, cls, m, (jboolean)report_all);
+    if ((*env)->ExceptionCheck(env)) {
+        (*env)->ExceptionDescribe(env), (*env)->ExceptionClear(env);
+        if (!m) failed = true, LOG("[input] no input report: GameActivity.inputReport is missing\n");
+        s = NULL;
+    }
+    report_all = false;
+    const char *t = s ? (*env)->GetStringUTFChars(env, s, NULL) : NULL;
+    for (const char *p = t; p && *p;) {  // (line by line: the log's lines have a size)
+        const char *nl = strchr(p, '\n');
+        int n = nl ? (int)(nl - p) : (int)strlen(p);
+        LOG("%.*s\n", n, p);
+        p += n + (nl != NULL);
+    }
+    if (t) (*env)->ReleaseStringUTFChars(env, s, t);
+    if (s) (*env)->DeleteLocalRef(env, s);
+    if (cls) (*env)->DeleteLocalRef(env, cls);
+    (*env)->DeleteLocalRef(env, act);
+}
+#endif
+
 void host_input_update(void) {
     if (nscript < 0) script_parse(), padmap_init();
+#ifdef __ANDROID__
+    input_report();
+#endif
     padmap_poll();
     rumble_update();
     finger_due();  // (tests: fingers waiting for their time, every update: their ms count)
@@ -1501,7 +1555,7 @@ void host_input_update(void) {
     bool rstick = (b & B(BTN_RSTICK)) && mousecam_active() && config_live_lock_on();
     bool r3_targets = rstick && (mousecam_target_buttons() & B(BTN_RSTICK)) != 0;
     if (rstick && !rstick_was) {
-        if (r3_targets) rstick_hold = plat_now_ns() + 600000000ull;  // (as the touch controls' long press on L)
+        if (r3_targets) rstick_hold = plat_now_ns() + 600000000ull;  // (a long press: the click alone changes the target)
         else touch_lock_toggle(), rstick_hold = 0;
     }
     if (!rstick) rstick_hold = 0;

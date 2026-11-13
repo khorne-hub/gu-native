@@ -193,6 +193,98 @@ public class SDLControllerManager
         return pad;
     }
 
+    // MHGU: the log's input report (GameActivity.inputReport, runtime/host_input.c): every input device as Android lists
+    // it - its sources, whether it has a gamepad's keys, whether it is read as a controller - and the keys that came from
+    // an external one that isn't, which went to the game as a keyboard's. Generic Bluetooth controllers that "aren't
+    // read" left nothing in the log to tell why (#87, #29: an Ipega PG-9025 seen as "... Keyboard")
+    private static final java.util.LinkedHashMap<Integer, java.util.LinkedHashMap<Integer, Integer>> sKeysSeen =
+            new java.util.LinkedHashMap<>();
+    private static boolean sReportDirty = true;
+    private static String sReportDevices = "";
+
+    static synchronized void keySeen(int deviceId, int keyCode, int source) {
+        // (a gamepad's buttons and the d-pad only: a keyboard's letters would put what was typed in a log shared openly)
+        boolean dpad = keyCode == KeyEvent.KEYCODE_DPAD_UP || keyCode == KeyEvent.KEYCODE_DPAD_DOWN ||
+                keyCode == KeyEvent.KEYCODE_DPAD_LEFT || keyCode == KeyEvent.KEYCODE_DPAD_RIGHT ||
+                keyCode == KeyEvent.KEYCODE_DPAD_CENTER;
+        if (!dpad && !KeyEvent.isGamepadButton(keyCode)) return;
+        InputDevice device = InputDevice.getDevice(deviceId);
+        if (device == null || device.isVirtual() || (Build.VERSION.SDK_INT >= 29 && !device.isExternal())) return;
+        if (isDeviceSDLJoystick(deviceId)) return;
+        java.util.LinkedHashMap<Integer, Integer> keys = sKeysSeen.get(deviceId);
+        if (keys == null) {
+            if (sKeysSeen.size() >= 8) return;
+            keys = new java.util.LinkedHashMap<>();
+            sKeysSeen.put(deviceId, keys);
+        }
+        Integer n = keys.get(keyCode);
+        if (n == null && keys.size() >= 12) return;
+        keys.put(keyCode, n == null ? 1 : n + 1);
+        if (n == null) sReportDirty = true;  // (a key not seen before: reported again)
+        sDeviceLines.remove(deviceId);
+    }
+
+    private static String sourceNames(int s) {
+        StringBuilder b = new StringBuilder();
+        int[] bits = {InputDevice.SOURCE_KEYBOARD, InputDevice.SOURCE_DPAD, InputDevice.SOURCE_GAMEPAD,
+                InputDevice.SOURCE_JOYSTICK, InputDevice.SOURCE_MOUSE, InputDevice.SOURCE_TOUCHSCREEN,
+                InputDevice.SOURCE_TOUCHPAD, InputDevice.SOURCE_STYLUS};
+        String[] names = {"keyboard", "dpad", "gamepad", "joystick", "mouse", "touchscreen", "touchpad", "stylus"};
+        for (int i = 0; i < bits.length; i++)
+            if ((s & bits[i]) == bits[i]) b.append(b.length() > 0 ? "+" : "").append(names[i]);
+        return b.length() > 0 ? b.toString() : "none";
+    }
+
+    // (each device's line, made once: asked every few seconds, only the list of ids is read again then)
+    private static final java.util.HashMap<Integer, String> sDeviceLines = new java.util.HashMap<>();
+
+    // The report's lines, or "" when nothing changed since the last call (changed: always)
+    public static synchronized String inputReport(boolean changed) {
+        if (changed) sDeviceLines.clear();  // (a controller came or went: every line made again)
+        StringBuilder d = new StringBuilder();
+        for (int id : InputDevice.getDeviceIds()) {
+            String line = sDeviceLines.get(id);
+            if (line == null) {
+                line = deviceLine(id);
+                if (line == null) continue;
+                sDeviceLines.put(id, line);
+            }
+            d.append(line);
+        }
+        String devices = d.toString();
+        if (!changed && !sReportDirty && devices.equals(sReportDevices)) return "";
+        sReportDirty = false;
+        sReportDevices = devices;
+        StringBuilder r = new StringBuilder(devices);
+        for (java.util.Map.Entry<Integer, java.util.LinkedHashMap<Integer, Integer>> e : sKeysSeen.entrySet()) {
+            InputDevice dev = InputDevice.getDevice(e.getKey());
+            StringBuilder k = new StringBuilder();
+            for (java.util.Map.Entry<Integer, Integer> key : e.getValue().entrySet())
+                k.append(k.length() > 0 ? ", " : "").append(KeyEvent.keyCodeToString(key.getKey()).replace("KEYCODE_", ""))
+                        .append(" x").append(key.getValue());
+            r.append(String.format(java.util.Locale.ROOT, "[input] keys from device %d \"%s\", which is not read as a controller (the game took them as a keyboard's): %s\n",
+                    e.getKey(), dev != null ? dev.getName() : "(gone)", k));
+        }
+        return r.toString();
+    }
+
+    private static String deviceLine(int id) {
+        InputDevice dev = InputDevice.getDevice(id);
+        if (dev == null) return null;
+        boolean ext = Build.VERSION.SDK_INT < 29 || dev.isExternal();
+        boolean[] has = dev.hasKeys(KeyEvent.KEYCODE_BUTTON_A, KeyEvent.KEYCODE_BUTTON_B, KeyEvent.KEYCODE_BUTTON_X,
+                KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_DPAD_UP);
+        StringBuilder k = new StringBuilder();
+        String[] kn = {"A", "B", "X", "Y", "d-pad"};
+        for (int i = 0; i < has.length; i++) if (has[i]) k.append(k.length() > 0 ? " " : "").append(kn[i]);
+        return String.format(java.util.Locale.ROOT,
+                "[input] device %d: \"%s\" %04x:%04x, %s%s, sources %s (0x%x), keyboard type %d, a gamepad's keys: %s, axes %d: %s\n",
+                id, dev.getName(), dev.getVendorId(), dev.getProductId(), ext ? "external" : "built in",
+                dev.isVirtual() ? ", virtual" : "", sourceNames(dev.getSources()), dev.getSources(),
+                dev.getKeyboardType(), k.length() > 0 ? k : "none", dev.getMotionRanges().size(),
+                isDeviceSDLJoystick(id) ? "read as a controller" : "not read as a controller");
+    }
+
 }
 
 

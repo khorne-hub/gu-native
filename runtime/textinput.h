@@ -29,6 +29,7 @@ bool textinput_event(const union SDL_Event *e);  // true: the event was typing (
 void textinput_update(void);                     // each loop pass: the window's text input on / off to match
 void textinput_tap(void);                        // (Android) a finger lifted: the screen keyboard back if it was hidden
 void textinput_type(const char *utf8);           // as typed (MHGU_CONTROL "type", paste)
+void textinput_set(const char *utf8);            // the entry's whole text (the menu's keyboard view, for the game's)
 void textinput_key(int what);                    // TI_ENTER, TI_CANCEL, or TI_NONE for Backspace
 
 #ifdef __cplusplus

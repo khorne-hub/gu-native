@@ -22,6 +22,10 @@ uint32_t menu_cursor_age(void);
 // (the game's thread, as it reads the controller: hle/input.c) a menu takes input now: a menu's cursor ran in the game's
 // last update (the pad system reads the controller before the menus run), or the hunter is not played (menu_set_free)
 bool menu_takes_input(void);
+// (both platforms, any thread) the game's pad updates since a dialog was up: the talk window shown (a person's lines, their
+// yes / no) or the message window waiting for a button; large before any. The touch controls' menu pad shows then (a
+// talk's window, at the chat's place, is no menu window to them: #210)
+uint32_t menu_dialog_age(void);
 void menu_set_free(bool free);  // (the touch controls, each update) the hunter is not played: no d-pad is a Hunter Art
 
 // host main thread (runtime/host_input.c)

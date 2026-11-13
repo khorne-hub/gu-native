@@ -14,7 +14,7 @@
 // Where it doesn't run (villages, whose camera doesn't turn, or other cameras) host_input.c gives the mouse to the
 // right stick as before (mousecam_active).
 //
-// The lock-on (runtime/touch.cpp: the padlock by L or a long press on L, the right stick's click: a controller's, or its
+// The lock-on (runtime/touch.cpp: the touch controls' Lock-on button, the right stick's click: a controller's, or its
 // key): in the same hook, the camera turns toward one large monster every update, eased, as in the newer games: the
 // game's Target Cam's (lock_target); not while a menu of the game's is open (touch_lock_active, whatever the player
 // plays with), nor for a moment after the camera was turned by hand or by the game (L). The camera's

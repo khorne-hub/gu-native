@@ -41,12 +41,13 @@ enum {
 #define LDN_RECENT 24
 // The game's buttons, for showing each on the screen or not ([Touch] Show*: runtime/touch.cpp); and two of the touch
 // controls' ways, kept with them: [Touch] StickRun (the stick pushed far out runs, locked; Off: a Run button instead) and
-// GuardSlide (a thumb from Guard keeps R as it slides onto the attacks)
+// GuardSlide (a thumb from Guard keeps R as it slides onto the attacks); and the port's own Lock-on button (ShowLockOn: no
+// button of the game's, runtime/touch.cpp C_LOCKON)
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
-       TB_STICK_RUN, TB_GUARD_SLIDE, TB_COUNT };
-// (the item bar's arrows on by default, as in the MH4U port)
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0}
+       TB_STICK_RUN, TB_GUARD_SLIDE, TB_LOCKON, TB_COUNT };
+// (the item bar's arrows on by default, as in the MH4U port; the Lock-on button too)
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1}
 #define TOUCH_COMBOS 6
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
@@ -141,9 +142,10 @@ typedef struct {
                               // (runtime/hle/mousemenu.c, host_input.c); off, it turns the camera there as elsewhere
     int grass;                // [Performance] Grass: 0 the game's grass fields (its uGrass2 units) are not drawn
                               // (runtime/hle/grass.c; the Marshland's area 8 slowed weak phones down: #85, #121, #159)
-    int lock_buttons;         // [Touch] LockOnButtons: L and the target button were shown once for the lock-on (its
-                              // padlock and long press are L's, the target button changes its monster: touch.cpp); a
-                              // file without it (0.1.8 and before, both off by default) gets both shown (config.c)
+    int lock_buttons;         // [Touch] LockOnButtons: L and the target button were shown once for the lock-on (up to
+                              // 0.1.9.2 its padlock and long press were L's; the target button changes its monster:
+                              // touch.cpp); a file without it (0.1.8 and before, both off by default) gets both shown
+                              // (config.c)
     int online_notice;        // [Multiplayer] OnlineNoticeShown: the notice about playing online (which server, and that it
                               // sees the player's IP address) was closed; until then nothing reaches a hub server
                               // (runtime/net/ldn.c, settings_panel.cpp's card)

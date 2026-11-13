@@ -151,12 +151,77 @@ bool menu_takes_input(void) {
 }
 
 #ifdef __ANDROID__
-// (only the count and the cursors' runs: nothing else of the mouse's)
+// (only the count, the cursors' and the dialogs' runs, and the menu pad's presses the game wasn't given: nothing else of
+// the mouse's)
+#include "input.h"
+#define PAD_ON  0x6bf4u  // sFestaPad's menu half: held, pressed this update, repeated (the desktop's notes, below)
+#define PAD_TRG 0x6bfcu
+#define PAD_REP 0x6c34u
+#define FN_TALK   0x83d010u  // the talk window's update: runs only while it is shown (a person's lines, their yes / no)
+#define FN_DIALOG 0x84bc40u  // the message window's, each frame: +0x4c 1 or 2 while it is shown and waits for a button
+// The menu pad's buttons (nn::hid's bits) as the menu's half of the pad has them
+static uint32_t festa_bits(uint64_t hid) {
+    static const struct { int btn; uint32_t bit; } MAP[] = {
+        {BTN_UP, 0x10}, {BTN_RIGHT, 0x20}, {BTN_DOWN, 0x40}, {BTN_LEFT, 0x80}, {BTN_L, 0x100}, {BTN_R, 0x200},
+        {BTN_ZL, 0x400}, {BTN_ZR, 0x800}, {BTN_MINUS, 0x1}, {BTN_PLUS, 0x8}};
+    uint32_t b = 0;
+    for (size_t i = 0; i < sizeof MAP / sizeof MAP[0]; i++)
+        if (hid >> MAP[i].btn & 1) b |= MAP[i].bit;
+    return b;
+}
+// The menu pad's presses the game wasn't given as the d-pad (no menu's cursor ran in the last update: hle/input.c, a
+// Hunter Art if the hunter read them) go into the menu's half of the game's pad alone, which the hunter never reads (the
+// desktop's mouse writes there the same way, below: an A written there did nothing in the field). So a menu that runs
+// none of the cursors counted here takes them too: the Options' value being changed (its row's arrows: the pad pressed
+// nothing there), a talk's yes / no in a quest (#210, #215). Held, pressed as it comes, repeated as it comes and then as a
+// d-pad held repeats (REP_WAIT, then every REP_EVERY)
+static uint32_t g_inj_held;     // (held so for the game in the last update: given or written)
+static uint64_t g_inj_next;     // (the next repeat of what is held, plat_now_ns)
+static const uint64_t REP_WAIT = 400000000ull, REP_EVERY = 100000000ull;
 static void pad_update(Cpu *c) {
+    uint32_t pad = c->r[0];
     g_in_pad = true;
     fnhook_call_original(c, FN_PAD_UPDATE);
     g_in_pad = false;
     counted();
+    if (!sane(pad)) return;
+    uint32_t on = LD32(pad + PAD_ON), want = festa_bits(input_menu_held_back());
+    uint32_t held = (on & 0xff9u) | want;  // (the pad's: given to the game or written now)
+    if (want) {
+        uint64_t now = plat_now_ns();
+        uint32_t fresh = want & ~g_inj_held & ~on, rep = fresh;
+        if (fresh) g_inj_next = now + REP_WAIT;
+        else if (now >= g_inj_next) rep = want, g_inj_next = now + REP_EVERY;
+        ST32(pad + PAD_ON, on | want);
+        ST32(pad + PAD_TRG, LD32(pad + PAD_TRG) | fresh);
+        ST32(pad + PAD_REP, LD32(pad + PAD_REP) | rep);
+        static uint32_t said;  // (MHGU_TOUCH_LOG: as it changes)
+        if (fresh && ENV("MHGU_TOUCH_LOG") && fresh != said)
+            LOG("[menu] the menu pad's %x written into the menu's half of the pad (a menu's cursor %u updates ago)\n", fresh,
+                menu_cursor_age());
+        said = fresh;
+    }
+    g_inj_held = held;
+}
+// (both a dialog: the talk window shown, the message window waiting for a button; menu_dialog_age)
+static uint32_t g_dlg_frame;
+static bool g_dlg_ever;
+static void dialog_now(void) {
+    __atomic_store_n(&g_dlg_frame, g_frame, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_dlg_ever, true, __ATOMIC_RELEASE);
+}
+uint32_t menu_dialog_age(void) {
+    if (!__atomic_load_n(&g_dlg_ever, __ATOMIC_ACQUIRE)) return 1000000u;
+    return menu_updates() - __atomic_load_n(&g_dlg_frame, __ATOMIC_ACQUIRE);
+}
+static void talk_update(Cpu *c) {
+    if (sane(c->r[0])) dialog_now();
+    fnhook_call_original(c, FN_TALK);
+}
+static void dialog_update(Cpu *c) {
+    uint32_t dlg = c->r[0], state = sane(dlg) ? LD32(dlg + 0x4c) : 0;
+    if (state == 1 || state == 2) dialog_now();
+    fnhook_call_original(c, FN_DIALOG);
 }
 static void cursor_update(Cpu *c) {
     if (sane(c->r[0])) ran_now();
@@ -181,6 +246,8 @@ void mousemenu_init(void) {
     fnhook_set(FN_YES_NO, hle_register("mousemenu:yes_no", yes_no_1));
     fnhook_set(FN_YES_NO_2, hle_register("mousemenu:yes_no_2", yes_no_2));
     fnhook_set(FN_YES_NO_3, hle_register("mousemenu:yes_no_3", yes_no_3));
+    fnhook_set(FN_TALK, hle_register("mousemenu:talk_update", talk_update));
+    fnhook_set(FN_DIALOG, hle_register("mousemenu:dialog_update", dialog_update));
 }
 bool mousemenu_active(void) { return false; }
 bool mousemenu_open(void) { return false; }
@@ -1078,6 +1145,7 @@ bool mousemenu_open(void) {
     return g_session_on && beat && plat_now_ns() - beat < STOPPED_NS;
 }
 bool mousemenu_active(void) { return config_live_mouse_menus() && mousemenu_open(); }
+uint32_t menu_dialog_age(void) { return g_dlg_ns ? menu_updates() - g_dlg_frame : 1000000u; }  // (the touch controls')
 void mousemenu_pointer(float cx, float cy, bool moved) {
     pthread_mutex_lock(&g_lock);
     if (moved && (cx != g_px || cy != g_py || g_hidden)) g_moves++, g_hidden = false;

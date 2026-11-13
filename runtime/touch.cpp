@@ -7,13 +7,15 @@
 //     menu opens. With StickRun Off a Run button above the attacks runs while held
 //   - right thumb: the attack pill (the heavy attack A on its upper half, the light one X on the lower, both on its
 //     seam), R guard / dash beside its lower end, B dodge below it, ZR, the target (the game's change target, by its
-//     Control Type: hle/mousecam.c), L centre the camera; Plus (the game's menu), the map (the left stick's click: the
-//     minimap) and the port's settings at the left edge
+//     Control Type: hle/mousecam.c), L centre the camera, and the Lock-on button; Plus (the game's menu), the map (the
+//     left stick's click: the minimap) and the port's settings at the left edge
 //   - the lock-on, as in the newer games and the MH4U port: the camera keeps turning to the monster the game's Target
 //     Cam has chosen (the target button moves it to the other), else the one it followed, else the nearest
-//     (hle/mousecam.c). The padlock by L turns it on and off with a tap, and so does a long press on L; a controller's
-//     right stick click too (runtime/host_input.c; held, in the Control Type where that click changes the target). L is
-//     ringed while it is on, the ring pulsing while the camera follows. A turn by hand or by the game (L) pauses it
+//     (hle/mousecam.c). The Lock-on button, the port's own (it presses none of the game's buttons: a long press on L
+//     turned it up to 0.1.9.2, and L held lost its own uses, the item bar's L + Y / A), turns it on and off with a tap;
+//     a controller's right stick click too (runtime/host_input.c; held, in the Control Type where that click changes the
+//     target). The button is ringed while it is on, the ring pulsing while the camera follows. A turn by hand or by the
+//     game (L) pauses it
 //   - while a menu of the game's is open (the pause menu, the item pouch, a shop, a yes / no: its windows are drawn
 //     on layer 97, nvn/vulkan/exec.c touch_hud_menu), nothing of the layout changes: a small pad shows besides, the
 //     menu pad, which presses the d-pad (the game's menus move their cursor with it, a step and then its own repeat),
@@ -73,6 +75,8 @@ SDL_Window *ui_window(void);
 #include "logwriter.h"  // (rt_logf: Windows queues the line, the log's own thread writes it)
 #include "overlay.h"
 #include "settings_locale.h"
+#include "settings_panel.h"  // (SETTINGS_VIEW_GAME_TEXT: the keyboard plate's)
+#include "textinput.h"
 #include "touch.h"
 
 volatile int g_touch_hud;
@@ -101,6 +105,7 @@ enum Ctl {
     C_MPAD,                                                                                // (the menu pad, in menus)
     C_ITEML, C_ITEMR,                                                                      // (the item bar's arrows)
     C_RUNLOCK,                                                                             // (the sprint lock's circle)
+    C_LOCKON,                                                                              // (the port's Lock-on button)
     C_STICK,                                                                               // (laid out: touch_layout.txt)
     C_ML, C_MR,          // (the menu pad's: its page tabs above it, as a controller's shoulders, placed from it;
     C_MZL, C_MZR,        // the other pair above them, when [Touch] ShowMenuZL / ZR say so; Minus below it, with the
@@ -110,7 +115,7 @@ enum Ctl {
 const int C_LAID = C_STICK + 1;
 enum Icon { I_ATTACK, I_DODGE, I_SHIELD, I_BURST, I_TARGET_SELECT, I_CAMERA, I_MENU, I_MAP, I_GEAR, I_SHEATHE, I_RUN, I_STICK, I_DPAD,
             I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN,
-            I_LEFT, I_RIGHT };
+            I_LEFT, I_RIGHT, I_LOCKON };
 // The menu pad (C_MPAD), in its base's radius: a thumb within MPAD_GRAB is its, before anything else (a tap on its
 // edge is a step that way, never a tab); a direction comes on past MPAD_ON and stays down to MPAD_OFF
 const float MPAD_GRAB = 1.35f, MPAD_ON = .35f, MPAD_OFF = .25f;
@@ -138,7 +143,7 @@ const Def DEFS[C_COUNT] = {
     {"guard", "Guard / dash  R", I_SHIELD, "R", B(BTN_R), true, .505f, .095f, .058f},
     {"zr", "Special  ZR", I_BURST, "ZR", B(BTN_ZR), true, .075f, .68f, .045f},
     {"target", "Target  ZL", I_TARGET_SELECT, "ZL", B(BTN_ZL), true, .19f, .70f, .045f},
-    {"camera", "Camera / lock-on  L", I_CAMERA, "L", B(BTN_L), true, .31f, .64f, .045f},
+    {"camera", "Camera  L", I_CAMERA, "L", B(BTN_L), true, .31f, .64f, .045f},
     {"menu", "Menu  +", I_MENU, "+", B(BTN_PLUS), false, .065f, .55f, .046f},
     {"map", "Left stick click", I_MAP, "L3", B(BTN_LSTICK), false, .065f, .43f, .046f},  // (the minimap on / off; the whole map:
                                                                                   // the game's menu, Y)
@@ -189,6 +194,10 @@ const Def DEFS[C_COUNT] = {
     // LOCK_AT above the stick, wherever the stick is: lock_spot); placed in the editor it stays where it was put. Its
     // size: LOCK_R of the stick's radius, times its own
     {"run_lock", "Sprint lock", I_RUN, "", 0, false, .29f, .546f, .0483f},
+    // the lock-on ([Touch] ShowLockOn, with [Controls] LockOn): the port's own, it presses none of the game's buttons; a
+    // tap turns the lock-on (lock_set). On the right thumb's arc above Y and left of L, as far from both as they are from
+    // each other (the MH4U port's place, from its arc). Hunts only: in a town it is in the editor alone
+    {"lock_on", "Lock-on", I_LOCKON, "", 0, true, .43f, .58f, .045f},
     {"stick", "Movement", I_STICK, "", 0, false, .29f, .27f, .115f},
     // the menu pad's (x, y unused: place(); what the tabs press: the game's option, mpad_buttons)
     {"ml", "L", I_LETTER, "L", B(BTN_L), true, 0, 0, .040f},  // (the shoulders: tabs in the item box, the shops)
@@ -235,6 +244,7 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     case C_STICK: return TB_STICK;
     case C_ITEML: case C_ITEMR: return TB_ITEM_ARROWS;
     case C_RUNLOCK: return TB_STICK_RUN;
+    case C_LOCKON: return TB_LOCKON;
     default: return -1;
     }
 }
@@ -250,12 +260,18 @@ bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the pag
     return i == C_MMINUS && !config_live_touch_show(TB_MINUS);
 }
 std::atomic<bool> g_menu_town;  // (the menu opened in a town: its ZL stays while the menu is open, touch_input)
+std::atomic<bool> g_in_quest;   // (a hunter of a quest is there, weapon_hunter: touch_input, each update)
 bool in_mode(int i, bool menu) {
     // (the run button: with StickRun Off, in a hunt and in towns, either layout, never in a menu - R turns its pages;
     // what a hunt can do without is off until asked for: [Touch] Show*)
     if (i == C_RUN) return !menu && !config_live_touch_show(TB_STICK_RUN);
     if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
     if (i == C_RUNLOCK) return false;                // (drawn and armed with the stick: control, on_lock_circle)
+    // (the Lock-on button: with the lock-on allowed, in a quest - not in a town, nor on the title, the intro or the
+    // character's making, where nothing is locked on; the MH4U port's the same)
+    if (i == C_LOCKON && (!config_live_lock_on() || !g_in_quest.load() || plat_now_ns() - g_town_ns < 500 * 1000000ull ||
+                          (menu && g_menu_town.load())))
+        return false;
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -283,6 +299,7 @@ bool in_editor(int i) {
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
     if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
+    if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);  // (a town's editor too)
     return i < C_LAID && (in_mode(i, false) || in_mode(i, true));
 }
 const ImVec2 PILL_U(.766f, -.643f);  // the pill's axis on the screen (y down): up and to the right
@@ -736,8 +753,22 @@ std::atomic<uint64_t> g_menu_gone_ns;        // (SDL ticks) when the second fram
 // while the lock-on's target button (ZL) is pressed all the time. There only Plus or Minus (the pause menu, the map) make
 // a window a menu, and a cursor running one only after them: a heavy bowgun's hunt went to the menu layout, its shot
 // taken by the menu pad, no locked shot, no item bar arrows, no crouching fire
+// A dialog of the game's - the talk window shown (a person's lines and their yes / no), the message window waiting for a
+// button - is a menu too, whatever is drawn (hle/mousemenu.c menu_dialog_age): the talk window sits where the chat's log
+// does, which is no menu window here, so a talk's yes / no in a quest (the Transpurrter's "cancel the delivery?") had no
+// menu pad and its cursor could not move (#210), nor a town's "choose a destination" (#163, #216)
 std::atomic<uint64_t> g_menu_press_ns;  // (SDL_GetTicksNS) when Plus or Minus was last pressed
 bool game_menu(uint32_t hunter) {
+    {
+        static bool was;  // (MHGU_TOUCH_LOG: as it changes)
+        static int dbg = -1;
+        if (dbg < 0) dbg = getenv("MHGU_TOUCH_LOG") != nullptr;
+        bool dialog = menu_dialog_age() <= 2;
+        if (dialog != was && dbg)
+            rt_logf("[touch] a dialog of the game's %s (frame %llu)\n", dialog ? "up: a menu" : "gone", (unsigned long long)g_present_count);
+        was = dialog;
+        if (dialog) return true;
+    }
     uint64_t m = g_menu_ns.load(), p = g_play_ns.load(), now = plat_now_ns(), ticks = SDL_GetTicksNS();
     if (m && (ticks - m < stale_limit() || g_frames_since_menu.load() < 3)) {
         bool gun = hunter && weapon_ranged(hunter) && weapon_drawn() == 1;
@@ -778,14 +809,14 @@ bool playable(void) {
     uint64_t p = g_play_ns.load(), t = plat_now_ns() - p;
     return p && (t < PLAY_NOW || (t < 2000 * 1000000ull && menu_updates() - g_play_upd.load() < 3));
 }
-// The menu pad's presses are the d-pad's - in the field a Hunter Art. A press may start only while a menu takes input: a
-// cursor of its (a list, a box, a quantity, a choice of two) ran in the game's last update (counted, not timed: a long
-// update in a menu keeps it; hle/mousemenu.c menu_cursor_age), or with the hunter not played (the title, a talk: no Art
-// can come of it). Not on the menu's windows: a hunt's menu closing still draws them for 100 ms and more, running no
-// cursor, and the hunter may be played again by then. What the pad presses lets go once no cursor has run for
-// MPAD_LET_GO updates (the hunter played): a thumb left on it as the menu closes is no d-pad held in the field
-bool press_ok(void) { return menu_cursor_age() <= 1 || !playable(); }
-const uint32_t MPAD_LET_GO = 2;  // (updates without a menu's cursor: touch_input)
+// The menu pad's presses are the d-pad's - in the field a Hunter Art. They are the menu's alone (input_stage_menu_only):
+// the game's thread gives them to the game as the d-pad only while a menu takes input - a cursor of its (a list, a box, a
+// quantity, a choice of two) ran in the game's last update (counted, not timed: a long update in a menu keeps it;
+// hle/mousemenu.c menu_cursor_age), or the hunter isn't played (the title, a talk: no Art can come of it) - and otherwise
+// writes them into the menu's half of the game's pad alone, which the hunter never reads (hle/mousemenu.c pad_update): a
+// hunt's menu closing still draws its windows for 100 ms and more, running no cursor, and the hunter may be played again
+// by then. Up to 0.1.9.2 the pad pressed nothing then, and the menus that run none of those cursors took nothing from it:
+// the Options' value being changed (its row's arrows), a talk's yes / no in a quest (#210, #215: players stuck there)
 // The pad comes in as the menu opens (MPAD_IN) and goes as its windows go: from the later of the second frame without
 // one and the last frame with one and MPAD_HOLD (a submenu's first frames without a window: measured one frame, 30 ms),
 // in MPAD_OUT; gone within 180 ms of the last window (a frame's time to draw it included), not when the menu mode ends
@@ -801,6 +832,7 @@ std::atomic<int> g_frames_since_preview{1000};
 float mpad_fade(uint64_t ticks) {  // (1 while a menu window shows, down to 0 after it is gone)
     if (!config_live_touch_show(TB_MENU_PAD)) return 0.0f;
     if (g_frames_since_front.load() <= 2 && config_live_touch_show(TB_STICK)) return 0.0f;
+    if (menu_dialog_age() <= 2) return 1.0f;  // (a dialog: game_menu)
     uint64_t m = g_menu_ns.load();
     if (!m) return 0.0f;
     if (g_frames_since_menu.load() <= 1 || menu_cursor_age() <= 1) return 1.0f;
@@ -926,14 +958,14 @@ struct Finger {
     uint64_t repeat_ns;    // an ammo arrow held: its next step then
     uint64_t btn;          // a control of the ranged layout: what it pressed when it landed (the weapon may go out under it)
     int sent;              // the menu pad's: the direction it presses now (dpad_part's; a tab, Minus: 1 pressed), which
-                           // follows part as press_ok lets a press start
+                           // follows part
     uint64_t keep;         // a thumb from Guard slid onto the attacks ([Touch] GuardSlide): R kept with them
     bool on_bar;           // ...or one on Guard slid onto the item bar: R + Y while it is there
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
     bool menu;                      // the menu's (the menu pad's, a drag's step): dropped as the menu closes...
-    bool fresh;                     // ...and dropped at its first update unless a press may start then (press_ok)
+    bool fresh;                     // ...its first update not yet come (logged)
     bool checked;
     int ctl, part;                  // a tap of the menu pad's group: which one, its direction (-1: no such tap)
 };
@@ -1045,6 +1077,11 @@ struct TapAfterUnlock {
 };
 std::atomic<bool> g_visible;
 std::atomic<bool> g_gear_only;  // (the controls hidden: only the settings button shows, and answers)
+// (Android) a text entry of the game's open (the hunter's name at character creation...), the port's menu closed: the
+// controls hide for the phone's keyboard, and a Keyboard plate at the top shows. A tap on it opens the menu's keyboard
+// view for the entry (SETTINGS_VIEW_GAME_TEXT): the phone's keyboard comes up there, and its own keys type where the
+// phone's doesn't show (a player had no keyboard at all at character creation)
+std::atomic<bool> g_text_plate;
 #ifndef __ANDROID__
 std::atomic<bool> g_hud_edit;   // (s.hud_edit, for the game thread: touch_drawn, touch_draw)
 std::atomic<bool> g_hud_hold;   // (the left button that closed it is still down: the rest of that press is its own)
@@ -1052,8 +1089,8 @@ std::atomic<bool> g_hud_asked;  // (s.hud_edit, s.hud_request or g_hud_hold: tou
 void hud_asked(const State &s) { g_hud_asked = s.hud_edit || s.hud_request || g_hud_hold; }
 std::atomic<bool> g_hud_pad;    // (a controller is read: its B, which cancels the editor, shows on Cancel once used)
 #endif
-// (the lock-on waits so long after a turn by hand or an L, as the MH4U port's; a press on L so long turns it on or off)
-const uint64_t LOCK_AFTER_TURN = 600 * MS, LOCK_HOLD = 600 * MS, MIN_PRESS = 70 * MS;
+// (the lock-on waits so long after a turn by hand or an L, as the MH4U port's)
+const uint64_t LOCK_AFTER_TURN = 600 * MS, MIN_PRESS = 70 * MS;
 // (the aim's tap: let go within this, the game's own tap of R, under its 14 frames at 60 FPS with an update to spare)
 const uint64_t AIM_TAP = 180 * MS;
 const uint64_t BAR_HOLD = 400 * MS;  // (a finger kept this long on the item bar, unmoved, holds it open: as the MH4U port)
@@ -1078,7 +1115,7 @@ void ensure_loaded(State &s) {
     rt_logf("[touch] layout: %s\n", had ? LAYOUT_FILE : "the defaults");
 }
 
-// (menu: the menu's own, dropped as it closes; fresh: a press that starts, which press_ok must let through; ctl, part:
+// (menu: the menu's own, dropped as it closes; fresh: a press that starts (logged at its first update); ctl, part:
 // a tap of the menu pad's group, lit while it presses)
 void pulse(State &s, uint64_t buttons, uint64_t ns, uint64_t after = 0, bool menu = false, bool fresh = false, int ctl = -1,
            int part = 0) {
@@ -1265,7 +1302,7 @@ void drop_fingers(State &s) {
     s.bar_open = false;
 }
 
-// The lock-on on or off (the padlock by L, a long press on L, a controller's right stick click), as the settings allow
+// The lock-on on or off (the Lock-on button, a controller's right stick click), as the settings allow
 void lock_set(State &s, bool on, const char *by) {
     on = on && config_live_lock_on();
     if (on != s.lock) rt_logf("[touch] lock-on %s (%s)\n", on ? "on" : "off", by);
@@ -1273,18 +1310,10 @@ void lock_set(State &s, bool on, const char *by) {
     g_lock_engaged = on;
 }
 
-// The padlock by L (the lock-on's, as the MH4U port's): where it is, its size; false where it doesn't show (L hidden, a
-// menu of the game's open, the lock-on turned off in the settings)
-bool padlock_place(const State &s, float w, float h, ImVec2 *c, float *size) {
-    if (s.menu || s.edit || !config_live_lock_on() || !in_mode(C_L, false)) return false;
-    Geo g = place(s.layout, C_L, w, h);
-    *c = ImVec2(g.c.x - g.r * .72f, g.c.y - g.r * .62f), *size = std::max(g.r * .42f, .018f * h);
-    return true;
-}
-bool padlock_hit(const State &s, float x, float y) {
-    ImVec2 c;
-    float size;
-    return padlock_place(s, s.w, s.h, &c, &size) && hypotf(x - c.x, y - c.y) < size * 1.5f;
+// The Keyboard plate's place (display pixels), at the top middle
+Rect text_plate(float w, float h) {
+    float pw = .42f * h, ph = .085f * h, y0 = .035f * h;
+    return {w * .5f - pw * .5f, y0, w * .5f + pw * .5f, y0 + ph, true};
 }
 
 // The target button (ZL on the layout): in a hunt the game's change target, as the player's Control Type has it
@@ -1891,6 +1920,14 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if (f->part) to_menu(e);
             return true;
         }
+        if (g_text_plate && text_plate(s.w, s.h).in(x, y)) {  // (the keyboard plate: the menu's keyboard for the entry)
+            f->kind = F_MENU;  // (nothing more of it until it lifts)
+            rt_logf("[touch] the keyboard plate: the menu's keyboard view for the game's text\n");
+            if (!overlay_menu_open()) overlay_toggle_settings();
+            settings_panel_request_view(SETTINGS_VIEW_GAME_TEXT);
+            tap_due();
+            return true;
+        }
         if (!g_visible && !s.auto_wait) {
             int part = 0;
             if (g_gear_only && hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu) == C_SETTINGS) {
@@ -1913,13 +1950,6 @@ extern "C" bool touch_event(const SDL_Event *e) {
         Zones z = zones();
         // (in a menu of the game's the HUD's parts take no finger: a finger there is a drag that moves the cursor)
         Rect none = {0, 0, 0, 0, false}, item = zone_rect(z, HP_ITEMS, s.w, s.h), arts = s.menu ? none : zone_rect(z, HP_ARTS, s.w, s.h);
-        // the padlock by L: a tap turns the lock-on on or off (the finger is no control's then: its moves and lift go
-        // nowhere)
-        if (padlock_hit(s, x, y)) {
-            lock_set(s, !s.lock, "the padlock");
-            tap_due();
-            return true;
-        }
         // the sprint lock's circle, lit while the run goes on by itself: a tap there ends it, as touching the stick does
         // (the finger is no control's then)
         if (s.run_lock && !s.stick_on && on_lock_circle(s, x, y)) {
@@ -1942,6 +1972,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             f->btn = is_ranged(c) ? ranged_buttons(c, s.drawn, s.menu) : c == C_ZL ? target_buttons() : c == C_L ? camera_buttons() : 0;
             if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
                 ammo_step(s, c == C_AMMO_UP ? 1 : -1), f->repeat_ns = now + 550 * MS;  // (held: more steps, touch_input)
+            if (c == C_LOCKON) lock_set(s, !s.lock, "the Lock-on button");  // (as it lands; lit while held, presses nothing)
             if (!of_mpad(c)) tap_due();  // (the menu pad's group: as it presses, touch_input)
         } else if (s.menu && item.in(x, y)) {
             f->kind = F_CAMERA;  // (the item bar in a menu: a drag on it moves the cursor, as anywhere else)
@@ -2022,7 +2053,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             int part = dpad_part(place(s.layout, f->ctl, s.w, s.h), x, y, f->part);
             if (part != f->part) f->part = part, recompute_held(s), tap_due();
         } else if (f->kind == F_BUTTON && f->ctl == C_MPAD) {  // the menu pad: the same (pressed by touch_input, as a
-            f->part = mpad_part(place(s.layout, C_MPAD, s.w, s.h), x, y, f->part);  // press may start: press_ok)
+            f->part = mpad_part(place(s.layout, C_MPAD, s.w, s.h), x, y, f->part);  // menu takes it: hle/input.c)
         } else if (f->kind == F_BUTTON && (f->ctl == C_ATTACK || f->ctl == C_CORNER)) {  // sliding along it: another part
             int part = 0, c = hit(s.layout, x, y, s.w, s.h, &part, 1.22f, false, s.menu);
             if (c == f->ctl && part != f->part) {
@@ -2083,7 +2114,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
     if (aim_hold && g_ranged.load() == WEAPON_BOW && f->btn) s.bow_leave = f->btn, s.bow_leave_until = now + 1500 * MS;
     if (f->kind == F_BUTTON && !f->done && !cancel && now - f->t0 < MIN_PRESS) {  // (a quick tap is held long enough for the game,
         if (of_mpad(f->ctl)) {  // which reads the buttons at its own update rate; the menu pad's the menu's, and a press
-            int want = mpad_want(*f);  // not started yet starts only as press_ok lets it)
+            int want = mpad_want(*f);  // not started yet starts with it)
             uint64_t b = mpad_buttons(f->ctl, want);
             if (b) pulse(s, b, MIN_PRESS - (now - f->t0), 0, true, f->sent != want, f->ctl, want);
         } else {
@@ -2133,6 +2164,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     g_menu_buttons = 0;
     bool menu = overlay_menu_open();
     uint32_t hunter = weapon_hunter();
+    g_in_quest = hunter != 0;  // (in_mode: the Lock-on button)
     play_seen(hunter);
     // (a bow or a gun being aimed draws on the layer of the game's menus, and it is the hunt's controls that it needs)
     bool game = game_menu(hunter) && !weapon_aiming(hunter) && !ranged_aim(hunter);
@@ -2154,7 +2186,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // there, so what the menu pad presses passes whether a cursor of the game's ran or not - the item box's sorting moves
     // none of those, and the pad pressed nothing there, #174)
     bool town_menu = s.menu && g_menu_town.load() && g_frames_since_menu.load() <= 2;
-    bool play = playable(), ok = press_ok() || town_menu;
+    bool play = playable();
     menu_set_free(!play || town_menu);  // (the game's thread lets the menu pad's buttons through then too: hle/input.c)
     {
         static int was = -1;
@@ -2217,32 +2249,32 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     {  // a model shown in a town's menu (the smithy's weapon, the item box's hunter): the game turns it with the sticks,
        // so the stick and the drags are the game's there, as a controller's, and the menu pad moves the cursor (#172)
         bool preview = s.menu && g_menu_town.load() && g_frames_since_preview.load() <= 3;
-        if (preview != s.preview && dbg) rt_logf("[touch] a model in the menu: %s\n", preview ? "the sticks turn it" : "gone");
+        // (logged always, as it changes: the model that stops turning after a moment, Low-end at 50 %, #162, #186 - the log
+        // says whether the model was seen, and whether the stick became the cursor's below)
+        if (preview != s.preview) rt_logf("[touch] a model in the menu: %s\n", preview ? "the sticks turn it" : "gone");
         s.preview = preview;
     }
-    // The menu pad's fingers: what each asks for is pressed once a press may start (press_ok), and what one presses
-    // stays down while the menu takes input and the finger is on it (a long update neither lets it go nor presses it
-    // again: no step too many, no repeat begun again); the game repeats a direction held. It lets go once no menu's
-    // cursor has run for MPAD_LET_GO updates, the hunter played: a thumb kept on it as the menu closes is no d-pad held
-    // in the field (a Hunter Art). A click of the vibrator as it presses something new, not as it is touched
+    // The menu pad's fingers: what each asks for is pressed, and stays down while the finger is on it (a long update
+    // neither lets it go nor presses it again: no step too many, no repeat begun again); the game repeats a direction
+    // held. The menu's alone: the game's thread gives it to the game as the d-pad while a menu takes input, else to the
+    // menu's half of its pad (the note after playable). A click of the vibrator as it presses something new, not as it is touched
     s.pad_held = 0;
     uint32_t age = menu_cursor_age();
-    bool gone = play && !town_menu && age >= MPAD_LET_GO;  // (the hunter not played, a town: no Art can come of it)
     static int said_want = -1, said_sent = -1, said_ctl = -1;  // (the log: once a change, not every update it waits)
     bool any = false;
     for (Finger &f : s.f) {
         if (f.kind != F_BUTTON || f.done || !of_mpad(f.ctl)) continue;
         any = true;
-        int asked = mpad_want(f), want = gone ? 0 : asked;
-        if (want != f.sent) {
+        int asked = mpad_want(f);
+        if (asked != f.sent) {
             int was = f.sent;
-            f.sent = ok ? want : 0;
+            f.sent = asked;
             if (f.sent && f.sent != was) tap_due();
         }
         if (dbg && (asked || said_want > 0) && (asked != said_want || f.sent != said_sent || f.ctl != said_ctl))
-            rt_logf("[touch] menu pad %d: asks %d, presses %d (frame %llu, a menu's cursor %u updates ago)%s\n", f.ctl, asked,
-                    f.sent, (unsigned long long)g_present_count, age,
-                    asked && !f.sent ? " (held back: no menu's cursor in the last update)" : "");
+            rt_logf("[touch] menu pad %d: presses %d (frame %llu, a menu's cursor %u updates ago%s)\n", f.ctl, f.sent,
+                    (unsigned long long)g_present_count, age,
+                    age <= 1 || !play || town_menu ? "" : ": to the menu's half of the game's pad");
         said_want = asked, said_sent = f.sent, said_ctl = f.ctl;
         s.pad_held |= mpad_buttons(f.ctl, f.sent);
     }
@@ -2261,20 +2293,12 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // (the press that closed it is up, wherever its button-up went)
     if (g_hud_hold && !s.hud_edit && !(SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) hud_hold_end(s);
 #endif
-    // a long press on the settings button opens the editor; on L, it turns the lock-on on or off (L lets go: the press
-    // was the lock-on's; the game had its L as it came)
+    // a long press on the settings button opens the editor (L held is the game's L: the lock-on is its own button's)
     for (Finger &f : s.f) {
         if (f.kind != F_BUTTON || f.done) continue;
         if (f.ctl == C_SETTINGS && now - f.t0 > 700 * MS && !menu) {
             f.done = true;
             edit_begin(s);
-            break;
-        }
-        if (f.ctl == C_L && !s.menu && !menu && config_live_lock_on() && now - f.t0 > LOCK_HOLD) {
-            f.done = true;
-            lock_set(s, !s.lock, "L held");
-            tap_due();
-            recompute_held(s);
             break;
         }
     }
@@ -2298,6 +2322,9 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // (hidden, by a controller or by Off: the settings button alone stays, or a phone without a controller had no way
     // back to the menu but clearing the app's data)
     g_gear_only = !visible && !typing && screen;
+#ifdef __ANDROID__
+    g_text_plate = typing && textinput_active() && !menu;
+#endif
 #ifndef __ANDROID__
     if (s.hud_edit) g_gear_only = false;
 #endif
@@ -2336,22 +2363,11 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     }
     for (Pulse &p : s.pulse) {
         if (p.until <= now || now < p.from) continue;
-        if (p.menu && gone) {  // (the menu takes no input any more: the rest of a tap of the pad's lets go too)
-            if (dbg && (!p.checked || p.ctl >= 0))
-                rt_logf("[touch] a menu press %llx dropped (frame %llu): no menu's cursor for %u updates\n",
-                        (unsigned long long)p.buttons, (unsigned long long)g_present_count, age);
-            p.until = 0;
-            continue;
-        }
-        if (p.fresh && !p.checked) {  // (a press that starts, the menu pad's or a drag's step: now, or never)
+        if (p.fresh && !p.checked) {  // (a press that starts, the menu pad's or a drag's step)
             p.checked = true;
-            if (!ok) {
-                if (dbg)
-                    rt_logf("[touch] a menu press %llx dropped (frame %llu): no menu's cursor in the last update\n",
-                            (unsigned long long)p.buttons, (unsigned long long)g_present_count);
-                p.until = 0;
-                continue;
-            }
+            if (dbg)
+                rt_logf("[touch] a menu press %llx (frame %llu, a menu's cursor %u updates ago)\n", (unsigned long long)p.buttons,
+                        (unsigned long long)g_present_count, age);
             tap_due();
         }
         if (p.ctl >= 0) s.lit_ctl = p.ctl, s.lit_part = p.part, s.lit_until = p.until;  // (lit while it presses)
@@ -2387,7 +2403,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
             if (!s.stuck_ns || hypotf(px - s.stuck_x, pz - s.stuck_z) > 2.0f) s.stuck_ns = now, s.stuck_x = px, s.stuck_z = pz;
             else if (now - s.stuck_ns >= STUCK_NS) {
                 s.stick_cursor = s.stick_menu_ok = true;
-                if (dbg) rt_logf("[touch] the player walks nowhere in this menu: the stick moves its cursor\n");
+                rt_logf("[touch] the player walks nowhere in this menu: the stick moves its cursor\n");  // (always: once a menu)
             }
         } else {
             s.stuck_ns = 0;
@@ -2490,9 +2506,9 @@ extern "C" bool touch_busy(void) {
 extern "C" bool touch_visible(void) { return g_visible; }
 extern "C" uint64_t touch_menu_buttons(void) { return g_menu_buttons; }
 #ifndef __ANDROID__
-extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_hud_edit; }
+extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_hud_edit || g_text_plate; }
 #else
-extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()); }
+extern "C" bool touch_drawn(void) { return g_visible || g_gear_only || (g_lock_mark && target_seen()) || g_text_plate; }
 #endif
 extern "C" bool touch_game_menu(void) { return g_game_menu.load(); }
 
@@ -2615,8 +2631,8 @@ extern "C" void touch_lock_toggle(void) {
 
 // The lock-on: the hunt camera turns to its monster each update (hle/mousecam.c), while the player is not turning it (a
 // finger, the right stick, the mouse: cam_input) and for LOCK_AFTER_TURN after, nor pressing L (the game's own turn:
-// behind the hunter, or to the Target Cam's monster; the game's turns are seen there too). Off by itself once the hunt
-// camera has not run for 10 s (the hunt over). It waits while a menu of the game's is open (game_menu): so that a menu
+// behind the hunter, or to the Target Cam's monster; the game's turns are seen there too). Off by itself once neither the
+// hunt camera nor a hunter of a quest has been there for 10 s (the hunt over). It waits while a menu of the game's is open (game_menu): so that a menu
 // is told from a window that came by itself whatever the player plays with, a press that can open one is noted here,
 // from every input's buttons (the touch controls', the keys', a controller's)
 extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
@@ -2632,7 +2648,9 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
         was = buttons;
     }
     bool hunt = mousecam_active() || s.weapon;  // (a gun aimed has a camera of its own)
-    if (hunt) s.hunt_ns = now;
+    // (off once the quest is over: 10 s without the hunt camera and without a hunter of a quest - a mount, a cart, a long
+    // cutscene in a quest run no hunt camera, and the lock-on went off by itself after a mount: #220)
+    if (hunt || weapon_hunter()) s.hunt_ns = now;
     if (s.lock && now - s.hunt_ns > 10000 * MS) lock_set(s, false, "no hunt camera");
     static bool l_was;
     bool l_now = (buttons & camera_buttons()) != 0;  // (the game's camera centring: L, or ZL with L and ZL swapped)
@@ -2739,7 +2757,12 @@ extern "C" uint64_t touch_lock_shot(uint64_t buttons, bool still) {
             } else if (now < s.assist_until && weapon_aiming(hunter)) {
                 s.assist_until = now + SHOT_AIM;  // (the hunter in its aim: this one passes at once, and the aim stays)
                 if (now < s.still_until) s.still_until = now + SHOT_AIM;
-            } else if (!s.combo_t0 && still && !others && !mods && !crouch_fire(act)) {
+            } else if (!s.combo_t0 && still && !others && !mods && !crouch_fire(act) &&
+                       (mousecam_hunt_camera() || weapon_aim_action(hunter))) {
+                // (the hunt camera running, or an aim's actions: not crouching fire of another style's, whose actions
+                // aren't crouch_fire's - its own camera stops the hunt camera's handler, as the stance's test knows.
+                // With Valor's, a press held for its fire went to the help's aim and was held back, and the hunter was
+                // turned meanwhile: #209)
                 s.still_until = now + SHOT_AIM;
                 bool in_aim = weapon_aim_action(hunter) && act != (1u << 16 | 45);
                 if (in_aim) {
@@ -3129,6 +3152,16 @@ void icon(ImDrawList *dl, Icon ic, ImVec2 c, float r, ImU32 col, ImU32 deep) {
         }
         for (int d = -1; d <= 1; d += 2)
             dl->AddTriangleFilled(P(c, s, .95f * d, 0), P(c, s, .68f * d, -.24f), P(c, s, .68f * d, .24f), col);
+        break;
+    }
+    case I_LOCKON: {  // the lock-on: a reticle with a padlock in its middle (the MH4U port's the same)
+        dl->AddCircle(c, .74f * s, col, 28, .1f * s);
+        for (int i = 0; i < 4; i++) {
+            float a = i * PI * .5f;
+            dl->AddLine(ImVec2(c.x + cosf(a) * .6f * s, c.y + sinf(a) * .6f * s),
+                        ImVec2(c.x + cosf(a) * .95f * s, c.y + sinf(a) * .95f * s), col, .1f * s);
+        }
+        padlock(dl, ImVec2(c.x, c.y - .06f * s), .62f * s, true, col, deep);
         break;
     }
     case I_CAMERA: {  // centre the camera: a camera
@@ -3691,8 +3724,9 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
     if (i == C_RUN && s.drawn == 1 && !s.edit) a *= .45f, mask = 0;  // (the weapon out: dimmed, it presses nothing)
     disc(dl, g.c, r, mask != 0, a);
     if (i == C_RUN && s.run) dl->AddCircle(g.c, g.r * 1.16f, fade(GLOW, a * (.6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4))), 40, g.r * .09f);
-    // (the lock-on, as the MH4U port's: a ring round L while it is on, pulsing while the camera follows the monster)
-    if (i == C_L && s.lock && !s.edit)
+    // (the lock-on, as the MH4U port's: a ring round its button while it is on, pulsing while the camera follows the
+    // monster)
+    if (i == C_LOCKON && s.lock && !s.edit)
         dl->AddCircle(g.c, g.r * 1.16f, fade(GLOW, a * (mousecam_lock_following() ? .6f + .3f * sinf(SDL_GetTicksNS() / 1e9f * 4) : .45f)),
                       40, g.r * .09f);
     Icon ic = DEFS[i].icon;
@@ -3700,15 +3734,12 @@ void control(ImDrawList *dl, ImFont *font, const Layout &l, int i, float w, floa
     snprintf(letter, sizeof letter, "%s", i == C_ZL && !s.edit ? target_letter()
                                           : i == C_L && !s.edit && camera_buttons() == B(BTN_ZL) ? "ZL" : DEFS[i].letter);
     if (is_ranged(i)) ranged_face(i, s.edit ? 1 : s.drawn, &ic, letter, sizeof letter);
-    icon(dl, ic, g.c, i == C_RFIRE ? r * .94f : r, fade(mask ? GLOW : INK, a), fade(DEEP, a));
+    bool lit = mask || (i == C_LOCKON && s.lock && !s.edit);  // (the Lock-on button lit while the lock-on is on)
+    icon(dl, ic, g.c, i == C_RFIRE ? r * .94f : r, fade(lit ? GLOW : INK, a), fade(DEEP, a));
     float br = std::max(r * (i == C_RFIRE ? .22f : .3f), .021f * h);  // (the large one's as large as the others')
     ImVec2 bc(g.c.x + r * .7f, g.c.y + r * .7f);
     if (i == C_ZL && strchr("v<>", letter[0]) && letter[0]) badge_arrow(dl, bc, br, letter[0], a);  // (Type 2: the d-pad's)
     else if (i != C_MMINUS) badge(dl, font, bc, br, letter, a);  // (the small Minus: its glyph)
-    ImVec2 pc;
-    float ps;
-    if (i == C_L && padlock_place(s, w, h, &pc, &ps))  // (the padlock by L: a tap turns the lock-on; closed and lit while on)
-        padlock(dl, pc, ps, s.lock, fade(s.lock ? GLOW : INK, a), fade(DEEP, a));
 }
 
 // a plate in the game's window style: wine-dark, a black edge, red and green rules top and bottom
@@ -4266,7 +4297,7 @@ extern "C" void touch_draw(float w, float h) {
 #ifndef __ANDROID__
     if ((!g_visible && !g_gear_only && !g_lock_mark && !g_hud_edit) || overlay_menu_open()) return;
 #else
-    if ((!g_visible && !g_gear_only && !g_lock_mark) || overlay_menu_open()) return;
+    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_text_plate) || overlay_menu_open()) return;
 #endif
     State s;
     {
@@ -4304,6 +4335,12 @@ extern "C" void touch_draw(float w, float h) {
     Rect target = zone_rect(z, HP_TARGET, w, h);
     if (!g_visible) {  // (hidden: the settings button alone, a little fainter; while the lock-on is on its padlock, opaque
                        // as the HUD it goes by)
+        if (g_text_plate) {  // (a text entry of the game's: the Keyboard plate, as the menu's buttons look)
+            g_language = config_editable().language;
+            Rect r = text_plate(w, h);
+            plate(dl, r, .004f * h, 1.0f, false);
+            text_center(dl, font, .036f * h, ImVec2((r.x0 + r.x1) * .5f, (r.y0 + r.y1) * .5f), INK, T("Keyboard"), w);
+        }
         if (g_gear_only) control(dl, font, s.layout, C_SETTINGS, w, h, s, a * .75f);
         if (g_lock_mark && target.ok) lock_mark(dl, target, 1.0f, h, now);
         Rect arts = zone_rect(z, HP_ARTS, w, h);  // (a Hunter Art tapped: its row lit a moment, as with them shown)

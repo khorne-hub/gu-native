@@ -273,6 +273,12 @@ public class GameActivity extends SDLActivity {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
+    /** El informe de entrada del log (runtime/host_input.c, por JNI desde el hilo de SDL): los dispositivos de entrada
+     *  como los lista Android y las teclas de mando de los que no se leen como mando (#87). "" si nada cambió. */
+    public static String inputReport(boolean changed) {
+        return org.libsdl.app.SDLControllerManager.inputReport(changed);
+    }
+
     /** Ajustes -> Licencias (runtime/ui.c show_licenses, por JNI desde el hilo de SDL). */
     public static void showLicenses() {
         SDLActivity activity = mSingleton;

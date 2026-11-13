@@ -307,8 +307,9 @@ static const char DEFAULT_INI[] =
     "\n"
     "; The lock-on, as in the newer games: the camera keeps turning to the monster the game's Target Cam has chosen (or\n"
     "; the nearest), and a bow's or a bowgun's shot from a normal stance goes to it (the player's own aim, crouching fire\n"
-    "; and the styles' moves are left alone). The padlock by L or a long press on L turn it on and off, as the right\n"
-    "; stick's click does (held, with the game's Control Type 3, whose click changes the target)\n"
+    "; and the styles' moves are left alone). The Lock-on button on the screen (the port's own: it presses none of the\n"
+    "; game's buttons) turns it on and off, as the right stick's click does (held, with the game's Control Type 3, whose\n"
+    "; click changes the target)\n"
     "; Default: On\n"
     "LockOn = On\n"
     "\n"
@@ -376,9 +377,14 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "GuardSlide = Off\n"
     "\n"
-    "; L and the target button (ZL) were turned on once for the lock-on: the padlock by L and a long press on L turn it on\n"
-    "; and off, and the target button moves it to another monster. Written by the app; Off, a file of an older version\n"
-    "; (where both were off by default) gets them on at the next start\n"
+    "; The Lock-on button: a tap turns the lock-on on or off (Controls' LockOn), and the target button (ZL) moves it to\n"
+    "; another monster. It is the port's own, not one of the game's buttons\n"
+    "; Default: On\n"
+    "ShowLockOn = On\n"
+    "\n"
+    "; L and the target button (ZL) were turned on once for the lock-on (up to 0.1.9.2 a long press on L turned it on and\n"
+    "; off; the target button moves it to another monster). Written by the app; Off, a file of an older version (where\n"
+    "; both were off by default) gets them on at the next start\n"
     "; Default: On\n"
     "LockOnButtons = On\n"
     "\n"
@@ -836,6 +842,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ShowItemArrows", touch_show[TB_ITEM_ARROWS], false),
     ON_OFF("Touch", "StickRun", touch_show[TB_STICK_RUN], false),
     ON_OFF("Touch", "GuardSlide", touch_show[TB_GUARD_SLIDE], false),
+    ON_OFF("Touch", "ShowLockOn", touch_show[TB_LOCKON], false),
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}

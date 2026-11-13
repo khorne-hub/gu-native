@@ -12,6 +12,9 @@ void input_set(uint64_t buttons, int32_t lx, int32_t ly, int32_t rx, int32_t ry)
 // in a menu; not held by a key or a controller too): the game reads them only while a menu takes input
 // (menu_takes_input, hle/mousemenu.c) - a d-pad press reaching the hunter as a menu closes is a Hunter Art
 void input_stage_menu_only(uint64_t buttons);
+// (the game's thread) of what the game read last, the menu pad's buttons not given to it as the d-pad (no menu's cursor
+// ran: hle/mousemenu.c writes them into the menu's half of the game's pad, which no hunter reads)
+uint64_t input_menu_held_back(void);
 void input_get(uint64_t *buttons, int32_t sticks[4]);  // the controller state the game sees
 uint64_t input_npad_state(int32_t sticks[4]);  // what GetNpadState gives player 1: buttons (stick directions too), sticks
 extern volatile uint64_t g_a_pressed_ns;  // when A was last pressed (plat_now_ns; 0: never)

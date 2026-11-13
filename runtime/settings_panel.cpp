@@ -86,8 +86,11 @@ struct Keyboard {
     bool upper = false, select_all = false;
     std::function<bool(const std::string &, std::string &)> commit;
     bool phone = false;  // (Android) its Phone keyboard key asked for the phone's own keyboard: up while this view is,
-                         // until Back puts it away (the view and its text stay; the key brings it back)
+                         // until Back puts it away (the view and its text stay; the key brings it back). Up as the
+                         // view opens on a phone played by touch (no controller): the phone's keyboard first
+    bool game = false;   // the game's text entry's (SETTINGS_VIEW_GAME_TEXT): leaving the view closes the menu
 };
+bool g_close_now;  // (the game's text entry's view left: the menu closes at its next frame)
 // The phone's sizes (touch_panel, each frame), from the screen's height in its pixels: a row, a tab and a button about
 // 0.09 of it, the text 0.034
 struct Metrics {
@@ -799,7 +802,7 @@ bool pending_text() {
     bool editing = s.view == View::Keyboard;
     for (const auto &o : s.origins)
         editing |= o.view == View::Keyboard;
-    return editing && s.keyboard.buffer != s.keyboard.original;
+    return editing && !s.keyboard.game && s.keyboard.buffer != s.keyboard.original;
 }
 std::string quest_id(int index) { return "quest." + std::to_string(s.quest_keys[index]); }
 void quest_keys() {
@@ -881,6 +884,7 @@ void leave_view(bool *open) {
         s.position_override = true;
     }
     if (s.view == View::CloseChanges) touch_edit_cancel();  // (B / Esc / the chord: the menu stays, no editor)
+    if (s.view == View::Keyboard && s.keyboard.game) g_close_now = true;  // (the game's entry stays as it was)
 #ifndef __ANDROID__
     if (s.view == View::ImportSave) pc_import_save_cancel();
     if (s.view == View::PadMap) padmap_cancel();  // (as its Cancel: or the controller stayed in the mapping, unread)
@@ -914,6 +918,26 @@ void keyboard(const std::string &title, const std::string &initial, size_t cap,
               std::function<bool(const std::string &, std::string &)> commit) {
     s.keyboard = {title, initial, initial, initial.size(), cap, false, false, std::move(commit)};
     push(View::Keyboard, "key.0");
+#ifdef __ANDROID__  // (played by touch: the phone's own keyboard comes up at once, the view's keys under it - a
+    // controller's player keeps the view's keys first. Up to 0.1.9.2 its key had to be found first: "the phone's keyboard
+    // was taken out". The MH4U port's the same)
+    if (!host_input_real_pad()) {
+        s.keyboard.phone = true;
+        textinput_menu_keyboard_show();
+    }
+#endif
+}
+// The keyboard view for the game's text entry (the hunter's name...): its text now, confirmed into it with Accept
+void game_text_keyboard() {
+    char text[2048];
+    textinput_peek(text, sizeof text);
+    keyboard(tr("Text"), text, 500, [](const std::string &t, std::string &) {
+        textinput_set(t.c_str());
+        textinput_key(TI_ENTER);
+        g_close_now = true;
+        return true;
+    });
+    s.keyboard.game = true;
 }
 void insert(const std::string &text) {
     if (s.keyboard.select_all) {
@@ -2327,8 +2351,8 @@ std::vector<Row> main_rows() {
         }
         auto lock_row = [&r]() {
 #ifdef __ANDROID__
-            add_bool(r, "lock.on", "Lock-on (hold L)", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
-            r.back().help = tr("Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.");
+            add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));  // (the MH4U port's name)
+            r.back().help = tr("Tap the Lock-on button on the screen (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you tap it again. The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.");
 #else
             add_bool(r, "lock.on", "Lock-on", &c.lock_on, ini("LockOn"));
             r.back().help = tr("The right stick's click (R3) keeps the camera turning to the monster, the one the Target Cam chose or the nearest large one, until you click it again (hold it with Control Type 3, where the click changes the target). The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.");
@@ -2654,17 +2678,17 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
-                                         "Menu pad", "Run with the stick", "Keep guarding while sliding"};
+                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
-                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide"};
+                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn"};
 // (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick -, the menu pad before
 // the tabs that go with it)
 const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L,
-                                TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
+                                TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
                                 TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_ZL, TB_MENU_ZR};
-static_assert(TB_COUNT == 25, "TB_ORDER: a place for each of the touch settings");
+static_assert(TB_COUNT == 26, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -2818,7 +2842,10 @@ std::vector<Row> rows_for_view(bool *open) {
         });
 #endif
         action(r, "key.accept", tr("Accept"), []() { accept_keyboard(); });
-        action(r, "key.cancel", tr("Cancel"), []() { pop(); });
+        action(r, "key.cancel", tr("Cancel"), []() {
+            if (s.keyboard.game) g_close_now = true;  // (the game's entry stays as it was)
+            pop();
+        });
     } else if (s.view == View::Conflicts) {
         conflict_rows(r);
         action(r, "conflicts.back", tr("Back"), []() { pop(); });
@@ -2974,8 +3001,10 @@ const PhoneHelp PHONE_HELP[] = {
      "Los pastizales de los mapas, como el pasto alto de la zona 8 del Pantano. Apagado: más rápido donde hay mucho, en un teléfono débil. Las plantas que son parte del suelo del mapa quedan."},
     {"AdrenoFix", "Some Adreno drivers repeat the 3D picture in a grid at a low 3D resolution: Auto keeps 2x MSAA there. If the picture looks dark or flickers, or for more speed, choose Off.",
      "Algunos drivers de Adreno repiten la imagen 3D en grilla con una resolución 3D baja: Auto deja MSAA 2x en ese caso. Si la imagen se ve oscura o parpadea, o para ganar velocidad, elige Off."},
-    {"LockOn", "Hold L or tap the padlock by it (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you do it again. The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.",
-     "Mantén apretado L o toca el candado junto a él (un mando: aprieta la palanca derecha; mantenla apretada con el Tipo de control 3, donde el clic cambia el objetivo) y la cámara sigue girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo hagas de nuevo. El botón de objetivo cambia el monstruo. Arcos y ballestas disparan hacia él desde la postura normal; tu propio apuntado, el fuego agachado y los movimientos de los estilos quedan en tus manos. Girar la cámara tú mismo la pausa un momento."},
+    {"LockOn", "Tap the Lock-on button on the screen (a controller: click the right stick; hold it with Control Type 3, where the click changes the target) and the camera keeps turning to the monster, the one the Target Cam chose or the nearest large one, until you tap it again. The target button changes the monster. Bows and bowguns fire at it from a normal stance; your own aim, crouching fire and the styles' moves are left to you. Turning the camera yourself pauses it for a moment.",
+     "Toca el botón Fijar objetivo en la pantalla (un mando: aprieta la palanca derecha; mantenla apretada con el Tipo de control 3, donde el clic cambia el objetivo) y la cámara sigue girando hacia el monstruo, el que eligió la cámara objetivo o el grande más cercano, hasta que lo vuelvas a tocar. El botón de objetivo cambia el monstruo. Arcos y ballestas disparan hacia él desde la postura normal; tu propio apuntado, el fuego agachado y los movimientos de los estilos quedan en tus manos. Girar la cámara tú mismo la pausa un momento."},
+    {"ShowLockOn", "The port's own button, not one of the game's: a tap locks the camera on the monster and it keeps turning to it; another tap lets go. The target button changes the monster. It lights up while the lock-on is on, and shows while Lock-on is on in Controls.",
+     "Un botón propio del port, no del juego: un toque fija la cámara en el monstruo y la sigue girando hacia él; otro toque la suelta. El botón de objetivo cambia el monstruo. Se ilumina mientras está fijado, y aparece mientras Fijar objetivo está activado en Controles."},
     {"GyroAim", "Aiming a bow or a bowgun (a gun's aim, its scope, crouching fire; a bow's aiming mode), turning the phone turns the aim too, from where it was as the aim began, with what your fingers or the sticks do. A controller with a gyro is read instead of the phone. The gyroscope is read only while you aim.",
      "Al apuntar con un arco o una ballesta (la mira de la ballesta, su visor, el disparo agachado; el modo de apuntar del arco), girar el teléfono también mueve la mira, desde donde estaba al empezar a apuntar, junto con lo que hagan tus dedos o las palancas. Si el mando tiene giroscopio, se usa el del mando en vez del teléfono. El giroscopio solo se lee mientras apuntas."},
     {"GyroSensitivity", "How far the aim turns for a turn of the phone or the controller: 1.0x the same angle.",
@@ -4943,7 +4972,17 @@ void settings_panel(bool *open) {
 #endif
         if (s.view != View::Restart) push(View::Restart, "dialog.cancel");
         break;
+    case SETTINGS_VIEW_GAME_TEXT:  // (the touch controls' Keyboard plate, a game's text entry open)
+        if (textinput_active() && s.view != View::Keyboard) game_text_keyboard();
+        break;
     default: break;
+    }
+    if (g_close_now) {  // (the game's text entry's view left)
+        g_close_now = false;
+        if (s.view == View::Main && !dirty()) {
+            *open = false;
+            return;
+        }
     }
     Config before = s.draft;
 #ifndef __ANDROID__

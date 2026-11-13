@@ -332,6 +332,15 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   ZL, 1 Type 2 the d-pad, 2 Type 3 R3: `mousecam_target_buttons`); with L/R Button Controls swapped (+0x446e) Type 1's is L, and the
   camera button then presses ZL in a hunt, the camera centring (`camera_buttons`, touch.cpp). The target camera's icons: one monster at x 1200 (y 42 and 57, the
   button's hint at 82), two at x 1170 and 1230 (y 42) with the hint still at 1200 (`target_piece`, nvn/vulkan/exec.c).
+- The lock-on is turned on and off by the touch controls' Lock-on button (`C_LOCKON`, `[Touch] ShowLockOn`, on by default; `lock_on`
+  in touch_layout.txt), the port's own: it presses none of the game's buttons (the owner's call, 2026-11-12: the game's L caused
+  problems). Up to 0.1.9.2 it was the padlock by L and a long press on L, which let L go after 600 ms: L held lost its own uses (the
+  item bar's L + Y / A; MH4U's bowgun ammo with L + X / B, on Discord). It sits on the right thumb's arc left of L, shows in a
+  hunt only (in a town in the editor alone) and while `[Controls] LockOn` is on, lit with a ring while the lock-on is on. A
+  controller keeps the right stick's click. The MH4U port has the same button (name, texts, icon, place). In a quest the lock-on no
+  longer goes off by itself after 10 s without the hunt camera while a quest's hunter is there (a mount turned it off: #220).
+  With it on, a press of A standing still is a locked shot only while the hunt camera runs or the hunter is in an aim's actions:
+  crouching fire of a style whose actions aren't `crouch_fire`'s (Valor's) got the help's R and its A held back (#209).
 - In towns the game's camera does not turn, with any stick: it isn't a controller problem.
 - SDL makes an Android controller a gamepad mapping only if its button mask has a face button, and the mask comes from
   `InputDevice.hasKeys`. A pad whose A, B, X, Y Android doesn't list (though it sends them) was a joystick never opened: SDL
@@ -768,6 +777,31 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   pouch's comes as a long gathering ends, past `WINDOW_PRESS`; `fakewindow <ms>` in the control file shows such a window. A model
   drawn in a town's menu (a shop's or the smithy's weapon, the item box's hunter: a depth-tested draw in a viewport smaller than the picture,
   `touch_hud_preview`) turns with the sticks: the touch stick and drags are the game's sticks there, never its cursor.
+- The menu pad's presses are no longer dropped (up to 0.1.9.2 they were): while no menu's cursor ran in the last update (`menu_takes_input` false)
+  hle/input.c doesn't give them to the game as the d-pad (no Hunter Art) and hle/mousemenu.c `pad_update` writes them into the
+  menu's half of the game's pad (sFestaPad +0x6bf4 held, +0x6bfc pressed, +0x6c34 repeated), which the hunter never reads, as the
+  desktop's mouse does. So menus that run none of the counted cursors take them: the Options' values, a talk's yes / no (#196,
+  #210, #215, Discord). A dialog is a menu for the touch controls too (`menu_dialog_age`: the talk window's
+  update 0x83d010 ran, or the message window 0x84bc40 waits for a button, as the desktop's mouse sees them): a talk's window sits
+  where the chat's log does, which is no menu window here, so the Transpurrter's "cancel the delivery?" had no menu pad (#210)
+  and a town's "choose a destination" none either (#163, #216). `[touch] a model in the menu` and `[touch] the player walks
+  nowhere in this menu` are logged always (a model that stops turning after a moment, Low-end at 50 %: #162, #186, Discord).
+- A text entry of the game's (the hunter's name at character creation...) shows a Keyboard plate at the top while the port's
+  menu is closed (`g_text_plate`): a tap opens the menu's keyboard view for it (`SETTINGS_VIEW_GAME_TEXT`), Accept types the
+  text into the entry and confirms it, leaving the view closes the menu. The keyboard view opens with the phone's own keyboard
+  up on a phone played by touch, in both ports (its key had to be found first: "the phone's keyboard was taken out", Discord).
+- Android lists every input device in the log (`[input] device ...`: sources, a gamepad's keys, read as a controller or not;
+  `[input] keys from device ...`: a gamepad's keys from an external device that isn't read as one, which SDL gave the game as a
+  keyboard's), at the start and when a device comes or goes or such a key first comes (`GameActivity.inputReport`,
+  `SDLControllerManager.keySeen`): an Ipega PG-9025 Android calls "... Keyboard" left no line at all (#87, #29). Letters aren't
+  logged (a keyboard's typing in a shared log).
+- The Hunter Arts' pieces on layer 100 are taken from y 560 to the canvas's end (720): a style with fewer than three arts draws
+  the empty slots' frames below it (one art: rows at 676, 721, 766), out of sight on the console, and the touch arrangement lifted
+  them by the top row into blank rows (#125). With Control Type 3 the arts' "ZL +" are on layer 103 left of x 950 (the item
+  bar's pieces start at x 1005 even with L held, its neighbours shown: hudtrace on a Moto g06), and go with the arts.
+- Phone tests of the touch controls without the player's save: `MHGU_SAVE_DIR` to a copy and `MHGU_CONFIG` to a copy of the ini
+  (`Controls = On`). On the Moto g06 adb can't read the app's save files (the app's uid, rw-rw----): copy a save from another phone's backup.
+  A folder the game made in an `MHGU_SAVE_DIR` (a new game's save_0) is the app's and adb can't remove it.
 - The HUD's parts (`runtime/hud_parts.h`: the item bar, the Hunter Arts, the target camera, the clock, health and stamina, the
   sharpness and gauges, the party, the minimap) are found by layer and place in `cbuf_info` (`nvn/vulkan/exec.c`; the status, layer
   103, split by region, a piece in none going with the nearest part: `hudtrace` says which part and "nearest") and placed by
