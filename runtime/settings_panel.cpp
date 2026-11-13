@@ -2678,17 +2678,21 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Camera (L)", "Target (ZL)", "ZR", "Left stick click (L3)", "Right stick click (R3)", "Movement stick",
                                          "Layout for bows and bowguns", "Fire / shoot", "Reload / melee", "Aim",
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
-                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button"};
+                                         "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button",
+                                         "L and R in menus", "D-pad in menus", "Hunter Arts with a controller"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
-                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn"};
-// (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick -, the menu pad before
-// the tabs that go with it)
-const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L,
-                                TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM,
-                                TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_ZL, TB_MENU_ZR};
-static_assert(TB_COUNT == 26, "TB_ORDER: a place for each of the touch settings");
+                                       "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "ShowMenuLR",
+                                       "DpadInMenus", "ArtsWithController"};
+// (their rows' order: each way of a button by it - keeping the guard by Guard, the run by the stick, the D-pad in menus by
+// the D-pad -, the menu pad before the tabs that go with it; the Hunter Arts' taps with a controller last, a controller's
+// way)
+const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD,
+                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_STICK_RUN, TB_RANGED,
+                                TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_LR,
+                                TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD};
+static_assert(TB_COUNT == 29, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -2702,7 +2706,14 @@ void touch_button_rows(std::vector<Row> &r) {
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
                 r.back().help = tr("The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.");
             if (i == TB_DPAD)  // (both platforms, the MH4U port's words: the menu pad takes its place, touch.cpp under_mpad)
-                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place.");
+                r.back().help = tr("The D-pad during a hunt. In the game's menus the menu pad takes its place, unless D-pad in menus is on.");
+            // (S08: the menus' and a controller's ways, each with its own words; the MH4U port's the same but the Arts')
+            if (i == TB_DPAD_MENUS)
+                r.back().help = tr("On: the D-pad stays on the screen in the game's menus too, beside the menu pad, and moves their cursor. Off: the menu pad takes its place while a menu is open.");
+            if (i == TB_MENU_LR)
+                r.back().help = tr("The menu pad's L and R tabs above it, which turn the menus' pages (ZL and ZR when the game's options turn pages with them). Off: the menu pad without them.");
+            if (i == TB_ARTS_PAD)
+                r.back().help = tr("With a controller connected (the touch controls hidden), a tap on a Hunter Art's panel performs it, with what your Control Type uses for it. Off: the panel takes no taps then.");
 #ifndef __ANDROID__  // (the default ini says nothing of these two; a phone's: PHONE_HELP)
             if (i == TB_MENU_ZL)
                 r.back().help = tr("With the menu pad, a ZL tab above its left one (L when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.");

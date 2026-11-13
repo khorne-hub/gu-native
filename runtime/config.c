@@ -395,6 +395,21 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "ShowMenuPad = On\n"
     "\n"
+    "; The menu pad's L and R tabs above it, which turn the menus' pages (ZL and ZR when the game's options turn pages\n"
+    "; with them). Off: the menu pad without them\n"
+    "; Default: On\n"
+    "ShowMenuLR = On\n"
+    "\n"
+    "; On: the D-pad (ShowDpad) stays on the screen in the game's menus too, beside the menu pad, and moves their cursor.\n"
+    "; Off: the menu pad takes its place while a menu is open\n"
+    "; Default: Off\n"
+    "DpadInMenus = Off\n"
+    "\n"
+    "; With a controller connected (the touch controls hidden), a tap on a Hunter Art's panel performs it, with what your\n"
+    "; Control Type uses for it. Off: the panel takes no taps then\n"
+    "; Default: On\n"
+    "ArtsWithController = On\n"
+    "\n"
     "; With a bow or a bowgun in hand, a layout of their own in a hunt, and which of its buttons show\n"
     "ShowRanged = On\n"
     "ShowFire = On\n"
@@ -843,6 +858,9 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "StickRun", touch_show[TB_STICK_RUN], false),
     ON_OFF("Touch", "GuardSlide", touch_show[TB_GUARD_SLIDE], false),
     ON_OFF("Touch", "ShowLockOn", touch_show[TB_LOCKON], false),
+    ON_OFF("Touch", "ShowMenuLR", touch_show[TB_MENU_LR], false),
+    ON_OFF("Touch", "DpadInMenus", touch_show[TB_DPAD_MENUS], false),
+    ON_OFF("Touch", "ArtsWithController", touch_show[TB_ARTS_PAD], false),
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}

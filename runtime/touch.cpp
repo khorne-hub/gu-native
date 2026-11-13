@@ -253,11 +253,13 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
 bool is_combo(int i) { return i >= C_COMBO && i <= C_COMBO_END; }
 bool is_tab(int i) { return i == C_ML || i == C_MR || i == C_MZL || i == C_MZR; }  // (the menu pad's shoulders, as tabs)
 bool is_dpad(int i) { return i == C_HDPAD; }
+bool dpad_in_menus(void) { return config_live_touch_show(TB_DPAD_MENUS) != 0; }  // ([Touch] DpadInMenus: hit, under_mpad)
 bool of_mpad(int i) { return i == C_MPAD || is_tab(i) || i == C_MMINUS; }  // (the menu pad's group)
 bool mpad_shown(void);  // (a menu window drawn lately, the pad's fade not over: below, with the menu's test)
 bool mpad_ready(void);  // (and it has come in enough to take a finger)
-bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the page pair; the other pair asked for only;
-    if (i == C_ML || i == C_MR) return true;  // Minus while the hunt's own is hidden)
+bool mpad_member(int i) {  // (which of its tabs show with the menu pad: the page pair, unless [Touch] ShowMenuLR is off;
+    if (i == C_ML || i == C_MR) return config_live_touch_show(TB_MENU_LR) != 0;  // the other pair asked for only; Minus
+                                                                                 // while the hunt's own is hidden)
     if (i == C_MZL || i == C_MZR) return config_live_touch_show(show_setting(i)) != 0;
     return i == C_MMINUS && !config_live_touch_show(TB_MINUS);
 }
@@ -644,7 +646,7 @@ int hit(const Layout &l, float x, float y, float w, float h, int *part, float sl
     float bd = 1e30f;
     for (int i = 0; i < C_COUNT; i++) {
         if (!(editor ? in_editor(i) : in_mode(i, menu)) || (i == C_STICK && !stick) || (of_mpad(i) && !pad_ready)) continue;
-        if (!editor && i == C_HDPAD && in_mode(C_MPAD, menu)) continue;  // (the menu pad in its place: under_mpad)
+        if (!editor && i == C_HDPAD && in_mode(C_MPAD, menu) && !dpad_in_menus()) continue;  // (the menu pad in its place)
         Geo g = place(l, i, w, h);
         float d = i == C_ATTACK ? pill_distance(g, x, y) / (g.r * (slop - .07f))
                 : i == C_CORNER ? band_distance(g, x, y, nullptr) / (g.r * BAND_T * (slop - .07f))
@@ -1937,7 +1939,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             }
             // (a controller in the hands, a handheld's own: a tap on a Hunter Art's panel still performs it, without
             // letting go of the stick to reach the d-pad, #48)
-            if (g_gear_only && !s.menu) {
+            if (g_gear_only && !s.menu && config_live_touch_show(TB_ARTS_PAD)) {  // ([Touch] ArtsWithController)
                 Zones z = zones();
                 if (zone_rect(z, HP_ARTS, s.w, s.h).in(x, y)) {
                     f->kind = F_ARTS, f->part = art_row_at(z, s.w, s.h, y);
@@ -4198,11 +4200,13 @@ void draw_hud_editor(ImDrawList *dl, ImFont *font, const State &s, float w, floa
 // A hunt button under the menu pad's group (its tabs reach ZR, ZL and L at their usual places): it fades out as the pad
 // comes in and back as it goes, as in the MH4U port (its under_mpad); there the pad's group takes the finger first (hit).
 // Never the attacks nor B (a menu's confirm and back). The hunt's d-pad (ShowDpad) wherever it is: the menu pad takes its
-// place, so it goes as the pad comes in and comes back as it goes, and no finger takes it meanwhile (hit; 4u-native #25)
+// place, so it goes as the pad comes in and comes back as it goes, and no finger takes it meanwhile (hit; 4u-native #25);
+// with [Touch] DpadInMenus it stays, wherever it is, and presses the d-pad there (gu-native #196, Discord: a Control Type
+// that plays with the d-pad lost it in every menu)
 bool under_mpad(const Layout &l, int i, float w, float h) {
     if (of_mpad(i) || i == C_SETTINGS || i == C_ATTACK || i == C_CORNER || i == C_HEAVY || i == C_LIGHT || i == C_DODGE)
         return false;
-    if (i == C_HDPAD) return true;
+    if (i == C_HDPAD) return !dpad_in_menus();
     Geo g = place(l, i, w, h);
     for (int m : {C_ML, C_MR, C_MZL, C_MZR, C_MMINUS}) {
         if (!mpad_member(m)) continue;
