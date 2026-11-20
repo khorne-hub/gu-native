@@ -171,6 +171,32 @@ void chat_status_row(std::vector<Row> &r) {
 // The chat page: which chat, Say something, its last lines, the newest first right under Say something so a new one is seen
 // without scrolling (the sender's name over each, as tabarong's panel), the people in it (a tap: add as a friend, mute,
 // block), and the chat's options
+// (1.0.2, the owner's) The chat window played by touch: its first row is the text to say and Send beside it, drawn by
+// touch_panel (a tap there types: chat_say_open), the chat's lines under it and the rest at the end. With a controller,
+// or in a desktop's menu, Say something stays a row
+bool chat_strip() { return touch_ui() && !host_input_real_pad(); }
+bool chat_can_say() {
+    if (g_chat == chat::HUB) return chat::hub_chat() && chat::hub_up();
+    return chat::enabled();
+}
+std::string chat_title() {  // (the window's header: which chat it is)
+    std::string name = g_chat == chat::FRIEND ? std::string(cs("Friend", "Amigo")) : chat::channel_name(g_chat < 0 ? chat::GLOBAL : g_chat);
+    if (g_chat == chat::FRIEND)
+        for (const chat::Person &p : chat::people())
+            if (p.id == g_chat_peer) name += ": " + p.name;
+    return std::string(cs("Chat", "Chat")) + " \xc2\xb7 " + name;
+}
+void chat_say_open() {
+    const int ch = g_chat;
+    const std::string peer = g_chat_peer;
+    keyboard(chat_title(), "", chat::max_text(), [ch, peer](const std::string &typed, std::string &error) {
+        std::string why;
+        if (typed.empty() || chat::say(ch, peer, typed, &why)) return true;
+        error = chat::explain(why);
+        return false;
+    });
+    s.keyboard.chat = true;  // (the chat window's: the text and Send at its top, the lines under them)
+}
 void chat_page_rows(std::vector<Row> &r) {
     cs("", "");  // (the language)
     std::vector<chat::Person> people = chat::people();
@@ -186,9 +212,11 @@ void chat_page_rows(std::vector<Row> &r) {
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
     if (!found) g_chat = chat::GLOBAL, g_chat_peer.clear();
-    // (1.0.2, the owner's: the chat as a chat window - the chat picked and Say something at its top, the lines under them,
-    // so the phone's keyboard leaves them in sight; the switches, Friends and the options under the lines)
-    {  // the chat shown: Global, General, the hub, each friend
+    // (1.0.2, the owner's: the chat as a chat window - the text and Send at its top, the lines under them, so the phone's
+    // keyboard leaves them in sight; the chat picked, the switches, Friends and the options at the end. With a controller
+    // the chat picked and Say something stay first, as rows)
+    const bool strip = chat_strip();
+    auto channel_row = [&]() {  // the chat shown: Global, General, the hub, each friend
         std::vector<std::string> names;
         std::vector<std::pair<int, std::string>> to;
         int at = 0;
@@ -209,22 +237,13 @@ void chat_page_rows(std::vector<Row> &r) {
             if (i >= 0 && i < (int)to.size()) g_chat = to[i].first, g_chat_peer = to[i].second;
         });
         r.back().help = chat::channel_help(g_chat);
+    };
+    const bool hub_on = chat::hub_chat(), can = chat_can_say();
+    if (!strip) {
+        channel_row();
+        action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
+        r.back().help = fmt("%s %d %s", cs("Up to", "Hasta"), (int)chat::max_text(), cs("characters. The keyboard's Enter sends it.", "caracteres. El Enter del teclado lo manda."));
     }
-    std::string label;
-    const bool hub_on = chat::hub_chat(), hub = hub_on && chat::hub_up(&label), relays = chat::enabled();
-    const bool can = g_chat == chat::HUB ? hub : relays;
-    action(r, "chat.say", cs("Say something", "Decir algo"), []() {
-        const int ch = g_chat;
-        const std::string peer = g_chat_peer;
-        keyboard(cs("Say something", "Decir algo"), "", chat::max_text(), [ch, peer](const std::string &typed, std::string &error) {
-            std::string why;
-            if (typed.empty() || chat::say(ch, peer, typed, &why)) return true;
-            error = chat::explain(why);
-            return false;
-        });
-        s.keyboard.chat = true;  // (the chat window's: the lines under the text while the phone's keyboard is up)
-    }, can);
-    r.back().help = fmt("%s %d %s", cs("Up to", "Hasta"), (int)chat::max_text(), cs("characters. The keyboard's Enter sends it.", "caracteres. El Enter del teclado lo manda."));
     if (!can)
         note(r, "chat.why", g_chat != chat::HUB ? cs("Turn on the online chat below to read and write here.",
                                                      "Activa el chat en línea abajo para leer y escribir acá.")
@@ -288,6 +307,8 @@ void chat_page_rows(std::vector<Row> &r) {
         };
         r.push_back(std::move(row));
     }
+    if (strip)
+        channel_row();
     chat_hub_row(r);  // (the two switches, both off as they come)
     chat_status_row(r);
     action(r, "chat.friends", cs("Friends", "Amigos"), []() { push(View::Friends, "friends.code"); });
@@ -379,11 +400,9 @@ void chat_page_rows(std::vector<Row> &r) {
     }
     note(r, "chat.credit", cs("Chat and room keys after the designs of tabarong.", "Chat y claves de sala según los diseños de tabarong."));
 }
-// (1.0.2) Say something in the chat window with the phone's keyboard up (chat_typing): Send, the keys on the screen
-// instead of the phone's keyboard, and the chat's lines under the text, the newest first, as on the chat page
+// (1.0.2) Say something in the chat window with the phone's keyboard up (chat_typing): the chat's lines under the text,
+// Send and Keys (touch_panel draws them in the window's first row), the newest first, as on the chat page
 void chat_typing_rows(std::vector<Row> &r) {
-    action(r, "key.accept", cs("Send", "Enviar"), []() { accept_keyboard(); });
-    action(r, "key.keys", cs("Keys on the screen", "Teclas en la pantalla"), []() { s.keyboard.phone = false; });
     std::vector<chat::Line> lines = chat::lines(g_chat, g_chat_peer, 30);
     chat::mark_read(g_chat, g_chat_peer);
     for (auto it = lines.rbegin(); it != lines.rend(); ++it) {

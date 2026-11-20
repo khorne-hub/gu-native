@@ -498,7 +498,7 @@ static const char DEFAULT_INI[] =
     "; or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay\n"
     "; where they are; where the hunter can't walk (a town's item box, a shop) it moves the cursor too. If the pad covers a\n"
     "; combined button, move it with Customize controls and HUD. Off: no pad in the menus; a drag on the screen moves their\n"
-    "; cursor, and the movement stick where the hunter can't walk.\n"
+    "; cursor, and the movement stick where the hunter doesn't walk (a shop, the item box; in a hunt it walks).\n"
     "; Default: On\n"
     "ShowMenuPad = On\n"
     "\n"

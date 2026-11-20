@@ -328,6 +328,29 @@ public class GameActivity extends SDLActivity {
         return org.libsdl.app.SDLControllerManager.keyboardMouse();
     }
 
+    /** (1.0.2) The phone's keyboard over the window, for the chat window while Say something is typed (runtime/settings_panel.cpp keyboard_top, by JNI from
+     *  the game's thread): {its height over the window's bottom, the window's width, its height}, in the window's pixels; null when it
+     *  isn't known. */
+    public static int[] imeInsets() {
+        SDLActivity activity = mSingleton;
+        if (activity == null) return null;
+        try {
+            View decor = activity.getWindow().getDecorView();
+            int ime = 0;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.view.WindowInsets insets = decor.getRootWindowInsets();
+                if (insets != null) ime = insets.getInsets(android.view.WindowInsets.Type.ime()).bottom;
+            } else {
+                android.graphics.Rect r = new android.graphics.Rect();
+                decor.getWindowVisibleDisplayFrame(r);
+                ime = Math.max(0, decor.getHeight() - r.bottom);
+            }
+            return new int[] {ime, decor.getWidth(), decor.getHeight()};
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Ajustes -> Licencias (runtime/ui.c show_licenses, por JNI desde el hilo de SDL). */
     public static void showLicenses() {
         SDLActivity activity = mSingleton;
