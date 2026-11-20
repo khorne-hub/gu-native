@@ -244,18 +244,20 @@ static void add_number(uint32_t en, int value, int elem, uint8_t kind, int8_t cr
 
 // ---- the hits (1.0.2: the "By hit" colour, small monsters, a party's guest): what the game's damage step worked out
 // for each hit on a monster, read as it is worked out. A hit on a monster, every kind of attacker, goes through
-// 0x370968(?, attack, monster, &place; on the stack &place2, ?, &hit): attack +0x6d picks the step, 0x371350 the
-// hunter's own hits (raw = attack * motion * the hit zone * sharpness... * the critical multiplier, + the element's),
-// 0x372bf0 a Palico's, 0x373a24, 0x374c0c and 0x376ad0 shells and shots. Each ends with the hit's total (an s16) and
+// 0x370968(?, attack, monster, &place; on the stack &place2, ?, &hit): attack +0x6d picks the step (1 the hunters':
+// 0x376ad0 their weapons, 0x373a24 shells and shots; 2 another monster's, 0x372bf0; 4 the Palicos', 0x374c0c; else
+// 0x371350, raw = attack * motion * the hit zone * ... * the critical multiplier, + the element's, no zone without
+// attack +0x30's bits: fixed damage). Each ends with the hit's total (an s16) and
 // hands it to 0x29d6f8(monster, part, total, ?), which counts it on the part (its flinch and break), once: hooked here,
 // that call shows the step's own floats in the callee-saved VFP registers and its frame (PATHS: by its return address,
 // which register holds what, found reading each step), and the monster's health drops by the total in the monster's
 // next update (0x297ddc, the parts' totals). The hit zone: 0x2bab60(monster, hit +6) the part's zones (cut, impact,
-// shot, fire, water, thunder, ice, dragon), the step's own factor (hz / 100) in s18 for the hunter's hits and at its
-// frame +0x54 for shells; the critical multiplier (1.25, 1, 0.75 from attack +0x90, the affinity, and a roll of 100) in
-// s24 (the hunter's), s26 (a Palico's) or at the frame +0x4c (shots). attack +0x30: 0x8000 a cut or an impact, 0x1 a
-// shot (both take a hit zone), 0x200000 a shell's hit, none of them damage with no hit zone (fixed); +0x48 the
-// elements (0x10 fire, 0x20 water, 0x200 thunder, 0x40 ice, 0x80 dragon).
+// shot, fire, water, thunder, ice, dragon), the step's own factor (hz / 100) in s18 (0x371350) or at its frame +0x54
+// (the hunters' and the Palicos': 0x36dc6c's or 0x3748a8's); the critical multiplier (1.25, 1, 0.75: the affinity and a
+// roll of 100) in s24, s26 (0x372bf0) or at the frame +0x4c (0x37885c's). Seen on the PC (quest 206): the Great
+// Sword's hits through 0x376ad0, the Palicos' through 0x374c0c, a Maccao's on another through 0x372bf0. attack +0x30
+// (0x371350): 0x8000 a cut or an impact, 0x1 a shot (both take a hit zone), 0x200000 a shell's hit, none of them damage
+// with no hit zone (fixed); +0x48 the elements (0x10 fire, 0x20 water, 0x200 thunder, 0x40 ice, 0x80 dragon).
 // A hit's number waits for its monster's health to drop (up to HIT_WAIT frames) and shows that drop, split among the
 // hits it holds; a hit whose drop doesn't come (a party's guest: the host's game works the health out, T04) shows its
 // own total, which a later drop of that monster pays back first (credit), so a hit is never shown twice. Only this
@@ -280,11 +282,11 @@ static const struct {
     int8_t raw, elem, zone, crit;
     uint8_t zone_sp, crit_sp, hunter;
 } PATHS[] = {
-    {0x371b74u, 16, 22, 18, 24, 0, 0, 1},       // 0x371350: the hunter's own hits
-    {0x3733bcu, -1, -1, -1, 26, 0, 0, 0},       // 0x372bf0: a Palico's
-    {0x37420cu, 18, 20, -1, -1, 0x54, 0x4c, 0}, // 0x373a24: shots
-    {0x375304u, 16, 20, -1, -1, 0x54, 0x4c, 0}, // 0x374c0c: shells
-    {0x377780u, 16, 20, -1, -1, 0, 0, 0},       // 0x376ad0: shots
+    {0x371b74u, 16, 22, 18, 24, 0, 0, 1},       // 0x371350: attack +0x6d 0 (no hit zone without its +0x30 bits: fixed)
+    {0x3733bcu, -1, -1, -1, 26, 0, 0, 0},       // 0x372bf0: 2, a monster's attack (another monster)
+    {0x37420cu, 18, 20, -1, -1, 0x54, 0x4c, 0}, // 0x373a24: 1, the hunters' shells and shots
+    {0x375304u, 16, 20, -1, -1, 0x54, 0x4c, 0}, // 0x374c0c: 4, the Palicos'
+    {0x377780u, 16, 20, -1, -1, 0x54, 0x4c, 0}, // 0x376ad0: 1, the hunters' weapons (0x36dc6c's zone, 0x37885c's critical)
 };
 
 typedef struct {
@@ -355,7 +357,7 @@ static void hit_dispatch(Cpu *c) {
     // hex>:<its attack> (e.g. 10:300 fire 30): the game works them out with these
     static const char *aff = (const char *)-1, *ele;
     if (aff == (const char *)-1) aff = getenv("MHGU_HUNT_TEST_AFFINITY"), ele = getenv("MHGU_HUNT_TEST_ELEMENT");
-    if ((aff || ele) && sane(atk) && LD8(atk + 0x6d) != 1 && LD8(atk + 0x6d) != 2 && LD8(atk + 0x6d) != 4) {
+    if ((aff || ele) && sane(atk) && LD8(atk + 0x6d) == 1) {  // (the hunters')
         if (aff) ST16(atk + 0x90, (uint16_t)atoi(aff)), ST8(atk + 0x32, LD8(atk + 0x32) | 2);
         if (ele && strchr(ele, ':'))
             ST32(atk + AT_ELEMENTS, LD32(atk + AT_ELEMENTS) | (uint32_t)strtoul(ele, NULL, 16)),
