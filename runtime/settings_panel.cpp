@@ -6310,7 +6310,9 @@ void fade_drawn(ImDrawList *dl, float a) {
     for (ImDrawVert &v : dl->VtxBuffer) v.col = fade(v.col, a);
 }
 const float CHAT_MIN_W = .95f, CHAT_MIN_H = .5f;
-float chat_solid(int which) { return chat::opacity(which) / 100.f; }  // (1.0.2: the chat's options, 0 to 1)
+float chat_solid(int which) { return chat::opacity(which) / 100.f; }
+// (the window's background: the chat's options page at least as solid as the window came, so it reads whatever it is set to)
+float chat_window_solid() { return chat_options() ? std::max(.6f, chat_solid(chat::OPACITY_WINDOW)) : chat_solid(chat::OPACITY_WINDOW); }  // (1.0.2: the chat's options, 0 to 1)
 struct ChatDrag {
     int mode = 0;            // 1: moved by its header, 2: sized by its corner
     ImVec2 grab, pos, size;  // where the finger landed, and the window then
@@ -6435,7 +6437,7 @@ void touch_panel(bool *open, const Config &before) {
         g_chat_drag.mode = 0;
     ImGui::SetNextWindowPos(at, ImGuiCond_Always);
     ImGui::SetNextWindowSize(panel, ImGuiCond_Always);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, vec(chat_win ? fade(look.panel, chat_solid(chat::OPACITY_WINDOW)) : look.panel));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, vec(chat_win ? fade(look.panel, chat_window_solid()) : look.panel));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_Text, vec(look.text));
     ImGui::PushStyleColor(ImGuiCol_Border, vec(look.edge));
@@ -6477,7 +6479,7 @@ void touch_panel(bool *open, const Config &before) {
     const bool chat_head = chat_win && s.view == View::Chat && !chat_options() && chat_strip();
     float band = chat_win ? std::max(.075f * H, f * 2.1f) : std::max(.11f * H, f * 2.9f), side = band * .8f,
           by = y0 + (band - side) * .5f + line * .5f;
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), chat_win ? fade(k.band, chat_solid(chat::OPACITY_WINDOW)) : k.band);
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), chat_win ? fade(k.band, chat_window_solid()) : k.band);
     if (chat_win)  // (afloat: the header is the window's - its buttons, its tabs, the rest moves it)
         chat_claim(ImRect(x0, y0, x1, y0 + band + line * 2));
     if (look.game) {  // (the game's red and green rules under it)
