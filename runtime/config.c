@@ -925,7 +925,8 @@ static bool parse_aspect(const char *v, float *out) {
 #define ON_OFF(section, key, field, restart) {section, key, SET_BOOL, F(field), 0, 0, 0, NULL, NULL, restart, ERR_TOGGLE}
 #define KEYS(key, bind) {"Keybinds", key, SET_KEYS, F(binds[bind]), 0, 0, 0, NULL, NULL, false, ERR_KEYS}
 static const int anchor_values[] = {UI_CENTER, UI_21_9, UI_32_9, UI_EDGES}, msaa_values[] = {1, 2, 4, 8};
-static const int number_size_values[] = {1, 0, 2};  // (Small, Medium, Large: Medium 0, the default of a field left 0)
+static const int number_size_values[] = {1, 0, 2};
+static const int hud_shrink_values[] = {0, 5, 10, 15, 20, 25, 30, 35, 40};  // (HUDSize 100 .. 60: the field's 100 - size)  // (Small, Medium, Large: Medium 0, the default of a field left 0)
 const ConfigSetting g_settings[] = {
     {"Display", "Mode", SET_CHOICE, F(display_mode), 0, 0, 0,
      "Windowed|window,Fullscreen|exclusive|exclusivefullscreen,Borderless|borderless*", NULL, true, ERR_SIZE},
@@ -939,6 +940,9 @@ const ConfigSetting g_settings[] = {
     {"Display", "UIAnchor", SET_CHOICE, F(ui_anchor), 0, 0, 0, "Center|1|16:9,21:9|2,32:9|3,Edges", anchor_values, true,
      ERR_MISC},
     ON_OFF("Display", "FillScreen", fill_screen, true),
+    // (1.0.2) the HUD's size, in percent: the field keeps 100 minus it (0, the default: 100 %)
+    {"Display", "HUDSize", SET_CHOICE, F(hud_shrink), 0, 0, 0, "100,95,90,85,80,75,70,65,60", hud_shrink_values, false,
+     ERR_MISC},
     {"Display", "GPU", SET_TEXT, F(gpu), sizeof g_config.gpu, 0, 0, NULL, NULL, true, ERR_MISC},
     {"Anti-aliasing", "MSAA", SET_CHOICE, F(msaa), 0, 0, 0, "Off|none|0|1|1x,2x|2,4x|4,8x|8", msaa_values, false, ERR_MISC},
     ON_OFF("Anti-aliasing", "FXAA", fxaa, false),
@@ -1025,6 +1029,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "StickRun", touch_show[TB_STICK_RUN], false),
     ON_OFF("Touch", "GuardSlide", touch_show[TB_GUARD_SLIDE], false),
     ON_OFF("Touch", "ShowLockOn", touch_show[TB_LOCKON], false),
+    ON_OFF("Touch", "ShowMapButton", touch_show[TB_MAP_BUTTON], false),  // (1.0.2)
     ON_OFF("Touch", "FloatingStick", touch_show[TB_FLOAT_STICK], false),
     ON_OFF("Touch", "ShowMenuLR", touch_show[TB_MENU_LR], false),
     ON_OFF("Touch", "DpadInMenus", touch_show[TB_DPAD_MENUS], false),

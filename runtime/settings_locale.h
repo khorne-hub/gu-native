@@ -327,6 +327,12 @@ static inline const char *settings_text(int language, const char *english) {
          "Toca un control o una parte de la pantalla del juego para elegirlo, arrástralo para moverlo"},
         {"Hidden: Show brings it back", "Parte oculta: Mostrar la trae de vuelta"},
         {"Outside a hunt the frames show where each part goes", "Fuera de una cacería los marcos muestran dónde va cada parte"},
+        {"Without the item bar, items can't be picked or used with a finger: only with the game's buttons",
+         "Sin la barra de objetos no se eligen ni se usan objetos con el dedo: solo con los botones del juego"},
+        // (1.0.2) the HUD's size, the minimap's button
+        {"HUD size", "Tamaño del HUD"},
+        {"Map button", "Botón del mapa"},
+        {"Map: show / hide", "Mapa: mostrar / ocultar"},
         {"The item bar picks and uses items with the touch controls: it can't be hidden here",
          "La barra de objetos elige y usa los objetos con los controles táctiles: aquí no se puede ocultar"},
         {"Hidden: no tap performs the Hunter Arts - the game's own buttons for them do",

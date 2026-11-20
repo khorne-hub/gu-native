@@ -121,6 +121,7 @@ enum Ctl {
     C_ITEML, C_ITEMR,                                                                      // (the item bar's arrows)
     C_RUNLOCK,                                                                             // (the sprint lock's circle)
     C_LOCKON,                                                                              // (the port's Lock-on button)
+    C_MAPTOG,                                                                              // (1.0.2: the minimap's button)
     // the emulator-style layout's (a profile of that kind, Layout.kind: every one presses its button of the game's and
     // nothing else, as an emulator's pad on the screen; the stick, the settings and Lock-on buttons, the item bar's
     // arrows and the combined buttons are the same controls in both kinds)
@@ -134,7 +135,7 @@ enum Ctl {
 const int C_LAID = C_STICK + 1;
 enum Icon { I_ATTACK, I_DODGE, I_SHIELD, I_BURST, I_TARGET_SELECT, I_CAMERA, I_MENU, I_MAP, I_GEAR, I_SHEATHE, I_RUN, I_STICK, I_DPAD,
             I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN,
-            I_LEFT, I_RIGHT, I_LOCKON };
+            I_LEFT, I_RIGHT, I_LOCKON, I_MAPTOG };
 // The menu pad (C_MPAD), in its base's radius: a thumb within MPAD_GRAB is its, before anything else (a tap on its
 // edge is a step that way, never a tab); a direction comes on past MPAD_ON and stays down to MPAD_OFF
 const float MPAD_GRAB = 1.35f, MPAD_ON = .35f, MPAD_OFF = .25f;
@@ -217,6 +218,10 @@ const Def DEFS[C_COUNT] = {
     // tap turns the lock-on (lock_set). On the right thumb's arc above Y and left of L, as far from both as they are from
     // each other (the MH4U port's place, from its arc). Hunts only: in a town it is in the editor alone
     {"lock_on", "Lock-on", I_LOCKON, "", 0, true, .43f, .58f, .045f},
+    // (1.0.2, the owner's) the minimap's button ([Touch] ShowMapButton, on): a tap hides the minimap, another shows it (the
+    // HUD's Map part hidden in the arrangement in use, as the editor's Hide; kept in touch_layout.txt). Hunts only; in the
+    // left edge's column, below Left stick click's place (off by default). The MH4U port's the same, with its own icon
+    {"map_toggle", "Map: show / hide", I_MAPTOG, "", 0, false, .065f, .31f, .046f},
     // the emulator-style layout: A, B, X and Y in a diamond under the right thumb, the d-pad below the stick on the left,
     // the shoulders by the screen's edges (as tabs, the inner pair above and inward), Minus and Plus inward of them, the
     // sticks' clicks by the stick and below the diamond (the place of an emulator's right stick: a drag anywhere turns
@@ -291,6 +296,7 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     case C_ITEML: case C_ITEMR: return TB_ITEM_ARROWS;
     case C_RUNLOCK: return TB_STICK_RUN;
     case C_LOCKON: return TB_LOCKON;
+    case C_MAPTOG: return TB_MAP_BUTTON;
     default: return -1;
     }
 }
@@ -315,10 +321,16 @@ bool lockon_here(bool menu) {
     return config_live_lock_on() && g_in_quest.load() && plat_now_ns() - g_town_ns >= 500 * 1000000ull &&
            !(menu && g_menu_town.load());
 }
+// (1.0.2: the minimap's button, in a quest as the Lock-on button, with ShowMapButton)
+bool map_here(bool menu) {
+    return config_live_touch_show(TB_MAP_BUTTON) && g_in_quest.load() && plat_now_ns() - g_town_ns >= 500 * 1000000ull &&
+           !(menu && g_menu_town.load());
+}
 // A control the emulator-style layout's editor can hide (Layout.off): any of its own but the settings button, the way back
 // to the settings ([Touch] Show* hide the port's own layout's, in the settings: its editor has no Hide for those)
 bool hideable(int i) {
-    return g_kind.load() == KIND_EMU && i != C_SETTINGS && (emu_ctl(i) || i == C_STICK || i == C_LOCKON || is_combo(i));
+    return g_kind.load() == KIND_EMU && i != C_SETTINGS && (emu_ctl(i) || i == C_STICK || i == C_LOCKON || i == C_MAPTOG ||
+                                                          is_combo(i));
 }
 // The emulator-style layout: its own buttons, the stick, the settings and Lock-on buttons, the combined buttons, each but
 // the settings button unless its editor hid it; in a menu of the game's nothing changes (its d-pad is always there: no
@@ -328,6 +340,7 @@ bool emu_mode(int i, bool menu) {
     if (emu_ctl(i) || i == C_SETTINGS || i == C_STICK) return true;
     if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
     if (i == C_LOCKON) return lockon_here(menu) && config_live_touch_show(TB_LOCKON);
+    if (i == C_MAPTOG) return map_here(menu);
     return false;
 }
 bool in_mode(int i, bool menu) {
@@ -339,6 +352,7 @@ bool in_mode(int i, bool menu) {
     if (i == C_ITEML || i == C_ITEMR) return false;  // (drawn and pressed with the item bar, where it shows: touch_draw)
     if (i == C_RUNLOCK) return false;                // (drawn and armed with the stick: control, on_lock_circle)
     if (i == C_LOCKON && !lockon_here(menu)) return false;
+    if (i == C_MAPTOG) return map_here(menu);
     // a menu of the game's open: the menu pad besides, nothing else changes (Plus shows whatever ShowPlus says: the
     // game's menus use it, as the way out of the pause menu)
     if (i == C_MPAD) return menu && mpad_shown();
@@ -368,12 +382,14 @@ bool in_editor(int i) {
         if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
         if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
         if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);
+        if (i == C_MAPTOG) return config_live_touch_show(TB_MAP_BUTTON) != 0;
         return is_combo(i) && config_live_touch_combo(i - C_COMBO) != 0;
     }
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
     if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
     if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);  // (a town's editor too)
+    if (i == C_MAPTOG) return config_live_touch_show(TB_MAP_BUTTON) != 0;
     return i < C_LAID && (in_mode(i, false) || in_mode(i, true));
 }
 const ImVec2 PILL_U(.766f, -.643f);  // the pill's axis on the screen (y down): up and to the right
@@ -474,8 +490,10 @@ void epanel_line(char out[80], const EditPanel &ep) { snprintf(out, 80, "editor_
 const char *const HUD_NAME[HP_COUNT] = {"Item bar", "Hunter Arts", "Target camera", "Clock", "Health and stamina",
                                         "Sharpness and gauges", "Party", "Map"};
 HudVals hud_default(void) { return {0.0f, 0.0f, 1.0f, 1.0f, false}; }
-// (the item bar with the touch controls: a finger picks and uses the items on it, and swipes it: never hidden there)
-bool hud_hide_ok(int prof, int part) { return !(prof == HUD_TOUCH && part == HP_ITEMS); }
+// (any part can be hidden, the item bar with the touch controls too: 1.0.2, the owner's "everything can be hidden". Up to
+// 1.0.1.1 never there, since a finger picks and uses the items on it and swipes it; hidden it takes no finger, zone_rect,
+// and the editor says so)
+bool hud_hide_ok(int prof, int part) { (void)prof, (void)part; return true; }
 // The emulator-style layout's own places for the controls both kinds have (DEFS has the port's): the stick a little
 // higher, over the d-pad; the settings button between the stick and the shoulders; the Lock-on button above the diamond
 const struct { int c; float x, y; } EMU_PLACES[] = {{C_STICK, .27f, .42f}, {C_SETTINGS, .065f, .50f}, {C_LOCKON, .45f, .54f}};
@@ -1450,6 +1468,16 @@ struct State {
 };
 std::mutex g_lock;
 State g_s;
+void map_toggle(State &s) {
+    int prof = g_hud_prof_now;
+    if (prof < 0 || prof >= HUD_PROFILES) prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;
+    bool hide = !s.layout.hud[prof][HP_MAP].hidden;
+    s.layout.hud[prof][HP_MAP].hidden = hide;
+    s.saved.hud[prof][HP_MAP].hidden = hide;  // (the layout in use as saved: not an edit the editor would cancel)
+    publish_hud(s.layout);
+    save_layout(s.layout, s.epanel);
+    rt_logf("[touch] the map's button: the minimap %s\n", hide ? "hidden" : "shown");
+}
 std::atomic<bool> g_lock_follow;  // (touch_lock_buttons -> the hunt camera: follow the monster now)
 std::atomic<bool> g_lock_shots;   // (the lock-on is on, in a hunt: hle/mousecam.c turns a bow's or a gun's shots)
 std::atomic<bool> g_lock_mark;    // (the lock-on is on, no menu of the game's open: its padlock shows, the controls
@@ -1848,6 +1876,10 @@ void to_menu(const SDL_Event *e) {
 int g_language;  // the settings menu's (touch_draw, each frame): the editor's texts in it
 const char *T(const char *english) { return settings_text(g_language, english); }
 
+// (1.0.2) The minimap's button: the HUD's Map hidden or shown in the arrangement drawn now (the editor's Hide, kept in
+// touch_layout.txt as the editor's Save keeps it)
+struct State;
+void map_toggle(State &s);
 // The buttons a tap holds down (Layout.hold) can be: those that press the game's buttons for as long as they are down -
 // not the attacks' pill or band (a part each), the stick, the d-pads, the menu pad, the arrows (steps), the settings
 // and Lock-on buttons, nor the aim (its tap is the scope or a bow's aiming mode, which stay by themselves). The MH4U
@@ -1855,7 +1887,7 @@ const char *T(const char *english) { return settings_text(g_language, english); 
 bool holdable(int i) {
     if (i < 0 || i >= C_LAID) return false;
     return !(i == C_ATTACK || i == C_CORNER || i == C_STICK || is_dpad(i) || i == C_MPAD || i == C_SETTINGS || i == C_LOCKON ||
-             i == C_ITEML || i == C_ITEMR || i == C_RUNLOCK || i == C_AMMO_UP || i == C_AMMO_DOWN || i == C_RAIM);
+             i == C_ITEML || i == C_ITEMR || i == C_RUNLOCK || i == C_AMMO_UP || i == C_AMMO_DOWN || i == C_RAIM || i == C_MAPTOG);
 }
 // A picture of the player's (Layout.image) can be on every control the editor places (1.0.1, the owner's call: the round
 // buttons as in 1.0, and the stick - its base, and its knob apart -, both d-pads, the sprint lock's circle, the item bar's
@@ -2867,6 +2899,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             if ((c == C_AMMO_UP || c == C_AMMO_DOWN) && !s.menu)
                 ammo_step(s, c == C_AMMO_UP ? 1 : -1), f->repeat_ns = now + 550 * MS;  // (held: more steps, touch_input)
             if (c == C_LOCKON) lock_set(s, !s.lock, "the Lock-on button");  // (as it lands; lit while held, presses nothing)
+            if (c == C_MAPTOG) map_toggle(s);
             // (a button a tap holds down, Layout.hold: this tap holds it, what it presses now staying pressed after the
             // finger lifts, lit; the next tap lets it go, and presses nothing more)
             if ((s.layout.hold >> c & 1) && holdable(c)) {
@@ -4209,6 +4242,25 @@ void icon(ImDrawList *dl, Icon ic, ImVec2 c, float r, ImU32 col, ImU32 deep) {
     case I_MINUS:
         dl->AddRectFilled(P(c, s, -.58f, -.12f), P(c, s, .58f, .12f), col, .06f * s);
         break;
+    case I_MAPTOG: {  // (1.0.2) the minimap's button: a map folded in three, a route on it and a pin; hidden, a slash across
+        ImVec2 m[3][4] = {{P(c, s, -.78f, -.46f), P(c, s, -.26f, -.62f), P(c, s, -.26f, .46f), P(c, s, -.78f, .62f)},
+                          {P(c, s, -.26f, -.62f), P(c, s, .26f, -.46f), P(c, s, .26f, .62f), P(c, s, -.26f, .46f)},
+                          {P(c, s, .26f, -.46f), P(c, s, .78f, -.62f), P(c, s, .78f, .46f), P(c, s, .26f, .62f)}};
+        for (int i = 0; i < 3; i++) dl->AddConvexPolyFilled(m[i], 4, i == 1 ? fade(col, .78f) : col);
+        ImVec2 route[4] = {P(c, s, -.6f, .3f), P(c, s, -.3f, .05f), P(c, s, .05f, .2f), P(c, s, .34f, -.08f)};
+        dl->AddPolyline(route, 4, deep, .07f * s, 0);
+        ImVec2 pin = P(c, s, .42f, -.2f);
+        dl->AddTriangleFilled(ImVec2(pin.x - .13f * s, pin.y - .02f * s), ImVec2(pin.x + .13f * s, pin.y - .02f * s),
+                              ImVec2(pin.x, pin.y + .22f * s), deep);
+        dl->AddCircleFilled(pin, .14f * s, deep, 14);
+        dl->AddCircleFilled(pin, .055f * s, col, 10);
+        int prof = g_hud_edit_prof >= 0 ? (int)g_hud_edit_prof : (int)g_hud_prof_now;
+        if (prof >= 0 && prof < HUD_PROFILES && g_hud_hidden[prof][HP_MAP]) {
+            dl->AddLine(P(c, s, -.82f, -.78f), P(c, s, .82f, .78f), deep, .26f * s);
+            dl->AddLine(P(c, s, -.82f, -.78f), P(c, s, .82f, .78f), col, .12f * s);
+        }
+        break;
+    }
     case I_RUN: {  // a running boot with speed lines
         ImVec2 boot[6] = {P(c, s, -.12f, -.62f), P(c, s, .22f, -.62f), P(c, s, .22f, .2f), P(c, s, .62f, .32f),
                           P(c, s, .62f, .56f), P(c, s, -.18f, .56f)};
@@ -5508,7 +5560,7 @@ void draw_editor(ImDrawList *dl, ImFont *font, const State &s, float w, float h)
     // frames show outside a hunt)
     const char *note = nullptr;
     int hidden_tap = touch && hud[HP_ARTS].hidden ? HP_ARTS : -1;
-    if (touch && part == HP_ITEMS) note = "The item bar picks and uses items with the touch controls: it can't be hidden here";
+    if (touch && part == HP_ITEMS) note = "Without the item bar, items can't be picked or used with a finger: only with the game's buttons";
     else if (touch && part == HP_ARTS && hud[part].hidden) hidden_tap = part;
     if (!note && hidden_tap == HP_ARTS) note = "Hidden: no tap performs the Hunter Arts - the game's own buttons for them do";
     if (!note && !any_live && s.sel < 0) note = "Outside a hunt the frames show where each part goes";

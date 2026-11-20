@@ -5211,7 +5211,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         if (hud_moves || part_custom) {  // (at 16:9 without the touch controls, left alone: the game's)
                             hud_place_piece(&hp, pos_x, pos_y, &new_pos_x, &new_pos_y);
                             g_hud_shift_dx[part] = hp.shift_x, g_hud_shift_dy[part] = hp.shift_y;
-                            part_k = hp.k, hud_hidden = hp.hidden;
+                            part_k = hp.k * hp.g, hud_hidden = hp.hidden;  // (1.0.2: and the HUD's size)
                         }
                     }
                     if (!hud_moves && !part_custom) new_pos_x = pos_x, new_pos_y = pos_y;  // (told only: drawn where the game put it)
