@@ -4880,6 +4880,52 @@ void fit(std::string &value, float available) {
     } while (!value.empty() && ImGui::CalcTextSize((value + "...").c_str()).x > available);
     value += "...";
 }
+// A value too long for its row, read whole where the eye is (1.0.2, S17: Akarui Hoshi's report, tabarong's scrolling
+// text): in the row picked (the keys, a controller) or touched or under the mouse, it scrolls slowly from its start to
+// its end within its own room - a second still at each end, then over again; the other rows keep fit's "...". The MH4U
+// port's the same. Each row scrolling has its start time here (a row lit again starts over)
+struct MarqueeAt {
+    std::string id;
+    double since = 0;
+    int frame = -10;
+};
+MarqueeAt s_marquee[4];
+// How far (pixels) the row id's value is moved left now: over, how much wider it is than its room
+float marquee_offset(const std::string &id, float over) {
+    const int frame = ImGui::GetFrameCount();
+    const double now = SDL_GetTicksNS() / 1e9;
+    MarqueeAt *m = nullptr, *oldest = &s_marquee[0];
+    for (MarqueeAt &e : s_marquee) {
+        if (e.id == id && e.frame >= frame - 1) {
+            m = &e;
+            break;
+        }
+        if (e.frame < oldest->frame)
+            oldest = &e;
+    }
+    if (!m)
+        m = oldest, m->id = id, m->since = now;
+    m->frame = frame;
+    const double speed = std::max(1.f, ImGui::GetFontSize() * 2.f);  // (about 40 pixels a second at the PC's size)
+    const double run = over / speed, t = std::fmod(now - m->since, 1.0 + run + 1.0) - 1.0;
+    return (float)(std::clamp(t, 0.0, run) * speed);
+}
+// The whole value, moved by marquee_offset and clipped to its room (x0 .. x0 + room) in the row rect; false (nothing
+// drawn) when it fits, so the caller draws it as before
+bool marquee_text(ImDrawList *dl, ImFont *font, float size, const std::string &id, const ImRect &rect, float x0, float room,
+                  float y, ImU32 ink, const std::string &value, bool shadow) {
+    const float full = font->CalcTextSizeA(size, FLT_MAX, 0, value.c_str()).x;
+    if (full <= room || room < size)
+        return false;
+    const float off = marquee_offset(id, full - room);
+    dl->PushClipRect(ImVec2(x0, rect.Min.y), ImVec2(x0 + room, rect.Max.y), true);
+    if (shadow)
+        shadow_text(dl, font, size, ImVec2(x0 - off, y), ink, value.c_str());
+    else
+        dl->AddText(font, size, ImVec2(x0 - off, y), ink, value.c_str());
+    dl->PopClipRect();
+    return true;
+}
 // A name cut to fit at a space, never inside a word (room: its width in font at size), "..." at its end; empty when not
 // even its first word fits
 std::string whole_words(ImFont *font, float size, const std::string &name, float room) {
@@ -4949,11 +4995,17 @@ void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
     } else if (!r.value.empty() && !plated) {
         std::string value = r.value + (r.cold ? " *" : "");
         float bs = stepper ? std::min(s.m.row * .84f, font * 2.3f) : 0;
-        fit(value, stepper ? room - bs * 2 - font * .4f : room - font * (r.menu || goes_on ? 1.4f : .3f));
-        ImVec2 size = ImGui::CalcTextSize(value.c_str());
-        float vx = stepper ? right - room * .5f - size.x * .5f : right - size.x - ((r.menu && r.enabled) || goes_on ? font * 1.1f : 0);
+        const float avail = stepper ? room - bs * 2 - font * .4f : room - font * (r.menu || goes_on ? 1.4f : .3f);
+        const float end = right - ((r.menu && r.enabled) || goes_on ? font * 1.1f : 0);  // (a value's right, not a stepper's)
         ImU32 value_ink = r.warn ? IM_COL32(255, 110, 96, 255) : !r.enabled ? t.text_off : lit ? ink : k.rule;
-        shadow_text(dl, font, ImVec2(vx, cy - size.y * .5f), value_ink, value.c_str());
+        const float vy = cy - ImGui::CalcTextSize("0").y * .5f;
+        if (!((lit || held) && marquee_text(dl, ImGui::GetFont(), font, r.id, rect, stepper ? right - room * .5f - avail * .5f : end - avail,
+                                             avail, vy, value_ink, value, true))) {
+            fit(value, avail);
+            ImVec2 size = ImGui::CalcTextSize(value.c_str());
+            float vx = stepper ? right - room * .5f - size.x * .5f : end - size.x;
+            shadow_text(dl, font, ImVec2(vx, cy - size.y * .5f), value_ink, value.c_str());
+        }
         if (r.menu && r.enabled) {  // (a tap lists the choices)
             float m = font * .26f, mx = right - font * .4f;
             dl->AddTriangleFilled(ImVec2(mx - m, cy - m * .55f), ImVec2(mx + m, cy - m * .55f), ImVec2(mx, cy + m * .65f),
@@ -4998,13 +5050,16 @@ void tile_draw(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool 
         title = r.title;
     float small = std::floor(f * .78f);
     std::string value = r.value;
-    if (!value.empty())
-        value = whole_words(font, small, value, room);
+    bool scrolls = lit || held;  // (picked or touched: a summary that doesn't fit scrolls, marquee_text, else its words cut)
+    if (!value.empty() && (!scrolls || font->CalcTextSizeA(small, FLT_MAX, 0, value.c_str()).x <= room))
+        value = whole_words(font, small, value, room), scrolls = false;
     ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, title.c_str());
     float y = value.empty() ? cy - ts.y * .5f : cy - (ts.y + small * 1.05f) * .5f;
     dl->PushClipRect(rect.Min, rect.Max, true);
     shadow_text(dl, font, size, ImVec2(x, y), ink, title.c_str());
-    if (!value.empty())
+    if (scrolls)
+        marquee_text(dl, font, small, r.id, rect, x, room, y + ts.y + small * .05f, lit ? fade(ink, .85f) : k.rule, value, false);
+    else if (!value.empty())
         dl->AddText(font, small, ImVec2(x, y + ts.y + small * .05f), lit ? fade(ink, .85f) : k.rule, value.c_str());
     dl->PopClipRect();
 }
@@ -5232,6 +5287,7 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         ImGui::PopStyleColor(4);
         if (!list && ImGui::IsItemHovered())
             s.hovered = r.id;
+        const bool pointed = !list && s.input == USED_MOUSE && ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride);
         if (!list && ImGui::IsItemHovered(ImGuiHoveredFlags_NoNavOverride))
             s.pointing = true;
         if (touch) {
@@ -5330,10 +5386,14 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         }
         if (!r.value.empty()) {
             std::string value = r.value + (r.cold ? " *" : "");
-            fit(value, rw * .38f - font - arrow);
-            auto sz = ImGui::CalcTextSize(value.c_str());
-            w->DrawList->AddText(ImVec2(p.x + rw - font * .5f - arrow - sz.x, p.y + (h - font) * .5f), value_ink,
-                                 value.c_str());
+            const float avail = rw * .38f - font - arrow, end = p.x + rw - font * .5f - arrow;
+            if (!(((selected && r.enabled) || held || pointed) &&
+                  marquee_text(w->DrawList, ImGui::GetFont(), font, r.id, rect, end - avail, avail, p.y + (h - font) * .5f,
+                               value_ink, value, false))) {
+                fit(value, avail);
+                auto sz = ImGui::CalcTextSize(value.c_str());
+                w->DrawList->AddText(ImVec2(end - sz.x, p.y + (h - font) * .5f), value_ink, value.c_str());
+            }
         }
         w->DrawList->PopClipRect();
         if (r.remove) {  // (a remembered choice: an x at its right takes it out of the list)
