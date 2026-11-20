@@ -31,7 +31,7 @@ static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, l
                      live_shadows = {1}, live_bloom = {1}, live_grass = {1}, live_effects = {1}, live_reverb = {1},
                      live_online_notice, live_send_all_rewards, live_gather_all, live_touch_cam_smooth, live_camera_shake, live_frame_gen,
                      live_upscale_sharp, live_monsters_on_map, live_damage_numbers, live_number_size, live_number_colour,
-                     live_monster_bars, live_ps1_filter;
+                     live_number_style, live_monster_bars, live_ps1_filter;
 static void set_float(SDL_AtomicInt *slot, float value) {
     int bits; _Static_assert(sizeof bits == sizeof value, "32-bit float settings");
     memcpy(&bits, &value, sizeof bits); SDL_SetAtomicInt(slot, bits);
@@ -148,6 +148,7 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->damage_numbers != saved.damage_numbers) SDL_SetAtomicInt(&live_damage_numbers, c->damage_numbers);
     if (all || c->number_size != saved.number_size) SDL_SetAtomicInt(&live_number_size, c->number_size);
     if (all || c->number_colour != saved.number_colour) SDL_SetAtomicInt(&live_number_colour, c->number_colour);
+    if (all || c->number_style != saved.number_style) SDL_SetAtomicInt(&live_number_style, c->number_style);
     if (all || c->monster_bars != saved.monster_bars) SDL_SetAtomicInt(&live_monster_bars, c->monster_bars);
     if (all || c->ps1_filter != saved.ps1_filter) SDL_SetAtomicInt(&live_ps1_filter, c->ps1_filter);
     for (int i = 0; i < BINDS; i++)
@@ -283,12 +284,14 @@ int config_live_monsters_on_map(void) { return SDL_GetAtomicInt(&live_monsters_o
 int config_live_damage_numbers(void) { return SDL_GetAtomicInt(&live_damage_numbers); }
 int config_live_number_size(void) { return SDL_GetAtomicInt(&live_number_size); }
 int config_live_number_colour(void) { return SDL_GetAtomicInt(&live_number_colour); }
+int config_live_number_style(void) { return SDL_GetAtomicInt(&live_number_style); }
 int config_live_monster_bars(void) { return SDL_GetAtomicInt(&live_monster_bars); }
-void config_huntaids_test(int map, int numbers, int bars, int size, int colour) {
+void config_huntaids_test(int map, int numbers, int bars, int size, int colour, int style) {
     SDL_SetAtomicInt(&live_monsters_on_map, map), SDL_SetAtomicInt(&live_damage_numbers, numbers);
     SDL_SetAtomicInt(&live_monster_bars, bars);
     if (size >= 0) SDL_SetAtomicInt(&live_number_size, size);
     if (colour >= 0) SDL_SetAtomicInt(&live_number_colour, colour);
+    if (style >= 0) SDL_SetAtomicInt(&live_number_style, style);
 }
 int config_live_online_notice(void) { return SDL_GetAtomicInt(&live_online_notice); }
 // (config.c: a test run's MHGU_SHADOWS, MHGU_BLOOM, MHGU_GRASS, MHGU_FPS_LIMIT, after the file: live, not saved)

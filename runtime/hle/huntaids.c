@@ -32,8 +32,12 @@
 // settled, so with another hunter in the quest (sPlayer's slots, the quest's join count) nothing is written: the map is
 // the game's own there, and the menu's help says so.
 //
-// Damage numbers ([Hunting Aids] DamageNumbers): each frame, each large monster's health against the last frame's; a
-// drop is a number of that much (any damage: the hunter's, the Palicos', bombs, poison, the other hunters' in a party).
+// Damage numbers ([Hunting Aids] DamageNumbers): each frame, each monster's health (large and small: 1.0.2) against the
+// last frame's; a drop is a number of that much (any damage: the hunter's, the Palicos', bombs, poison, the other
+// hunters' in a party). From 1.0.2 this game's own hits are also read as the game works them out (below, "the hits":
+// two hooks, set the first time the numbers are on): a drop goes to the hits that made it, each its own number with what
+// it was (a weak point, a hard part, fixed damage, a critical hit, its element's part), for the "By hit" colour and the
+// styles (runtime/hunt_overlay.cpp); and a party guest's hits, whose drop the host's game makes, show all the same.
 // Its place: the reacting hit's (+0x4f0) when it changed since the monster's last number (and is near it), else the body's
 // middle (the root joint, or 100 units above the feet). Only for a monster in the hunter's zone of the map (+0x1054 of
 // both: each zone has its own coordinates). Placed on the game's picture every frame with the camera the game
@@ -70,6 +74,7 @@
 #define MON_PAIRS     0x1797ea4u  // (monster id, index) x 137, then the index's UI number: monsterName's string
 #define MON_UI        0x182e7f8u
 #define MON_PAIR_COUNT 137
+#define MON_VALSTRAX_UI 132  // (Valstrax's name, 0x407's UI number: also the Village's Valstrax, 0x56: monster_name)
 #define CAM_VIEW      0xe0u
 #define CAM_PROJ      0x120u
 #define EN_INFO       0x1428u
@@ -98,8 +103,19 @@ static struct {
     bool marked;       // its mark's timer is ours
     const char *name;  // its name (monster_name), for the game's language name_lang (-1: not looked up yet)
     int name_lang;
+    int credit;        // damage of hits shown before the health dropped for them (a party's guest), taken off the
+    uint64_t credit_ns;  // next drops until CREDIT_NS after the last such hit
 } g_slot[SLOTS];
-static struct { float p[3]; int value; uint32_t id; uint64_t born; } g_num[HUNT_NUMBERS];
+typedef struct {
+    float p[3];
+    int value, elem;
+    uint32_t id, en;   // (en: the monster, Burst's run)
+    uint64_t born, last;
+    uint8_t kind, element;
+    int8_t crit;
+    int hits;
+} Num;
+static Num g_num[HUNT_NUMBERS];
 static int g_nnum;
 static uint32_t g_next_id = 1;
 static HuntView g_view;  // this frame's (huntaids_view)
@@ -148,6 +164,11 @@ static const char *monster_name(uint32_t en) {
     for (uint32_t i = 0; i < MON_PAIR_COUNT; i++)
         if (LD32(MON_PAIRS + 8 * i) == id) {
             uint32_t index = LD32(MON_PAIRS + 8 * i + 4), ui = index < MON_PAIR_COUNT ? LD32(MON_UI + 4 * index) : ~0u;
+            // (1.0.2, T05: a few special monsters' UI numbers, 137 and on, land past the 137 names of the language, in
+            // the file's second list, the names' kanji keys "KANJI_Lioleia"..., where they read as another monster:
+            // the Village's Valstrax, 0x56 (em086, quest 1005 "Beware the Comet of Disaster"), read as "Rathalos".
+            // Valstrax's own name for it (the UI number of 0x407's), no name for the others)
+            if (ui >= MON_PAIR_COUNT) ui = id == 0x56 ? MON_VALSTRAX_UI : ~0u;
             return ui < (uint32_t)names.n ? names.str[ui] : NULL;
         }
     return NULL;
@@ -199,11 +220,204 @@ static void body_middle(uint32_t en, uint32_t info, float out[3]) {
     }
 }
 
-static void add_number(int value, const float p[3], uint64_t now) {
+// A number: a new one, or (Burst) added to its monster's number of a run of hits still going
+static void add_number(uint32_t en, int value, int elem, uint8_t kind, int8_t crit, uint8_t element, const float p[3],
+                       uint64_t now) {
+    static const uint8_t RANK[] = {0, 1, 3, 0, 2};  // (Burst: what the run shows: a weak point over fixed over normal)
+    if (config_live_number_style() == HUNT_STYLE_BURST)
+        for (int i = g_nnum - 1; i >= 0; i--) {
+            Num *n = &g_num[i];
+            if (n->en != en || now >= n->last + HUNT_BURST_NS) continue;
+            n->value += value, n->elem += elem, n->hits++, n->last = now;
+            if (RANK[kind] > RANK[n->kind]) n->kind = kind;
+            if (crit > 0 || (crit < 0 && n->crit == 0)) n->crit = crit;
+            if (element) n->element = element;
+            return;
+        }
     if (g_nnum == HUNT_NUMBERS) memmove(g_num, g_num + 1, sizeof g_num[0] * (HUNT_NUMBERS - 1)), g_nnum--;
-    g_num[g_nnum].p[0] = p[0], g_num[g_nnum].p[1] = p[1], g_num[g_nnum].p[2] = p[2];
-    g_num[g_nnum].value = value, g_num[g_nnum].id = g_next_id++, g_num[g_nnum].born = now;
-    g_nnum++;
+    Num *n = &g_num[g_nnum++];
+    memset(n, 0, sizeof *n);
+    n->p[0] = p[0], n->p[1] = p[1], n->p[2] = p[2];
+    n->value = value, n->elem = elem, n->id = g_next_id++, n->en = en, n->born = n->last = now;
+    n->kind = kind, n->crit = crit, n->element = element, n->hits = 1;
+}
+
+// ---- the hits (1.0.2: the "By hit" colour, small monsters, a party's guest): what the game's damage step worked out
+// for each hit on a monster, read as it is worked out. A hit on a monster, every kind of attacker, goes through
+// 0x370968(?, attack, monster, &place; on the stack &place2, ?, &hit): attack +0x6d picks the step (1 the hunters':
+// 0x376ad0 their weapons, 0x373a24 shells and shots; 2 another monster's, 0x372bf0; 4 the Palicos', 0x374c0c; else
+// 0x371350, raw = attack * motion * the hit zone * ... * the critical multiplier, + the element's, no zone without
+// attack +0x30's bits: fixed damage). Each ends with the hit's total (an s16) and
+// hands it to 0x29d6f8(monster, part, total, ?), which counts it on the part (its flinch and break), once: hooked here,
+// that call shows the step's own floats in the callee-saved VFP registers and its frame (PATHS: by its return address,
+// which register holds what, found reading each step), and the monster's health drops by the total in the monster's
+// next update (0x297ddc, the parts' totals). The hit zone: 0x2bab60(monster, hit +6) the part's zones (cut, impact,
+// shot, fire, water, thunder, ice, dragon), the step's own factor (hz / 100) in s18 (0x371350) or at its frame +0x54
+// (the hunters' and the Palicos': 0x36dc6c's or 0x3748a8's); the critical multiplier (1.25, 1, 0.75: the affinity and a
+// roll of 100) in s24, s26 (0x372bf0) or at the frame +0x4c (0x37885c's). Seen on the PC (quest 206): the Great
+// Sword's hits through 0x376ad0, the Palicos' through 0x374c0c, a Maccao's on another through 0x372bf0. attack +0x30
+// (0x371350): 0x8000 a cut or an impact, 0x1 a shot (both take a hit zone), 0x200000 a shell's hit, none of them damage
+// with no hit zone (fixed); +0x48 the elements (0x10 fire, 0x20 water, 0x200 thunder, 0x40 ice, 0x80 dragon).
+// A hit's number waits for its monster's health to drop (up to HIT_WAIT frames) and shows that drop, split among the
+// hits it holds; a hit whose drop doesn't come (a party's guest: the host's game works the health out, T04) shows its
+// own total, which a later drop of that monster pays back first (credit), so a hit is never shown twice. Only this
+// game's hunters, Palicos and shells are hits here: another hunter's hit in a party drops the health with no hit, a
+// plain number as before.
+#define FN_HIT_DISPATCH 0x370968u
+#define FN_PART_DAMAGE  0x29d6f8u
+#define AT_FLAGS        0x30u
+#define AT_ELEMENTS     0x48u
+#define AT_ZONED        0x8001u
+#define AT_SHELL        0x200000u
+#define HITS            32
+#define HIT_WAIT        12  // (frames: a hit stop holds the monster a few frames before its health drops)
+#define CREDIT_NS       3000000000ull
+#define WEAK_ZONE       45  // (a weak point; under HARD_ZONE a hard part, where a weapon bounces)
+#define HARD_ZONE       25
+
+// Each step's call of 0x29d6f8: its return address; the VFP register of the raw damage, of the element's, of the hit
+// zone's factor and of the critical multiplier (-1 none), or the frame's offset of the zone and the critical (0 none)
+static const struct {
+    uint32_t lr;
+    int8_t raw, elem, zone, crit;
+    uint8_t zone_sp, crit_sp, hunter;
+} PATHS[] = {
+    {0x371b74u, 16, 22, 18, 24, 0, 0, 1},       // 0x371350: attack +0x6d 0 (no hit zone without its +0x30 bits: fixed)
+    {0x3733bcu, -1, -1, -1, 26, 0, 0, 0},       // 0x372bf0: 2, a monster's attack (another monster)
+    {0x37420cu, 18, 20, -1, -1, 0x54, 0x4c, 0}, // 0x373a24: 1, the hunters' shells and shots
+    {0x375304u, 16, 20, -1, -1, 0x54, 0x4c, 0}, // 0x374c0c: 4, the Palicos'
+    {0x377780u, 16, 20, -1, -1, 0x54, 0x4c, 0}, // 0x376ad0: 1, the hunters' weapons (0x36dc6c's zone, 0x37885c's critical)
+};
+
+typedef struct {
+    uint32_t en, path;
+    float p[3];
+    int total, elem, zone;  // (zone: the hit zone the raw damage took, -1 not known)
+    uint8_t kind, element;
+    int8_t crit;
+    int frames;
+} Hit;
+static Hit g_hit[HITS];
+static int g_nhit;
+static struct {
+    uint32_t en, flags, elements;
+    float p[3];
+    bool place, on;
+    uint8_t by;  // (attack +0x6d: the step it takes)
+} g_cur;  // (the hit 0x370968 is working out: hit_part reads it)
+static bool g_hooked;
+
+static uint8_t element_of(uint32_t e) {
+    return e & 0x10u ? 1 : e & 0x20u ? 2 : e & 0x200u ? 3 : e & 0x40u ? 4 : e & 0x80u ? 5 : 0;
+}
+
+static void hit_part(Cpu *c) {
+    uint32_t en = c->r[0], lr = c->r[14];
+    int total = (int32_t)c->r[2];
+    int p = -1;
+    for (int i = 0; i < (int)(sizeof PATHS / sizeof PATHS[0]); i++)
+        if (PATHS[i].lr == lr) p = i;
+    if (g_cur.on && en == g_cur.en && total > 0 && p >= 0 && g_nhit < HITS) {
+        float raw = PATHS[p].raw >= 0 ? c->v.f[PATHS[p].raw] : (float)total;
+        float elem = PATHS[p].elem >= 0 ? c->v.f[PATHS[p].elem] : 0.0f;
+        if (!(raw >= 0 && elem >= 0 && raw + elem > 0) || !isfinite(raw + elem)) raw = (float)total, elem = 0;
+        float zone = -1, crit = 1;
+        if (PATHS[p].zone >= 0 && (g_cur.flags & AT_ZONED)) zone = c->v.f[PATHS[p].zone] * 100.0f;
+        else if (PATHS[p].zone_sp) zone = LDF(c->r[13] + PATHS[p].zone_sp) * 100.0f;
+        if (PATHS[p].crit >= 0) crit = c->v.f[PATHS[p].crit];
+        else if (PATHS[p].crit_sp) crit = LDF(c->r[13] + PATHS[p].crit_sp);
+        Hit *h = &g_hit[g_nhit++];
+        memset(h, 0, sizeof *h);
+        h->en = en, h->path = lr, h->total = total;
+        h->elem = (int)lrintf((float)total * elem / (raw + elem));
+        h->zone = zone >= 0 && zone < 400 ? (int)lrintf(zone) : -1;
+        h->crit = crit > 1.01f ? 1 : crit > 0 && crit < 0.99f ? -1 : 0;
+        h->element = h->elem > 0 ? element_of(g_cur.elements) : 0;
+        h->kind = PATHS[p].hunter && !(g_cur.flags & (AT_ZONED | AT_SHELL)) ? HUNT_HIT_FIXED
+                  : PATHS[p].hunter && (g_cur.flags & AT_SHELL)               ? HUNT_HIT_FIXED
+                  : h->zone >= WEAK_ZONE                                      ? HUNT_HIT_WEAK
+                  : h->zone >= 0 && h->zone < HARD_ZONE                       ? HUNT_HIT_HARD
+                                                                              : HUNT_HIT_NORMAL;
+        if (g_cur.place) memcpy(h->p, g_cur.p, sizeof h->p);
+        else body_middle(en, LD32(en + EN_INFO), h->p);
+        if (g_log > 0)
+            LOG("[hunt] hit on %08x: %d (raw %.1f, element %.1f of %x), zone %d, critical %.2f, flags %08x, kind %d by %08x: %s\n",
+                en, total, raw, elem, g_cur.elements, h->zone, crit, g_cur.flags, g_cur.by, lr,
+                (const char *[]){"plain", "normal", "a weak point", "hard", "fixed"}[h->kind]);
+    }
+    fnhook_call_original(c, FN_PART_DAMAGE);
+}
+
+static void hit_dispatch(Cpu *c) {
+    __typeof__(g_cur) before = g_cur;
+    uint32_t atk = c->r[1], en = c->r[2], at = c->r[3];
+    g_cur.on = config_live_damage_numbers() && sane(atk) && sane(en);
+    // (tests only: the test save's weapons have no affinity and no element) MHGU_HUNT_TEST_AFFINITY=<-100..100> the
+    // hunter's own hits' affinity (attack +0x90; +0x32 bit 1 lets a hit roll it), MHGU_HUNT_TEST_ELEMENT=<the +0x48 bit,
+    // hex>:<its attack> (e.g. 10:300 fire 30): the game works them out with these
+    static const char *aff = (const char *)-1, *ele;
+    if (aff == (const char *)-1) aff = getenv("MHGU_HUNT_TEST_AFFINITY"), ele = getenv("MHGU_HUNT_TEST_ELEMENT");
+    if ((aff || ele) && sane(atk) && LD8(atk + 0x6d) == 1) {  // (the hunters')
+        if (aff) ST16(atk + 0x90, (uint16_t)atoi(aff)), ST8(atk + 0x32, LD8(atk + 0x32) | 2);
+        if (ele && strchr(ele, ':'))
+            ST32(atk + AT_ELEMENTS, LD32(atk + AT_ELEMENTS) | (uint32_t)strtoul(ele, NULL, 16)),
+                ST16(atk + 0x50, (uint16_t)atoi(strchr(ele, ':') + 1));
+    }
+    if (g_cur.on) {
+        g_cur.en = en, g_cur.flags = LD32(atk + AT_FLAGS), g_cur.elements = LD32(atk + AT_ELEMENTS);
+        g_cur.by = LD8(atk + 0x6d);
+        g_cur.place = sane(at);
+        if (g_cur.place) {
+            memcpy(g_cur.p, G2H(at), sizeof g_cur.p);
+            g_cur.place = isfinite(g_cur.p[0]) && isfinite(g_cur.p[1]) && isfinite(g_cur.p[2]);
+        }
+    }
+    fnhook_call_original(c, FN_HIT_DISPATCH);
+    g_cur = before;
+}
+
+// The hits on en waiting for its health: the drop shared among them (by their totals), each a number. Returns what
+// of the drop they didn't take (none: they took it all)
+static int hits_take(uint32_t en, int drop, uint64_t now) {
+    int sum = 0, n = 0;
+    for (int i = 0; i < g_nhit; i++)
+        if (g_hit[i].en == en) sum += g_hit[i].total, n++;
+    if (!n) return drop;
+    int left = drop, seen = 0;
+    for (int i = 0; i < g_nhit;) {
+        Hit *h = &g_hit[i];
+        if (h->en != en) { i++; continue; }
+        int v = ++seen == n ? left : (int)((int64_t)drop * h->total / sum);
+        left -= v;
+        int e = h->total > 0 ? (int)((int64_t)v * h->elem / h->total) : 0;
+        add_number(en, v - e, e, h->kind, h->crit, h->element, h->p, now);
+        if (g_log > 0) LOG("[hunt] monster %08x: -%d for its hit of %d (%d of them)\n", en, v, h->total, n);
+        memmove(h, h + 1, sizeof *h * (size_t)(--g_nhit - i));
+    }
+    return 0;
+}
+
+// Hits whose health didn't drop in HIT_WAIT frames (a party's guest): their own totals, owed to the next drops
+static void hits_age(uint64_t now) {
+    for (int i = 0; i < g_nhit;) {
+        Hit *h = &g_hit[i];
+        if (++h->frames <= HIT_WAIT) { i++; continue; }
+        add_number(h->en, h->total - h->elem, h->elem, h->kind, h->crit, h->element, h->p, now);
+        for (int k = 0; k < SLOTS; k++)
+            if (g_slot[k].en == h->en) {
+                if (now >= g_slot[k].credit_ns + CREDIT_NS) g_slot[k].credit = 0;
+                g_slot[k].credit += h->total, g_slot[k].credit_ns = now;
+            }
+        if (g_log > 0) LOG("[hunt] monster %08x: its hit of %d shown with no drop of its health\n", h->en, h->total);
+        memmove(h, h + 1, sizeof *h * (size_t)(--g_nhit - i));
+    }
+}
+
+static void hits_hook(void) {
+    if (g_hooked) return;
+    g_hooked = true;
+    fnhook_set(FN_HIT_DISPATCH, hle_register("huntaids:hit", hit_dispatch));
+    fnhook_set(FN_PART_DAMAGE, hle_register("huntaids:part", hit_part));
 }
 
 // The mark's timer: ours kept (on), or ours taken back (off)
@@ -234,7 +448,7 @@ static void unmark_all(void) {
 
 static void forget(void) {
     memset(g_slot, 0, sizeof g_slot);
-    g_nnum = 0;
+    g_nnum = g_nhit = 0;
     g_touched = false;
 }
 
@@ -271,41 +485,54 @@ static void step(uint64_t now) {
     uint32_t sen = LD32(G_SENEMY);
     HuntView *v = &g_view;
     v->nnum = v->nbar = 0;
+    if (numbers) hits_hook();
     for (int k = 0; sane(sen) && k < SLOTS; k++) {
         uint32_t en = LD32(sen + 0x1c + 4u * (uint32_t)k), info = sane(en) ? LD32(en + EN_INFO) : 0;
-        if (!sane(info) || !large(en)) {
+        // (the numbers are every monster's, large or small: 1.0.2, T40; the mark and the bars a large one's)
+        bool big = sane(info) && large(en);
+        if (!sane(info) || (!big && !numbers)) {
             g_slot[k].en = 0, g_slot[k].marked = false;  // (a monster gone takes its timer with it)
             continue;
         }
         if (g_slot[k].en != en) {  // (another monster in this slot: nothing of the one before)
             g_slot[k].en = en, g_slot[k].hp = (int32_t)LD32(info + ST_HP), g_slot[k].marked = false;
-            g_slot[k].name = NULL, g_slot[k].name_lang = -1;
+            g_slot[k].name = NULL, g_slot[k].name_lang = -1, g_slot[k].credit = 0;
             memcpy(g_slot[k].hit, G2H(info + ST_HIT), sizeof g_slot[k].hit);
         }
-        mark(k, en, info, alone);
+        if (big) mark(k, en, info, alone);
         int hp = (int32_t)LD32(info + ST_HP), most = (int32_t)LD32(info + ST_HP_MAX);
-        if (numbers && hp < g_slot[k].hp && g_slot[k].hp - hp <= most && zone >= 0 && LD8(en + EN_ZONE) == zone) {
+        int drop = numbers && hp < g_slot[k].hp && g_slot[k].hp - hp <= most ? g_slot[k].hp - hp : 0;
+        if (drop) drop = hits_take(en, drop, now);  // (this game's own hits on it take the drop)
+        if (drop && g_slot[k].credit) {  // (hits shown before it: their part of the drop was shown)
+            int owed = now < g_slot[k].credit_ns + CREDIT_NS ? g_slot[k].credit : 0, paid = owed < drop ? owed : drop;
+            g_slot[k].credit = owed - paid, drop -= paid;
+            if (g_log > 0 && paid) LOG("[hunt] monster %08x: -%d already shown by its hits\n", en, paid);
+        }
+        if (drop && zone >= 0 && LD8(en + EN_ZONE) == zone) {
             float hit[3], at[3];
             memcpy(hit, G2H(info + ST_HIT), sizeof hit);
             body_middle(en, info, at);
             bool fresh = memcmp(hit, g_slot[k].hit, sizeof hit) && isfinite(hit[0]) && isfinite(hit[1]) && isfinite(hit[2]) &&
                          fabsf(hit[0] - at[0]) + fabsf(hit[1] - at[1]) + fabsf(hit[2] - at[2]) < 2500.0f;
             if (fresh) memcpy(at, hit, sizeof at), memcpy(g_slot[k].hit, hit, sizeof hit);
-            add_number(g_slot[k].hp - hp, at, now);
+            add_number(en, drop, 0, HUNT_HIT_PLAIN, 0, 0, at, now);
             if (g_log)
-                LOG("[hunt] monster %08x: -%d (%d of %d left) at the %s %.0f %.0f %.0f\n", en, g_slot[k].hp - hp, hp, most,
+                LOG("[hunt] monster %08x: -%d (%d of %d left) at the %s %.0f %.0f %.0f\n", en, drop, hp, most,
                     fresh ? "hit" : "body", at[0], at[1], at[2]);
         }
         g_slot[k].hp = hp;
-        if (bars && v->nbar < HUNT_BARS && most > 0 && !down(en, info)) {
+        if (big && bars && v->nbar < HUNT_BARS && most > 0 && !down(en, info)) {
             HuntBar *b = &v->bar[v->nbar++];
             b->hp = hp, b->max = most, b->here = zone >= 0 && LD8(en + EN_ZONE) == zone;
             if (g_slot[k].name_lang != lang) g_slot[k].name = monster_name(en), g_slot[k].name_lang = lang;
             snprintf(b->name, sizeof b->name, "%s", g_slot[k].name ? g_slot[k].name : "");
         }
     }
-    while (g_nnum && now >= g_num[0].born + HUNT_NUMBER_NS) memmove(g_num, g_num + 1, sizeof g_num[0] * (size_t)--g_nnum);
-    if (!numbers) g_nnum = 0;
+    hits_age(now);
+    for (int i = 0; i < g_nnum;)  // (a number goes a while after its last hit: Burst's runs last longer)
+        if (now >= g_num[i].last + HUNT_NUMBER_NS) memmove(g_num + i, g_num + i + 1, sizeof g_num[0] * (size_t)(--g_nnum - i));
+        else i++;
+    if (!numbers) g_nnum = g_nhit = 0;
     uint32_t cam = LD32(G_SCAMERA);
     if (g_nnum && sane(cam)) {
         float view[16], proj[16];
@@ -314,10 +541,13 @@ static void step(uint64_t now) {
         for (int i = 0; i < g_nnum; i++) {
             HuntNumber *n = &v->num[v->nnum++];
             n->shown = project(view, proj, g_num[i].p, &n->x, &n->y);
-            n->value = g_num[i].value, n->id = g_num[i].id, n->born_ns = g_num[i].born;
+            n->value = g_num[i].value, n->id = g_num[i].id, n->born_ns = g_num[i].born, n->last_ns = g_num[i].last;
+            n->kind = g_num[i].kind, n->crit = g_num[i].crit, n->element = g_num[i].element, n->elem = g_num[i].elem;
+            n->hits = g_num[i].hits;
         }
     }
     v->number_size = config_live_number_size(), v->number_colour = config_live_number_colour();
+    v->number_style = config_live_number_style();
     g_view_any = v->nnum || v->nbar;
 }
 

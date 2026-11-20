@@ -730,9 +730,16 @@ static const char DEFAULT_INI[] =
     "; Default: Medium\n"
     "DamageNumberSize = Medium\n"
     "\n"
-    "; The damage numbers' colour, always with a dark outline: White, Yellow, Red, LightBlue or Green\n"
+    "; The damage numbers' colour, always with a dark outline: White, Yellow, Red, LightBlue, Green or ByHit (each hit's\n"
+    "; own: a weak point orange, a hard part grey, fixed damage blue-green, a critical hit's red mark, the element's own\n"
+    "; smaller number)\n"
     "; Default: White\n"
     "DamageNumberColour = White\n"
+    "\n"
+    "; How the damage numbers look: Classic, Outlined, Compact or Burst (a run of hits on one monster adds up in one\n"
+    "; number)\n"
+    "; Default: Classic\n"
+    "DamageNumberStyle = Classic\n"
     "\n"
     "; In a quest, a thin bar at the top of the screen for each large monster, with its name and its health\n"
     "; Default: Off\n"
@@ -1137,7 +1144,9 @@ const ConfigSetting g_settings[] = {
     {"Hunting Aids", "DamageNumberSize", SET_CHOICE, F(number_size), 0, 0, 0, "Small,Medium,Large", number_size_values,
      false, ERR_MISC},
     {"Hunting Aids", "DamageNumberColour", SET_CHOICE, F(number_colour), 0, 0, 0,
-     "White,Yellow,Red,LightBlue|light blue|blue,Green", NULL, false, ERR_MISC},
+     "White,Yellow,Red,LightBlue|light blue|blue,Green,ByHit|by hit|hit", NULL, false, ERR_MISC},
+    {"Hunting Aids", "DamageNumberStyle", SET_CHOICE, F(number_style), 0, 0, 0, "Classic,Outlined,Compact,Burst", NULL,
+     false, ERR_MISC},
     ON_OFF("Hunting Aids", "MonsterHealthBars", monster_bars, false),
     ON_OFF("Discord", "RichPresence", discord, false),
     ON_OFF("Discord", "ShowHunter", discord_hunter, false),

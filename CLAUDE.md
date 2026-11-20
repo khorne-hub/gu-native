@@ -104,7 +104,18 @@ What a log carries (1.0.1, "ask for more than we think we need": one log should 
   left in the same ink and size, shortened with an ellipsis, fainter in another zone; the owner wants them identical), at the top left of the target camera after the hunter's bars (under them when there
   is no room), and are moved and sized in both HUD editors like the FPS counter (`monster_bars` in touch_layout.txt; a
   stand-in bar while an editor is open). `MHGU_HUNT_LOG=1` a line per number and mark,
-  `MHGU_HUNT_COST=1` the step's time; the control file's `huntaids <map> <numbers> <bars> [size] [colour]` sets them.
+  `MHGU_HUNT_COST=1` the step's time; the control file's `huntaids <map> <numbers> <bars> [size] [colour] [style]` sets them.
+  1.0.2 (S15, T40, T04): the numbers are every monster's, large and small, and this game's own hits are read as the game
+  works them out: two hooks set the first time the numbers are on (0x370968, every hit on a monster, to the step of its
+  attacker's kind, attack +0x6d; and 0x29d6f8, the part's count of the hit's total, called once by each step, where the
+  step's own floats are still in the callee-saved VFP registers: the PATHS table, by return address, says which holds
+  the raw damage, the element's, the hit zone's factor and the critical multiplier). A drop of health goes to the hits
+  that made it (each its own number: a weak point 45+, a hard part under 25, fixed damage, a critical or a negative
+  one, the element's part); a hit whose drop doesn't come in 12 frames (a party's guest) shows its own total and is owed
+  to that monster's next drops. `[Hunting Aids] DamageNumberColour = ByHit` draws each hit's own colours and marks,
+  `DamageNumberStyle` Classic / Outlined / Compact / Burst (runtime/hunt_overlay.cpp). `MHGU_HUNT_LOG=1` a line per hit
+  with what the step worked out; `MHGU_HUNT_TEST_AFFINITY=<n>` and `MHGU_HUNT_TEST_ELEMENT=<bit hex>:<attack>` (tests
+  only) give the hunter's hits an affinity and an element.
 - `native/`: CMake and `build_native.sh`. `deps/`: scripts for SDL3, shaderc and FFmpeg.
 
 ## Building

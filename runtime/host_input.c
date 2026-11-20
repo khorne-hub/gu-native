@@ -334,10 +334,10 @@ static void control_poll(void) {
                 config_colour_test(n >= 1 ? v : NULL);  // "colour" alone: the saved values again
                 continue;
             }
-            if (!strcmp(cmd, "huntaids")) {  // huntaids <map> <numbers> <bars> [size] [colour]: the hunting aids as if
-                int v[5] = {0, 0, 0, -1, -1};  // saved in the menu (tests: runtime/hunt_aids.h; size 0 Medium, 1 Small,
-                sscanf(line, "%*s %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4]);  // 2 Large; colour 0..4)
-                config_huntaids_test(v[0], v[1], v[2], v[3], v[4]);
+            if (!strcmp(cmd, "huntaids")) {  // huntaids <map> <numbers> <bars> [size] [colour] [style]: the hunting aids
+                int v[6] = {0, 0, 0, -1, -1, -1};  // as if saved in the menu (tests: runtime/hunt_aids.h; size 0 Medium,
+                sscanf(line, "%*s %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]);  // 1 Small, 2 Large;
+                config_huntaids_test(v[0], v[1], v[2], v[3], v[4], v[5]);  // colour 0..4, 5 By hit; style 0..3)
                 continue;
             }
             if (!strcmp(cmd, "upscale")) {  // upscale 0|1|2: [Display] UpscaleFilter Smooth / Sharp / FSR1 from the next frame, as
