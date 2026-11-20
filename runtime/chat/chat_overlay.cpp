@@ -144,7 +144,7 @@ void overlay_draw(float w, float h) {
         const ImVec2 ms = font->CalcTextSizeA(fs * .8f, FLT_MAX, 0, tag.c_str()), ws = font->CalcTextSizeA(fs, FLT_MAX, 0, who.c_str());
         const ImVec2 ts = font->CalcTextSizeA(fs, FLT_MAX, std::max(fs * 4, wrap - ws.x - ms.x), text.c_str());
         const float pw = ms.x + ws.x + ts.x + 2 * pad, ph = std::max(ts.y, fs) + 2 * pad;
-        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + pw, y + ph), faded(IM_COL32(50, 25, 24, 215), a));
+        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + pw, y + ph), faded(IM_COL32(24, 12, 11, 235), a));  // (1.0.2: darker, to read over grass and snow)
         {  // (the edge as four lines: AddRect's arguments changed order between the ports' Dear ImGui versions)
             const ImU32 e = faded(edge, a);
             const float t = line * .7f;
@@ -156,7 +156,9 @@ void overlay_draw(float w, float h) {
         dl->AddText(font, fs * .8f, ImVec2(tx, y + pad + fs * .12f), faded(ink(s.line.channel), a), tag.c_str());
         tx += ms.x;
         if (!who.empty()) dl->AddText(font, fs, ImVec2(tx, y + pad), faded(IM_COL32(255, 214, 92, 255), a), who.c_str());
-        dl->AddText(font, fs, ImVec2(tx + ws.x, y + pad), faded(cream, a), text.c_str(), nullptr, std::max(fs * 4, wrap - ws.x - ms.x));
+        const float tw = std::max(fs * 4, wrap - ws.x - ms.x);
+        dl->AddText(font, fs, ImVec2(tx + ws.x + scale, y + pad + scale), faded(IM_COL32(0, 0, 0, 255), a), text.c_str(), nullptr, tw);
+        dl->AddText(font, fs, ImVec2(tx + ws.x, y + pad), faded(cream, a), text.c_str(), nullptr, tw);
         y += ph + 3 * scale;
     }
 }
