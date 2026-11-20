@@ -3477,13 +3477,20 @@ void rows_graphics_advanced_20(std::vector<Row> &r) {  // (an Adreno on a Vulkan
 void reset_graphics_advanced_20() { s.draft.adreno_fix = config_defaults().adreno_fix; }
 bool shown_graphics_advanced_20() { return vk_gpu_adreno_fix_applies(); }
 MENU_ENTRY("graphics/advanced", 20, rows_graphics_advanced_20, reset_graphics_advanced_20, shown_graphics_advanced_20);
+// GPU driver (1.0.2, S12, 4U#80: any GPU, not only an Adreno; the MH4U port's the same): a Vulkan driver of the player's
+// own (android/.../DriverActivity.java, runtime/platform/android_gpu.c), at their own risk. A driver that doesn't start
+// leaves the system's in its place at the next start, by itself
 void rows_graphics_advanced_60(std::vector<Row> &r) {
     action(r, "gpu.driver", tr("GPU driver"), []() { ui_request_gpu_driver(); });
     r.back().value = *gpu_driver_name() ? gpu_driver_name() : tr("System");
-    r.back().help = tr("Adreno only, at your own risk: load a Vulkan driver of your own. By default the system's is used.");
+    r.back().help = en_es("A driver that isn't the system's can close the game, draw wrong or not start. It's at your own "
+                          "risk; if it doesn't start, the app goes back to the system's by itself. By default the "
+                          "system's is used.",
+                          "Un driver que no es el del sistema puede cerrar el juego, dibujar mal o no arrancar. Es bajo tu "
+                          "responsabilidad; si no arranca, la app vuelve sola al del sistema. Por defecto se usa el del "
+                          "sistema.");
 }
-bool shown_graphics_advanced_60() { return vk_gpu_adreno(); }
-MENU_ENTRY("graphics/advanced", 60, rows_graphics_advanced_60, {}, shown_graphics_advanced_60);
+MENU_ENTRY("graphics/advanced", 60, rows_graphics_advanced_60, {});
 void rows_graphics_advanced_70(std::vector<Row> &r) {  // [Graphics] FrameGen (nvn/vulkan/framegen.c)
     add_bool(r, "framegen", "Frame generation", &s.draft.frame_gen, ini("FrameGen"));
 }

@@ -117,6 +117,8 @@ static uint32_t msaa_floor(uint32_t s);
 bool vk_gpu_adreno(void);
 #ifdef __ANDROID__
 PFN_vkGetInstanceProcAddr gpu_driver_loader(void);  // (platform/android_gpu.c)
+bool gpu_driver_custom(void);
+const char *gpu_driver_shown(void);
 bool gpu_driver_surface(SDL_Window *win, VkInstance inst, VkSurfaceKHR *out);
 void gpu_driver_good(void);
 void gpu_driver_check(void);  // (the device made: the player's driver is the one running, or it is given up)
@@ -598,7 +600,7 @@ VkResult vk_create_buffer(const VkBufferCreateInfo *bi, VkBuffer *buf, VmaAlloca
 bool vk_gpu_powervr(void) {
     static int v = -1;
     if (v < 0 && g_vk.props.deviceName[0])
-        v = strstr(g_vk.props.deviceName, "PowerVR") != NULL || getenv("MHGU_VK_POWERVR") != NULL;
+        v = g_vk.props.vendorID == 0x1010 || strstr(g_vk.props.deviceName, "PowerVR") != NULL || getenv("MHGU_VK_POWERVR") != NULL;
     return v > 0;
 }
 
@@ -726,6 +728,10 @@ static void log_device_info(VkExtensionProperties *ep, uint32_t ne) {
             drv.conformanceVersion.minor, drv.conformanceVersion.subminor, drv.conformanceVersion.patch);
     else
         LOG("[vk] driver: no driver properties (neither Vulkan 1.2 nor VK_KHR_driver_properties)\n");
+#ifdef __ANDROID__  // (1.0.2, S12: whose driver this is, for the reports made with one of the player's own)
+    LOG("[vk] driver in use: %s%s\n", gpu_driver_custom() ? gpu_driver_shown() : "the system's",
+        gpu_driver_custom() ? " (the player's own, Graphics & Audio > Advanced > GPU driver)" : "");
+#endif
     char uuid[2 * VK_UUID_SIZE + 1];
     for (int i = 0; i < VK_UUID_SIZE; i++) snprintf(uuid + 2 * i, 3, "%02x", p->pipelineCacheUUID[i]);
     VkPhysicalDeviceMemoryProperties mp;
@@ -1101,7 +1107,9 @@ bool vk_gpu_adreno(void) {
     if (v < 0) {
         if (!g_vk.props.deviceName[0]) return false;  // (no device chosen yet)
         const char *e = getenv("MHGU_VK_ADRENO");
-        v = e ? atoi(e) != 0 : strstr(g_vk.props.deviceName, "Adreno") != NULL;
+        // (1.0.2, S12: by the GPU's vendor id too, Qualcomm's, so that a driver of the player's own with another name
+        // keeps the real GPU's rules; every system driver's name says Adreno as well)
+        v = e ? atoi(e) != 0 : g_vk.props.vendorID == 0x5143 || strstr(g_vk.props.deviceName, "Adreno") != NULL;
         if (e) LOG("[vk] MHGU_VK_ADRENO=%d: the Adreno-only paths %s\n", v, v ? "taken" : "left out");
     }
     return v;
@@ -1114,7 +1122,7 @@ bool vk_gpu_mali(void) {
     if (v < 0) {
         if (!g_vk.props.deviceName[0]) return false;  // (no device chosen yet)
         const char *e = getenv("MHGU_VK_MALI");
-        v = e ? atoi(e) != 0 : strstr(g_vk.props.deviceName, "Mali") != NULL;
+        v = e ? atoi(e) != 0 : g_vk.props.vendorID == 0x13B5 || strstr(g_vk.props.deviceName, "Mali") != NULL;  // (Arm's id)
     }
     return v;
 }

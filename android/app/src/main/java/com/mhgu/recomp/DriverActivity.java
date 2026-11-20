@@ -37,7 +37,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Ajustes -> Gráficos -> Driver de GPU: un driver Vulkan propio para una Adreno, a riesgo del jugador. Por defecto se usa
+ * Ajustes -> Gráficos -> Driver de GPU: un driver Vulkan propio para cualquier GPU (1.0.2: hasta la 1.0.1.1, solo Adreno), a
+ * riesgo del jugador; nosotros no probamos drivers de terceros. Por defecto se usa
  * el del sistema y nada cambia. Acepta los .zip con meta.json y la librería, el formato de los paquetes de drivers para
  * emuladores. El juego lee la elección al arrancar (runtime/platform/android_gpu.c); si con ese driver no llega a dibujar,
  * en el arranque siguiente vuelve solo al del sistema y deja el archivo failed, que esta pantalla muestra.
@@ -102,11 +103,18 @@ public class DriverActivity extends Activity {
         TextView title = text(es ? "DRIVER DE GPU" : "GPU DRIVER", 20, GOLD, true);
         title.setGravity(Gravity.CENTER);
         box.addView(title);
+        TextView warn = text(es
+                ? "Un driver que no es el del sistema puede cerrar el juego, dibujar mal o no arrancar. Es bajo tu "
+                  + "responsabilidad; si no arranca, la app vuelve sola al del sistema."
+                : "A driver that isn't the system's can close the game, draw wrong or not start. It's at your own risk; if "
+                  + "it doesn't start, the app goes back to the system's by itself.",
+                14, ALERT, true);
+        warn.setPadding(0, dp(10), 0, 0);
+        warn.setLineSpacing(dp(1), 1);
+        box.addView(warn);
         TextView body = text(es
-                ? "Solo para GPU Adreno y bajo tu propio riesgo: un driver que no sea para tu GPU puede cerrar el juego o verse mal. "
-                  + "Si te falla al arrancar, la app vuelve sola al driver del sistema. Agrega un .zip con meta.json y la librería."
-                : "For Adreno GPUs only, at your own risk: a driver that isn't right for your GPU can close the game or look wrong. "
-                  + "If it fails at start, the app goes back to the system's driver by itself. Add a .zip with meta.json and the library.",
+                ? "Agrega un .zip con meta.json y la librería (el formato de los paquetes de drivers para emuladores)."
+                : "Add a .zip with meta.json and the library (the format of the driver packages for emulators).",
                 14, CREAM, false);
         body.setPadding(0, dp(10), 0, dp(10));
         body.setLineSpacing(dp(1), 1);
