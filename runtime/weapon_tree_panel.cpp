@@ -15,7 +15,7 @@ namespace {
 const ImU32 INK = IM_COL32(244, 232, 200, 255), GOLD = IM_COL32(222, 186, 96, 255), BRONZE = IM_COL32(112, 76, 34, 255),
             GLOW = IM_COL32(255, 214, 92, 255), RED = IM_COL32(176, 34, 30, 255), MOSS = IM_COL32(80, 142, 54, 255),
             DIM = IM_COL32(204, 186, 160, 255), FAINT = IM_COL32(150, 132, 108, 255), BRIGHT = IM_COL32(255, 248, 225, 255),
-            SHADOW = IM_COL32(64, 56, 50, 255);
+            SHADOW = IM_COL32(96, 84, 72, 255);  // (a "?": its icon's silhouette)
 
 ImU32 Alpha(ImU32 c, float a) {
     const float al = ((c >> IM_COL32_A_SHIFT) & 0xff) * a;
@@ -399,7 +399,7 @@ void NameText(ImDrawList* dl, ImFont* f, float size, ImVec2 p, float tall, ImU32
         Text(dl, f, size, ImVec2(p.x, p.y + (tall - size) * .5f), col, t.c_str());
         return;
     }
-    const float fs = std::min(size * .88f, tall / 2.3f);
+    const float fs = std::min(size * .84f, tall / 2.3f);
     const std::vector<std::string> l = TwoLines(f, fs, t, most);
     const float y = p.y + (tall - fs * (l.size() == 2 ? 2.1f : 1.f)) * .5f;
     for (std::size_t i = 0; i < l.size(); ++i) Text(dl, f, fs, ImVec2(p.x, y + i * fs * 1.1f), col, l[i].c_str());
@@ -505,13 +505,10 @@ void DrawNode(ImDrawList* dl, const Metrics& m, const ImRect& r, const weapon_tr
     else if (node.flags & weapon_tree::kOwned) BoxMark(dl, ImVec2(tile.Min.x + mr * 1.05f, tile.Max.y - mr * .9f), mr * .85f, GOLD);
     if (w.element != weapon_tree::kElementNone)
         ElementMark(dl, ImVec2(tile.Max.x - mr * .9f, tile.Min.y + mr * .9f), mr * .8f, w.element, w.element_hidden);
-    float right = r.Max.x - .012f * H;
-    if (w.forge) {  // (forged from scratch: the small hammer at the name's end)
-        HammerMark(dl, ImVec2(right - mr * .8f, r.GetCenter().y), mr * .8f, smithy ? BRIGHT : DIM);
-        right -= mr * 2.2f;
-    }
+    if (w.forge)  // (forged from scratch: the small hammer below right, as the games mark it)
+        HammerMark(dl, ImVec2(tile.Max.x - mr * .85f, tile.Max.y - mr * .85f), mr * .75f, GLOW);
     const ImU32 ink = smithy ? BRIGHT : (node.flags & weapon_tree::kPast) ? FAINT : INK;
-    NameText(dl, font, fs, ImVec2(x0, r.Min.y), r.GetHeight(), ink, Named(w, node.id, es), std::min(room, right - x0));
+    NameText(dl, font, fs, ImVec2(x0, r.Min.y), r.GetHeight(), ink, Named(w, node.id, es), room);
 }
 
 // ---- the details of the weapon under the cursor
