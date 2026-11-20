@@ -399,8 +399,11 @@ void NameText(ImDrawList* dl, ImFont* f, float size, ImVec2 p, float tall, ImU32
         Text(dl, f, size, ImVec2(p.x, p.y + (tall - size) * .5f), col, t.c_str());
         return;
     }
-    const float fs = std::min(size * .84f, tall / 2.3f);
-    const std::vector<std::string> l = TwoLines(f, fs, t, most);
+    // (a little smaller each time until both lines fit whole: a desktop's wide font)
+    float fs = std::min(size * .84f, tall / 2.3f);
+    std::vector<std::string> l = TwoLines(f, fs, t, most);
+    for (int k = 0; k < 3 && l.back().size() >= 3 && l.back().compare(l.back().size() - 3, 3, "...") == 0; ++k)
+        fs *= .9f, l = TwoLines(f, fs, t, most);
     const float y = p.y + (tall - fs * (l.size() == 2 ? 2.1f : 1.f)) * .5f;
     for (std::size_t i = 0; i < l.size(); ++i) Text(dl, f, fs, ImVec2(p.x, y + i * fs * 1.1f), col, l[i].c_str());
 }
@@ -702,16 +705,25 @@ void Details(ImDrawList* dl, const ImRect& box, const Content& c, State& s, floa
 void Legend(ImDrawList* dl, const ImRect& r, float H, bool es) {
     ImFont* font = ImGui::GetFont();
     ImFont* title = TitleFont();
-    const float ls = .027f * H, mr = .013f * H, gap = .03f * H;
-    float x = r.Min.x, y = r.Min.y + (r.GetHeight() - ls) * .5f;
     const char* items[4] = {"In the box", "Equipped", "Next: not known yet", "Forged from scratch"};
-    float total = 0;
-    for (const char* t : items) total += mr * 2.8f + Width(font, ls, Words(t, es)) + gap;
-    const bool two = total > r.GetWidth();
-    if (two) y = r.Min.y + (r.GetHeight() - ls * 2.3f) * .5f;
+    // (in a row, or in as few as fit, wrapped where the next does not fit; smaller when three would be needed)
+    float ls = .027f * H, mr = .013f * H, gap = .03f * H;
+    auto rows = [&]() {
+        int n = 1;
+        float x = 0;
+        for (const char* t : items) {
+            const float iw = mr * 2.8f + Width(font, ls, Words(t, es));
+            if (x > 0 && x + iw > r.GetWidth()) ++n, x = 0;
+            x += iw + gap;
+        }
+        return n;
+    };
+    for (int k = 0; k < 4 && rows() > 2; ++k) ls *= .9f, mr *= .9f, gap *= .9f;
+    const int n = rows();
+    float x = r.Min.x, y = r.Min.y + (r.GetHeight() - ls * (n == 1 ? 1.f : 2.3f)) * .5f;
     for (int i = 0; i < 4; ++i) {
         const float iw = mr * 2.8f + Width(font, ls, Words(items[i], es));
-        if (two && i == 2) x = r.Min.x, y += ls * 1.3f;
+        if (x > r.Min.x && x + iw > r.Max.x) x = r.Min.x, y += ls * 1.3f;
         const ImVec2 c(x + mr, y + ls * .55f);
         if (i == 0) BoxMark(dl, c, mr, GOLD);
         if (i == 1) WornMark(dl, font, c, mr * 1.1f, GLOW);
