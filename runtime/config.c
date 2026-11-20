@@ -447,6 +447,12 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "ShowLockOn = On\n"
     "\n"
+    "; The weapon tree's button, in the Smithy while it shows a weapon: a tap opens that weapon's tree (what you have, the\n"
+    "; weapons before it, the next ones as ?). The right stick's click opens it too. It is the port's own, not one of the\n"
+    "; game's buttons\n"
+    "; Default: On\n"
+    "ShowWeaponTree = On\n"
+    "\n"
     "; On: the movement stick comes to where your thumb lands near it, and goes back to its place when you lift it. Off:\n"
     "; it stays where it is\n"
     "; Default: Off\n"
@@ -1031,6 +1037,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ArtsWithController", touch_show[TB_ARTS_PAD], false),
     ON_OFF("Touch", "HoldToHide", touch_show[TB_HOLD_HIDE], false),
     ON_OFF("Touch", "SlideBoth", touch_show[TB_SLIDE_BOTH], false),
+    ON_OFF("Touch", "ShowWeaponTree", touch_show[TB_WEAPON_TREE], false),  // (1.0.2: runtime/weapon_tree.h)
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}

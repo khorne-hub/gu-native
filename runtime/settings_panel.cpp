@@ -4076,20 +4076,23 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
                                          "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick",
                                          "L and R in menus", "D-pad in menus", "Hunter Arts with a controller",
-                                         "Long press hides the controls", "Slide between buttons: both pressed"};
+                                         "Long press hides the controls", "Slide between buttons: both pressed",
+                                         "Weapon tree button"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
                                        "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick",
-                                       "ShowMenuLR", "DpadInMenus", "ArtsWithController", "HoldToHide", "SlideBoth"};
+                                       "ShowMenuLR", "DpadInMenus", "ArtsWithController", "HoldToHide", "SlideBoth",
+                                       "ShowWeaponTree"};
 // (their rows' order: each way of a button by it - keeping the guard by Guard, the run and the floating stick by the stick,
 // the D-pad in menus by the D-pad -, the menu pad before the tabs that go with it; the Hunter Arts' taps with a controller
 // last, a controller's way. The floating stick and the Arts' taps have rows of their own elsewhere: tb_elsewhere)
 const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SLIDE_BOTH, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD,
-                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN,
+                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_WEAPON_TREE, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK,
+                                TB_STICK_RUN,
                                 TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_LR,
                                 TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE};
-static_assert(TB_COUNT == 32, "TB_ORDER: a place for each of the touch settings");
+static_assert(TB_COUNT == 33, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -4526,6 +4529,8 @@ struct PhoneHelp {
     const char *key, *en, *es;
 };
 const PhoneHelp PHONE_HELP[] = {
+    {"ShowWeaponTree", "The port's own button, in the Smithy while it shows a weapon (Forge, Upgrade): a tap opens that weapon's tree, with what you have and wear, the weapons before it and the next ones as ?. The right stick's click opens it too. Move it or make it bigger with Customize controls and HUD.",
+     "Un botón propio del port, en la herrería mientras muestra un arma (Forjar, Mejorar): un toque abre el árbol de esa arma, con las que tienes y la equipada, las anteriores y las siguientes como ?. El clic de la palanca derecha también lo abre. Muévelo o agrándalo con Personalizar controles y HUD."},  // (1.0.2)
     {"RenderScale", "The size of the 3D picture against the screen's. Lower runs faster and looks softer.",
      "El tamaño de la imagen 3D respecto de la pantalla. Más bajo corre más rápido y se ve más suave."},
     {"ShowMenuPad", "While a menu of the game's is open, a small pad shows that moves its cursor, with the page buttons above it (L and R, or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay where they are; where the hunter can't walk (a town's item box, a shop) it moves the cursor too. If the pad covers a combined button, move it with Customize controls and HUD.",
