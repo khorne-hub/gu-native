@@ -174,7 +174,7 @@ void chat_status_row(std::vector<Row> &r) {
 // (1.0.2, the owner's) The chat window played by touch: its first row is the text to say and Send beside it, drawn by
 // touch_panel (a tap there types: chat_say_open), the chat's lines under it and the rest at the end. With a controller,
 // or in a desktop's menu, Say something stays a row
-bool chat_strip() { return touch_ui() && !host_input_real_pad(); }
+bool chat_strip() { return touch_ui(); }  // (a handheld with buttons too: the rows say, chat_page_rows)
 // The chat's options (the switches, Friends, the lines over the game, the button...): a page of their own, the same view
 // with s.at "chat/options", opened by the window's gear (chat_options_open); Back goes back to the chat
 bool chat_options() { return s.view == View::Chat && s.at == "chat/options"; }
@@ -261,6 +261,10 @@ void chat_page_rows(std::vector<Row> &r) {
         r.back().help = chat::channel_help(g_chat);
     };
     const bool hub_on = chat::hub_chat(), can = chat_can_say();
+    // (a controller in hand, a handheld's buttons: Say something and the chat's options as rows too, the buttons reach them)
+    const bool pad = host_input_real_pad();
+    if (chat_alone && pad)
+        action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
     if (!strip) {
         channel_row();
         action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
@@ -303,8 +307,10 @@ void chat_page_rows(std::vector<Row> &r) {
             if (!seen) senders.push_back({l.from, l.name});
         }
     }
-    if (chat_alone)  // (the chat window: the lines alone; the rest in its options, the gear)
+    if (chat_alone) {  // (the chat window: the lines alone; the rest in its options, the gear)
+        if (pad) action(r, "chat.opts", cs("Chat options", "Opciones del chat"), []() { chat_options_open(); });
         return;
+    }
     if (options)  // (the people in the chat's lines: someone to add, mute or block)
         for (const chat::Line &l : chat::lines(g_chat, g_chat_peer, 30))
             if (!l.mine && !l.system && l.from != chat::my_key() &&
