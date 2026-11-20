@@ -1876,6 +1876,7 @@ void vk_framebuffers_forget_view(VkImageView v) {
 static VkFormat pass_color[8], pass_depth;
 static uint32_t pass_ncolor, pass_samples = 1, pass_w, pass_h;
 static bool ui_relax_scissor;  // the draw being set up moved a HUD piece out from under the game's scissor
+static bool ui_dialogue_piece;  // (1.0.2, text_outline) the draw being set up is a piece of the bottom left box, layer 96
 static int ui_scissor_v = -1;  // 16:10: the draw being set up is a HUD piece anchored so (0 top, 1 centre, 2 bottom),
                                // and its scissor moves with it
 static bool ui_scissor_mid;    // wider than 16:9: the draw being set up is a piece kept in the middle 16:9 (the Meownster
@@ -4867,7 +4868,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
     if (size > r.size && r.size) size = r.size;
     if (size < 16) size = 16;
     if (!guest_range_ok(r.addr, size)) return zero_ubo(size);
-    if (stage == 0 && k == 3) ui_relax_scissor = false, ui_scissor_v = -1, ui_scissor_mid = false;
+    if (stage == 0 && k == 3) ui_relax_scissor = false, ui_scissor_v = -1, ui_scissor_mid = false, ui_dialogue_piece = false;
     if (stage == 0 && k == 3 && !st.ds[0] && (pass_h == g_render_size[1] || pass_sy != 1.0f)) {  // (FSR: stand-ins)
         // (touch controls: their HUD parts at 16:9 too. At 16:9 without them nothing moves but a part the player moved,
         // sized or hid (HudPlace.custom), and the touch layer is still told where the hunt's parts are and when a menu is
@@ -4981,6 +4982,7 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         anchor = ANCHOR_CENTER;
                         vanchor = pos_y < 240.0f ? V_TOP : pos_y > 480.0f ? V_BOTTOM : V_CENTER;
                     } else if (fabsf(pos_z - 96.0f) < 0.5f) {
+                        ui_dialogue_piece = pos_y >= 360.0f && pos_x < 650.0f;  // (text_outline: the dialogue / help box)
                         // 96.0: Dialogue & Help text box (bottom left), and the button guides of the village / Hub (top
                         // left and right)
                         anchor = pos_x >= 650.0f ? ANCHOR_RIGHT : ANCHOR_LEFT;
@@ -6828,8 +6830,52 @@ static void depth_bias_tell(const float f[3], bool depth_clamp) {
         (int)pass_depth, f[0], f[1], f[2], depth_clamp ? "on" : "off");
 }
 
+// [Graphics] TextOutline (1.0.2, GU#243: the red words of the dialogues hard to read over a bright picture). The game draws
+// a box's text as one draw of its glyph quads, all with its font program (FONT_FS_HASH, sampling the 1024x1024 font page:
+// a hudtrace of the character select's help box, layer 96 at 31,610). For such a draw in the bottom left box (layer 96,
+// ui_dialogue_piece), with the option on, the same draw first 8 more times, moved a pixel or two (the picture's 720 lines
+// to the target's) all round, through a variant of its pipeline that only darkens what is under the letters (colour:
+// zero x src + (1 - src alpha) x dst; alpha kept): a dark outline, the letters' own colours drawn over it as always.
+// Its pipeline is built in the background; until it is there the letters are drawn as they come. Off, nothing here runs
+#define FONT_FS_HASH 0x5ff836c343508db6ull
+static uint64_t prog_fs_hash(Prog *p);
+static bool text_outline(VkCommandBuffer cb, const PipeKey *k, Prog *pr, bool use_index, uint32_t count, uint32_t icount,
+                         uint32_t inst, uint32_t first, int32_t base_vertex, uint32_t base_inst) {
+    if (!ui_dialogue_piece || !config_live_text_outline() || !st.rt.ncolor || !k->ncolor || prog_fs_hash(pr) != FONT_FS_HASH)
+        return false;
+    PipeKey ko = *k;
+    ko.blend_on |= 1;
+    static const uint8_t darken[8] = {0, 1, 6, 1, 2, 1, 1, 0};  // (NVN: src ZERO, dst ONE_MINUS_SRC_ALPHA; alpha ZERO, ONE; ADD)
+    memcpy(&ko.blend[0][1], &darken[1], 6);  // (bytes 1-6: the factors and operations; 0 and 7 the draw's own)
+    bool created = false;
+    Pipe *op = pipe_slot(&ko, &created);
+    if (!op) return false;
+    if (created) {
+        pipe_record(op);
+        run_job(build_pipeline, op);
+    }
+    if (atomic_load(&op->state) != 1) return false;  // (not built yet: these frames without the outline)
+    const VkViewport v = ss.vp;
+    const float px = fmaxf(1.0f, roundf(fabsf(v.height) / 720.0f * 1.5f));
+    static const int8_t dirs[8][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}, {-1, -1}, {1, -1}, {-1, 1}, {1, 1}};
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, op->pipe);
+    for (int i = 0; i < 8; i++) {
+        VkViewport o = v;
+        o.x += dirs[i][0] * px, o.y += dirs[i][1] * px;
+        vkCmdSetViewport(cb, 0, 1, &o);
+        if (!use_index) vkCmdDraw(cb, count, inst, first, base_inst);
+        else vkCmdDrawIndexed(cb, icount, inst, 0, base_vertex, base_inst);
+    }
+    vkCmdSetViewport(cb, 0, 1, &v);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, ss.pipe);  // (the draw's own, which ss still holds)
+    static int nlog;
+    if (nlog++ < 1) LOG("[hud] text outline: the dialogue box's letters outlined (%.0f px)\n", px);
+    return true;
+}
+
 static void draw(CmdRec *r, bool indexed) {
     dtex_si[0] = dtex_si[1] = NULL;  // (MHGU_PERF_TEXSCAN: the last draw's textures are no longer this one's)
+    ui_dialogue_piece = false;  // (cbuf_info sets it while this draw is set up)
     if (!st.program) { stat_skipped++; return; }
     if (shadow_skipped()) { stat_skipped++; return; }
     ShaderKey vkey = {0}, fkey = {0};
@@ -7223,6 +7269,7 @@ static void draw(CmdRec *r, bool indexed) {
             }
         }
     }
+    text_outline(cb, &k, pr, use_index, count, icount, inst, first, base_vertex, base_inst);  // ([Graphics] TextOutline)
     if (!use_index) vkCmdDraw(cb, count, inst, first, base_inst);
     else vkCmdDrawIndexed(cb, icount, inst, 0, base_vertex, base_inst);
     stat_draws++;

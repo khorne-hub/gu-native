@@ -954,6 +954,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(number_colour);
     SAME(monster_bars);
     SAME(ps1_filter);
+    SAME(text_outline);
     SAME(colour_hue);  // (Graphics & Audio > Colour)
     SAME(colour_temperature);
     SAME(colour_tint);
@@ -3399,6 +3400,17 @@ void rows_graphics_screen_90(std::vector<Row> &r) {
 }
 void reset_graphics_screen_90() { s.draft.fill_screen = config_defaults().fill_screen; }
 MENU_ENTRY("graphics/screen", 90, rows_graphics_screen_90, reset_graphics_screen_90);
+// Text outline (1.0.2, GU#243: the red words of the dialogues hard to read; the MH4U port's the same row): live, off
+void rows_graphics_screen_92(std::vector<Row> &r) {
+    add_bool(r, "textoutline", en_es("Text outline", "Contorno del texto"), &s.draft.text_outline, ini("TextOutline"));
+    r.back().help = en_es("A dark outline round the letters of the dialogue and help boxes (bottom left), so their words, the "
+                          "red ones most, read well over a bright picture. Off: the letters as the game draws them.",
+                          "Un contorno oscuro alrededor de las letras de los cuadros de diálogo y de ayuda (abajo a la "
+                          "izquierda), para que sus palabras, sobre todo las rojas, se lean bien sobre una imagen clara. "
+                          "Desactivado: las letras como las dibuja el juego.");
+}
+void reset_graphics_screen_92() { s.draft.text_outline = config_defaults().text_outline; }
+MENU_ENTRY("graphics/screen", 92, rows_graphics_screen_92, reset_graphics_screen_92);
 // The hunting aids (1.0.1, the owner's: "everything off by default, so whoever wants it turns it on"; MH4U for Android has
 // the first two with the same names and texts): runtime/hunt_aids.h, hle/huntaids.c, hunt_overlay.cpp
 void hunt_aids_rows(std::vector<Row> &r) {

@@ -232,6 +232,11 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "PS1Filter = Off\n"
     "\n"
+    "; Text outline: a dark outline round the letters of the dialogue and help boxes at the bottom left, so their words\n"
+    "; read well over a bright picture (the red ones most). Off: the letters as the game draws them\n"
+    "; Default: Off\n"
+    "TextOutline = Off\n"
+    "\n"
     "[Colour]\n"
     "; The colour of the game's picture: the 3D, its HUD and its menus (not the touch controls or this port's menu).\n"
     "; Every one is 0 by default: the picture exactly as the game draws it\n"
@@ -955,6 +960,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Graphics", "SmoothGradients", smooth_gradients, false),
     ON_OFF("Graphics", "FrameGen", frame_gen, false),
     ON_OFF("Graphics", "PS1Filter", ps1_filter, false),
+    ON_OFF("Graphics", "TextOutline", text_outline, false),
     {"Colour", "Hue", SET_INT, F(colour_hue), 0, -180, 180, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "Temperature", SET_INT, F(colour_temperature), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "Tint", SET_INT, F(colour_tint), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
