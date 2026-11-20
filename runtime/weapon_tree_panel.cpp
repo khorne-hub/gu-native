@@ -536,6 +536,13 @@ struct Column {
         FitText(dl, f ? f : font, size, ImVec2(x + indent, y), col, t, w - indent);
         y += size * 1.28f;
     }
+    // a text wrapped in the column's width (as many lines as it takes)
+    void Wrap(const std::string& t, ImU32 col, float size, float indent = 0) {
+        const float ww = w - indent, o = std::max(1.f, size * .06f);
+        dl->AddText(font, size, ImVec2(x + indent + o, y + o), IM_COL32(0, 0, 0, 190), t.c_str(), nullptr, ww);
+        dl->AddText(font, size, ImVec2(x + indent, y), col, t.c_str(), nullptr, ww);
+        y += font->CalcTextSizeA(size, FLT_MAX, ww, t.c_str()).y + size * .28f;
+    }
 };
 
 // A recipe: its heading and cost ("Upgrade from  1500z"), what it comes from on the next line, its materials and (MHGU)
@@ -557,7 +564,7 @@ void Recipe(Column& k, const char* head, const std::string& more, const weapon_t
     } else {
         FitText(k.dl, k.title, k.ls, ImVec2(k.x, k.y), GLOW, Words(head, es), k.w - zw);
         k.y += k.ls * 1.25f;
-        k.Line(more.size() > 1 ? more.substr(1) : more, DIM, k.ls * .92f, k.ls * .3f);
+        k.Wrap(more.size() > 1 ? more.substr(1) : more, DIM, k.ls * .92f, k.ls * .3f);
     }
     const float is = k.ls * .92f;
     for (const weapon_tree::Material& mt : r.items) {
@@ -602,8 +609,8 @@ void Details(ImDrawList* dl, const ImRect& box, const Content& c, State& s, floa
         Text(dl, k.title, qs, ImVec2(icon.GetCenter().x - sz.x / 2, icon.GetCenter().y - sz.y / 2), GOLD, "?");
         Text(dl, k.title, .042f * H, ImVec2(tx, k.y + .006f * H), GOLD, "???");
         k.y = tile.Max.y + .012f * H;
-        k.Line(Words("Next: not known yet", es), INK, k.ls);
-        if (node.parent >= 0) k.Line(From(c.cls.weapons[c.view.nodes[node.parent].id], w, es), DIM, k.ls * .92f);
+        k.Wrap(Words("Next: not known yet", es), INK, k.ls);
+        if (node.parent >= 0) k.Wrap(From(c.cls.weapons[c.view.nodes[node.parent].id], w, es), DIM, k.ls * .92f);
         s.detail_height = k.y + s.detail_scroll - top;
         return;
     }
@@ -693,10 +700,10 @@ void Details(ImDrawList* dl, const ImRect& box, const Content& c, State& s, floa
         if (w.from_level > 0) from_more += std::string(" ") + Words("Lv", es) + std::to_string(w.from_level);
     }
     k.Rule();
-    if (w.create.Empty() && w.forge) k.Line(Words("Forged from scratch", es), DIM, k.ls * .92f);  // (no recipe read)
+    if (w.create.Empty() && w.forge) k.Wrap(Words("Forged from scratch", es), DIM, k.ls * .92f);  // (no recipe read)
     Recipe(k, "Forge", "", w.create, es);
     if (node.parent >= 0) {
-        if (w.upgrade.Empty()) k.Line(From(c.cls.weapons[c.view.nodes[node.parent].id], w, es), DIM, k.ls * .92f);
+        if (w.upgrade.Empty()) k.Wrap(From(c.cls.weapons[c.view.nodes[node.parent].id], w, es), DIM, k.ls * .92f);
         Recipe(k, "Upgrade from", from_more, w.upgrade, es);
     }
     if (w.next.level > 0) Recipe(k, "Next level:", std::string(" ") + Words("Lv", es) + std::to_string(w.next.level), w.next, es);
