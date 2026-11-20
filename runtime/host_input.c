@@ -1734,6 +1734,10 @@ void host_input_update(void) {
                 if (dax[i] != pax[i] && (dax[i] > 500 || dax[i] < -500 || pax[i] > 500 || pax[i] < -500))
                     LOG("[paddebug] axis %s %d\n", SDL_GetGamepadStringForAxis((SDL_GamepadAxis)i), dax[i]);
             for (int i = 0; i < SDL_GAMEPAD_AXIS_COUNT; i++) pax[i] = dax[i];
+            static uint64_t pgame;  // (...and the game's buttons the controller gives, its combined buttons in: S1)
+            uint64_t game = b & ~before_pad;
+            if (game != pgame) LOG("[paddebug] the game's buttons from the controller: %llx\n", (unsigned long long)game);
+            pgame = game;
         }
     } else {
         static bool scanned;  // (controllers present at startup send no ADDED event to a loop that started after them)
