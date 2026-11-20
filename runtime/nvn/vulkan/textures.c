@@ -338,15 +338,22 @@ uint64_t vk_ram_mb(void) {
 // A phone with little memory and no BC support: every decoded texture takes four to eight times what it does compressed.
 // There, 3D textures (those with mipmaps: menus and text have none, and stay sharp) lose their largest level, a quarter
 // of the memory for a picture no sharper on such a screen. (Levels line up: the view's first level is the next one.)
+// 1.0.2 (GU#259): [Graphics] FullTextures On keeps them (here and in very_low_memory_textures), at the player's own risk
 static bool low_memory_textures(void) {
     static int on = -1;
     if (on < 0) {
         uint64_t ram = vk_ram_mb() << 20;
         on = ram < 5ull << 30;
+        if (on && g_config.full_textures) {
+            LOG("[vk] %llu MB of memory, Full-size textures on: 3D textures keep their largest levels (the player's own "
+                "risk)\n", (unsigned long long)(ram >> 20));
+            on = 0;
+        }
         if (on) LOG("[vk] %llu MB of memory: 3D textures without their largest level\n", (unsigned long long)(ram >> 20));
     }
     return on;
 }
+bool vk_low_memory_device(void) { return vk_ram_mb() < 5 * 1024; }  // (the menu's Full-size textures row: where it does something)
 
 // 3 GB or less (phones that ran out of GPU memory, vkQueueSubmit failing after minutes): big 3D textures lose two levels
 static bool very_low_memory_textures(void) {
@@ -355,7 +362,7 @@ static bool very_low_memory_textures(void) {
 #ifdef _WIN32
         on = 0;
 #else
-        on = vk_ram_mb() < 3584;
+        on = vk_ram_mb() < 3584 && !g_config.full_textures;
         if (on) LOG("[vk] 3.5 GB or less: big 3D textures without their two largest levels\n");
 #endif
     }
