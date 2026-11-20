@@ -6017,6 +6017,8 @@ std::string view_title() {
 #endif
     if (s.view == View::ColourPreset)
         return fmt(en_es("Colour preset %d", "Preset de color %d"), s_colour_preset + 1);
+    if (s.view == View::Chat)
+        return chat_title();  // (which chat: Chat · Global)
     return s.view == View::Keyboard ? s.keyboard.title
            : s.view == View::KeyCapture && s.capture_bind >= 0
                ? fmt("Press a key or mouse button for %s (Esc: cancel)", tr(bind_titles[s.capture_bind]))
@@ -6040,7 +6042,7 @@ std::string view_title() {
                     : s.view == View::OpenSite   ? "Open the project's page?"
                     : s.view == View::OpenDiscord ? "Open the community's Discord?"
                     : s.view == View::BuildCode  ? "Close the game and build the game code?"
-                    : s.view == View::Chat       ? chat_title()
+                    : s.view == View::Chat       ? cs("Chat", "Chat")
                     : s.view == View::Friends    ? cs("Friends", "Amigos")
                     : s.view == View::ChatOn     ? cs("Turn on the online chat?", "¿Activar el chat en línea?")
                                                  : "Unsaved changes");
