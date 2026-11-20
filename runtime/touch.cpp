@@ -1327,6 +1327,7 @@ struct Finger {
     uint64_t home_keep;    // ...and what it pressed there as it slid off it ([Touch] SlideBoth: kept with the next ones)
     bool hold_ok;          // it landed where no control is, the only finger: held still, it hides or shows the controls
                            // ([Touch] HoldToHide, touch_input); moved or joined by another finger, no longer
+    bool cam_off;          // ...on the screen's left half with [Touch] CameraRightHalf (1.0.2): its drag turns nothing
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
@@ -1787,6 +1788,10 @@ const char *target_letter(void) {
 // attack), the stick, the d-pads, the arrows, nor a bow's or gun's fire and aim (a slide on them aims). Off: 1.0's slides
 // exactly - a thumb from Guard or Evade slid onto the attacks becomes that attack, Guard keeping R with GuardSlide
 bool slide_both(const State &s) { return config_live_touch_show(TB_SLIDE_BOTH) && !s.menu; }
+// (1.0.2, S-CAM) [Touch] CameraRightHalf: a finger landing where no control is on the screen's left half turns no camera
+// (a missed touch near the stick); its long press still hides the controls. Not in the game's menus: a drag moves
+// their cursor anywhere
+bool cam_left(const State &s, float x) { return config_live_touch_show(TB_CAM_RIGHT) && !s.menu && x < s.w * .5f; }
 bool slide_keeps(int c) {
     switch (c) {
     case C_ATTACK: case C_CORNER: case C_HEAVY: case C_LIGHT: case C_R: case C_DODGE: case C_SHEATHE: case C_ZR: case C_ZL:
@@ -2834,6 +2839,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             }
             f->kind = F_CAMERA;  // (hidden: a drag still turns the camera)
             f->hold_ok = alone;  // (held still, the controls the player hid show again: touch_input)
+            f->cam_off = cam_left(s, x);
             return true;
         }
         Zones z = zones();
@@ -2903,6 +2909,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         } else {
             f->kind = F_CAMERA;
             f->hold_ok = alone;  // (an empty spot: held still, a long press hides the controls, touch_input)
+            f->cam_off = cam_left(s, x);
         }
         recompute_held(s);
         static int dbg = -1;  // (MHGU_TOUCH_LOG=1: what each finger landed on)
@@ -2951,7 +2958,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             // Galaxy, "mantener R con distancia no apunta en vertical"; hle/mousecam.c touch_aim_pitch)
             s.cam_dx += dx, s.cam_ns = now;
             g_aim_pitch_deg = g_aim_pitch_deg.load() - dy / s.h * CAMERA_COUNTS * .08f * config_live_touch_camera();
-        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
+        } else if ((f->kind == F_CAMERA && !f->cam_off) || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
             s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot aims while it is held)
         } else if (f->kind == F_STICK) stick_to(s, x, y);
         else if (f->kind == F_ITEM) {  // a swipe turns the bar, an item every so far; up or down with a gun: the ammo

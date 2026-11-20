@@ -1031,6 +1031,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ArtsWithController", touch_show[TB_ARTS_PAD], false),
     ON_OFF("Touch", "HoldToHide", touch_show[TB_HOLD_HIDE], false),
     ON_OFF("Touch", "SlideBoth", touch_show[TB_SLIDE_BOTH], false),
+    ON_OFF("Touch", "CameraRightHalf", touch_show[TB_CAM_RIGHT], false),  // (1.0.2, S-CAM)
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
      "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}

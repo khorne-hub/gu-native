@@ -422,6 +422,10 @@ static inline const char *settings_text(int language, const char *english) {
         {"Left stick click", "Clic de la palanca izquierda"},
         {"Right stick click", "Clic de la palanca derecha"},
         {"Movement stick", "Palanca de movimiento"},
+        // (1.0.2, S-CAM: the MH4U port's the same)
+        {"Camera on the right half only", "Cámara solo en la mitad derecha"},
+        {"On: dragging turns the camera only on the right half of the screen, so a missed touch near the stick doesn't move it. Off: anywhere no control is.",
+         "Activado: arrastrar gira la cámara solo en la mitad derecha de la pantalla, así un toque errado cerca de la palanca no la mueve. Desactivado: en cualquier lugar sin controles."},
         {"Combined buttons", "Botones combinados"},
         {"Button %d", "Botón %d"},
         {"Empty", "Vacío"},

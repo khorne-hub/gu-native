@@ -47,15 +47,15 @@ enum {
 // stays in the game's menus, beside the menu pad) and ArtsWithController (a tap on a Hunter Art's panel performs it while
 // a controller hides the touch controls). HoldToHide (1.0.1): a long press where no control is hides the touch controls,
 // and another shows them again; SlideBoth (1.0.1): a thumb slid from a button onto another keeps both pressed
-// (runtime/touch.cpp slide_to)
+// (runtime/touch.cpp slide_to); CameraRightHalf (1.0.2, off): a drag turns the camera only on the screen's right half
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
        TB_STICK_RUN, TB_GUARD_SLIDE, TB_LOCKON, TB_FLOAT_STICK, TB_MENU_LR, TB_DPAD_MENUS, TB_ARTS_PAD, TB_HOLD_HIDE,
-       TB_SLIDE_BOTH, TB_COUNT };
+       TB_SLIDE_BOTH, TB_CAM_RIGHT, TB_COUNT };
 // (the item bar's arrows on by default, as in the MH4U port; the Lock-on button too; the floating stick off; the menu
 // pad's L and R and the Hunter Arts' taps with a controller as up to 0.1.9.3, the D-pad in menus off: the menu pad takes
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0}
 #define TOUCH_COMBOS 6
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,

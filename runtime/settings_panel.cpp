@@ -219,7 +219,7 @@ bool touch_screen() {
 bool touch_rows() { return touch_screen() || s.saved.touch_controls == TOUCH_ON; }
 // The touch settings of the TB_ list with a row of their own elsewhere (MENU.md: the floating stick on Touch controls, the
 // Hunter Arts' taps with a controller on Controller), not in Buttons on the screen nor in its count
-bool tb_elsewhere(int i) { return i == TB_FLOAT_STICK || i == TB_ARTS_PAD || i == TB_HOLD_HIDE; }
+bool tb_elsewhere(int i) { return i == TB_FLOAT_STICK || i == TB_ARTS_PAD || i == TB_HOLD_HIDE || i == TB_CAM_RIGHT; }
 struct Row;
 void control_profile_row(std::vector<Row> &r);  // (the Controls page's link to the control profiles: further down)
 void button_images_row(std::vector<Row> &r);    // (...and to the buttons' pictures)
@@ -4076,20 +4076,22 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Crouching fire / coating", "Ammo arrows", "Item bar arrows", "ZL in menus", "ZR in menus",
                                          "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick",
                                          "L and R in menus", "D-pad in menus", "Hunter Arts with a controller",
-                                         "Long press hides the controls", "Slide between buttons: both pressed"};
+                                         "Long press hides the controls", "Slide between buttons: both pressed",
+                                         "Camera on the right half only"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
                                        "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick",
-                                       "ShowMenuLR", "DpadInMenus", "ArtsWithController", "HoldToHide", "SlideBoth"};
+                                       "ShowMenuLR", "DpadInMenus", "ArtsWithController", "HoldToHide", "SlideBoth",
+                                       "CameraRightHalf"};
 // (their rows' order: each way of a button by it - keeping the guard by Guard, the run and the floating stick by the stick,
 // the D-pad in menus by the D-pad -, the menu pad before the tabs that go with it; the Hunter Arts' taps with a controller
 // last, a controller's way. The floating stick and the Arts' taps have rows of their own elsewhere: tb_elsewhere)
 const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SLIDE_BOTH, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD,
                                 TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN,
                                 TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_LR,
-                                TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE};
-static_assert(TB_COUNT == 32, "TB_ORDER: a place for each of the touch settings");
+                                TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE, TB_CAM_RIGHT};
+static_assert(TB_COUNT == 33, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
@@ -4249,6 +4251,13 @@ void rows_controls_touch_65(std::vector<Row> &r) {
 }
 void reset_controls_touch_65() { s.draft.touch_show[TB_HOLD_HIDE] = config_defaults().touch_show[TB_HOLD_HIDE]; }
 MENU_ENTRY("controls/touch", 65, rows_controls_touch_65, reset_controls_touch_65);
+// (1.0.2, S-CAM, Discord: a missed touch near the stick turned the camera) a drag turns the camera only on the right half
+void rows_controls_touch_66(std::vector<Row> &r) {
+    add_bool(r, "touch.camright", "Camera on the right half only", &s.draft.touch_show[TB_CAM_RIGHT], ini("CameraRightHalf"));
+    r.back().help = tr("On: dragging turns the camera only on the right half of the screen, so a missed touch near the stick doesn't move it. Off: anywhere no control is.");
+}
+void reset_controls_touch_66() { s.draft.touch_show[TB_CAM_RIGHT] = config_defaults().touch_show[TB_CAM_RIGHT]; }
+MENU_ENTRY("controls/touch", 66, rows_controls_touch_66, reset_controls_touch_66);
 MENU_ENTRY("controls/touch", 70, button_images_row);
 // The input group's (S08): the Hunter Arts' taps with a controller on Controls > Controller (MENU.md 3.1); the menu pad's
 // L and R and the D-pad in menus stay in Buttons on the screen
