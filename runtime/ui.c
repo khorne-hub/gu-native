@@ -7,6 +7,11 @@
 #include <SDL3/SDL.h>
 #ifdef __ANDROID__
 #include <jni.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
 #endif
 
 #include "config.h"
@@ -197,6 +202,59 @@ static void set_fullscreen(bool on) {
 #ifdef __ANDROID__
 // The activity's lifecycle, as it happens (an event watch: these must be acted on before the call returns): the
 // renderer draws nothing while the window is gone and makes its surface again after (nvn/vulkan/device.c); with
+// (1.0.2) Back after a long time in the background, Android has often swapped the app's memory out, and the next area's
+// load paged it back in one fault at a time (GU#272, a Galaxy S24 Ultra after an hour away: resident 1068 MB, 819 of it
+// the app's own, before; 277 and 64 after; the next area took 26 s instead of 2). A thread of low priority asks for it all
+// back at once (madvise MADV_WILLNEED over each private writable mapping - the guest's memory among them - and the game
+// code's file), so the swap is read ahead while the player looks at the screen. MHGU_WARM_AFTER=<s>: after how long a
+// background (default 60; 0 never)
+static long resident_mb(void) {
+    FILE *f = fopen("/proc/self/status", "r");
+    long kb = 0;
+    char line[256];
+    while (f && fgets(line, sizeof line, f))
+        if (sscanf(line, "VmRSS: %ld kB", &kb) == 1) break;
+    if (f) fclose(f);
+    return kb / 1024;
+}
+static void *warm_memory(void *arg) {
+    double away = *(double *)arg;
+    free(arg);
+    setpriority(PRIO_PROCESS, 0, 10);  // (this thread: the game and the renderer first)
+    uint64_t t0 = plat_now_ns();
+    long before = resident_mb();
+    double asked = 0;
+    int n = 0;
+    FILE *f = fopen("/proc/self/maps", "r");
+    char line[512];
+    while (f && fgets(line, sizeof line, f)) {
+        unsigned long lo = 0, hi = 0;
+        char perms[8] = "";
+        if (sscanf(line, "%lx-%lx %7s", &lo, &hi, perms) != 3 || hi <= lo || perms[0] != 'r') continue;
+        bool own = perms[1] == 'w' && perms[3] == 'p', code = strstr(line, "libmhgugame") != NULL;
+        if (!own && !code) continue;
+        if (madvise((void *)lo, hi - lo, MADV_WILLNEED) == 0) asked += (double)(hi - lo), n++;
+    }
+    if (f) fclose(f);
+    LOG("[app] back after %.0f s away: %d mappings (%.0f MB) asked back from the swap in %.0f ms, resident %ld MB before, "
+        "%ld after\n", away, n, asked / 1048576.0, (plat_now_ns() - t0) / 1e6, before, resident_mb());
+    return NULL;
+}
+static void warm_memory_start(double away) {
+    static double after = -1;
+    if (after < 0) after = getenv("MHGU_WARM_AFTER") ? atof(getenv("MHGU_WARM_AFTER")) : 60.0;
+    if (after <= 0 || away < after) return;
+    double *a = malloc(sizeof *a);
+    pthread_t th;
+    pthread_attr_t at;
+    if (!a) return;
+    *a = away;
+    pthread_attr_init(&at);
+    pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+    if (pthread_create(&th, &at, warm_memory, a) != 0) free(a);
+    pthread_attr_destroy(&at);
+}
+
 // [Application] PauseInBackground the game stops meanwhile too (runtime/hle/vi.c).
 extern volatile int g_android_window_state;
 extern volatile uint64_t g_android_bg_ns;  // (when it went to the background: the log's "window back" says how long ago)
@@ -219,8 +277,10 @@ static bool android_lifecycle(void *ud, SDL_Event *e) {
         if (config_live_pause_background()) vi_set_paused(true);
         break;
     case SDL_EVENT_DID_ENTER_FOREGROUND:
-        if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE) == 1)
+        if (__atomic_load_n(&g_android_window_state, __ATOMIC_ACQUIRE) == 1) {
             LOG("[app] %s: back in front after %.0f s\n", diag_clock(), g_android_bg_ns ? (plat_now_ns() - g_android_bg_ns) / 1e9 : 0.0);
+            if (g_android_bg_ns) warm_memory_start((plat_now_ns() - g_android_bg_ns) / 1e9);  // (1.0.2: the swap read back ahead)
+        }
         __atomic_store_n(&g_android_window_state, 2, __ATOMIC_RELEASE);
         vi_set_paused(false);  // (after the state: the renderer's first frame back makes the surface again)
         break;
