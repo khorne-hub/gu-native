@@ -225,6 +225,13 @@ static const char DEFAULT_INI[] =
     "; Default: Off\n"
     "FrameGen = Off\n"
     "\n"
+    "; Full-size textures: on a phone with little memory (under 5 GB) the game's 3D textures leave out their largest\n"
+    "; size (under 3.5 GB, their two largest), so it doesn't run out of memory and close. On: they keep them, sharper up\n"
+    "; close, but the game can close for lack of memory; at your own risk. Low-end mode still makes them smaller. Needs a\n"
+    "; restart\n"
+    "; Default: Off\n"
+    "FullTextures = Off\n"
+    "\n"
     "; PS1 filter: the look of the 3D games of the late 90s, style only (no other setting changes): the 3D world's\n"
     "; textures in sharp blocks, the 3D picture at about 240 lines with a TV of then's stronger colours, in 15-bit colour\n"
     "; with a pattern of dots, wobbly polygons, and scanlines that flicker as on an old TV. The HUD stays readable and this\n"
@@ -954,6 +961,7 @@ const ConfigSetting g_settings[] = {
     {"Graphics", "DrawDistance", SET_FLOAT, F(draw_distance), 0, 0.0f, 10.0f, NULL, NULL, false, ERR_DRAW},
     ON_OFF("Graphics", "SmoothGradients", smooth_gradients, false),
     ON_OFF("Graphics", "FrameGen", frame_gen, false),
+    ON_OFF("Graphics", "FullTextures", full_textures, true),
     ON_OFF("Graphics", "PS1Filter", ps1_filter, false),
     {"Colour", "Hue", SET_INT, F(colour_hue), 0, -180, 180, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "Temperature", SET_INT, F(colour_temperature), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},

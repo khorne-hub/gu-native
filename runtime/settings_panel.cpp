@@ -928,6 +928,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(fsr_upscaler);
     SAME(fsr_quality);
     SAME(fsr_sharpness);
+    SAME(full_textures);
     SAME(fsr_objmotion);
     SAME(fsr_reactive);
     SAME(fsr_animsurf);
@@ -3489,6 +3490,24 @@ void rows_graphics_advanced_70(std::vector<Row> &r) {  // [Graphics] FrameGen (n
 }
 void reset_graphics_advanced_70() { s.draft.frame_gen = config_defaults().frame_gen; }
 MENU_ENTRY("graphics/advanced", 70, rows_graphics_advanced_70, reset_graphics_advanced_70);
+// Full-size textures (1.0.2, GU#259; the MH4U port has its own): where the device has under 5 GB, its 3D textures keep
+// their largest levels (nvn/vulkan/textures.c low_memory_textures), at the player's own risk; a start-up setting
+extern "C" bool vk_low_memory_device(void);
+void rows_graphics_advanced_65(std::vector<Row> &r) {
+    add_bool(r, "fulltex", en_es("Full-size textures", "Texturas a tamaño completo"), &s.draft.full_textures, ini("FullTextures"));
+    r.back().warn = s.draft.full_textures;
+    r.back().help = en_es("On a phone with little memory the game's 3D textures leave out their largest size, so it doesn't "
+                          "run out of memory and close: monsters seen up close look softer. On: they keep it, but the game "
+                          "can close for lack of memory; at your own risk. Low-end mode still makes them smaller. Needs a "
+                          "restart.",
+                          "En un teléfono con poca memoria, las texturas 3D del juego dejan afuera su tamaño más grande para "
+                          "que no se quede sin memoria y se cierre: los monstruos de cerca se ven más suaves. Activado: lo "
+                          "conservan, pero el juego puede cerrarse por falta de memoria; bajo tu responsabilidad. El modo "
+                          "gama baja igual las achica. Requiere reiniciar.");
+}
+void reset_graphics_advanced_65() { s.draft.full_textures = config_defaults().full_textures; }
+bool shown_graphics_advanced_65() { return vk_low_memory_device(); }
+MENU_ENTRY("graphics/advanced", 65, rows_graphics_advanced_65, reset_graphics_advanced_65, shown_graphics_advanced_65);
 #else
 void rows_graphics_advanced_30(std::vector<Row> &r) {  // [Display] GPU: Automatic, or a device by its name
     const Config &c = s.draft;                                  // (nvn/vulkan/device.c pick_device), at the next start

@@ -203,6 +203,9 @@ typedef struct {
                               // screen's peak (0: half of the way)
     int frame_gen;            // [Graphics] FrameGen: a made-up picture between each two of the game's, at half the display's
                               // rate or less (nvn/vulkan/framegen.c); off by default (0: nothing in CONFIG_DEFAULT_VALUES)
+    int full_textures;        // [Graphics] FullTextures (1.0.2, GU#259): the 3D textures keep their largest levels on a
+                              // device with little memory (nvn/vulkan/textures.c low_memory_textures); Low-end mode still
+                              // leaves its own out. Off by default (0), at the player's own risk; a start-up setting
     int upscale_sharp;        // [Display] UpscaleFilter (1.0.1, gu-native #247): a 3D picture smaller than the screen scaled
                               // up by its nearest pixels (Sharp, 1) instead of linearly (Smooth, 0: the default, as before);
                               // FSR off only (nvn/vulkan/fsr.c scale_to_stand, exec.c vk_present_draw)
