@@ -853,6 +853,12 @@ Android killing the game shows in `adb logcat` as `lowmemorykiller: Kill 'com.mh
   the finger; the hover test allows a blocked window, or a pressed control hid it: `frame_once`), moved only by its title bar;
   its x or the phone's Back closes it; a field that takes text brings up the phone's keyboard (`textinput.c` state 4). Tested on
   the PC with the control file's `finger` lines (touch layout, row, window, x).
+- Forge plugins' ImGui objects (`forge_imgui.c` mirrors, 8192 at most): ImDrawList's `_VtxWritePtr` is plain data, not an
+  object (`tools/imgui_thunks.py` CURSORS). As an object, every place it reached after a draw call got a mirror kept for good,
+  and plugins drawing changing text used them all up in about 15 minutes; the next new object came back NULL and a plugin
+  crashed on it (GU#270, 1.0.2). Full, the table now reuses the place of the plain value (bytes only: ImVec2, ImFontGlyph...)
+  looked up longest ago, and logs once how many of each type it holds. Measured with a harness that runs the generated calls
+  (out of the repo): one plugin window shown 30 s and hidden 60 s, 1842 vertex mirrors in 30 minutes before, none after.
 - Every minute the log has a `[mem]` line: memory map entries, resident memory (own, the files mapped, shared) and VMA's blocks, what
   is allocated in them and by what (images, of those the BC textures decoded on the CPU, the vertex cache, the staging ring).
   `MHGU_MEM_LOG=<seconds>` writes it more often. Games on PowerVR closed after 5 to 15 minutes out of map entries; there VMA is told
