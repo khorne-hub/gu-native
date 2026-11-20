@@ -664,6 +664,16 @@ static void control_poll(void) {
                 continue;
             }
 #endif
+            if (!strcmp(cmd, "profileuse")) {  // profileuse <slot>: as the settings' Use on that profile (tests: S2, S3)
+                LOG("[control] profileuse %s: %s\n", arg, touch_profile_use(atoi(arg)) ? "in use" : "it couldn't be");
+                continue;
+            }
+            if (!strcmp(cmd, "padcapture")) {  // padcapture on|off: the settings' Press a controller button (tests: S1, T32)
+                bool on = !strcmp(arg, "on");
+                if (!on) LOG("[control] padcapture: %d\n", host_input_pad_captured());
+                host_input_pad_capture(on);
+                continue;
+            }
             if (!strcmp(cmd, "profilezip")) {  // profilezip export|import <slot> <path>: a profile's .zip out or in (S3)
                 char path[1024] = "", said[400];
                 sscanf(line, "%*s %*s %*s %1023[^\r\n]", path);
