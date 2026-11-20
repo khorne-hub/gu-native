@@ -126,6 +126,11 @@ bool touch_profile_export_app(int n);
 void touch_profile_import_wait(int n);
 void touch_profile_import_poll(void);
 bool touch_profile_said(char *out, size_t size);
+// (1.0.2, T18, GU#258) A Show row of the settings ([Touch] Show*, TB_*) with the emulator-style layout in use: whether its
+// button of that layout shows (1, 0; -1 not that layout, or a setting it has no button for), and shown or hidden there
+// at once, as its editor's Hide (the layout in use and its profile's file written; false: not that layout, an editor open)
+int touch_emu_shown(int tb);
+bool touch_emu_show(int tb, bool on);
 // The layout profiles' images folder, where the players' own pictures for the buttons go (the runtime's spelling of a
 // path; runtime/pc_actions.c copies them in)
 void touch_pictures_dir(char *out, size_t size);

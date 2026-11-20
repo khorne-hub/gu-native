@@ -454,6 +454,18 @@ static inline const char *settings_text(int language, const char *english) {
          "Aprieta el botón del mando que quieras para él, aunque la lista no lo nombre (una paleta, por ejemplo)."},
         {"For combined button %d: %d seconds left.", "Para el botón combinado %d: quedan %d segundos."},
         {"No controller is connected.", "No hay ningún mando conectado."},
+        // (1.0.2, S-CAM: the MH4U port's the same)
+        {"Camera on the right half only", "Cámara solo en la mitad derecha"},
+        {"On: dragging turns the camera only on the right half of the screen, so a missed touch near the stick doesn't move it. Off: anywhere no control is.",
+         "Activado: arrastrar gira la cámara solo en la mitad derecha de la pantalla, así un toque errado cerca de la palanca no la mueve. Desactivado: en cualquier lugar sin controles."},
+        // (1.0.2, T18: the MH4U port's the same)
+        {"With an emulator-style layout in use, this shows or hides its own button, as Hide does in its editor.",
+         "Con un diseño de emulador en uso, esto muestra u oculta su propio botón, como Ocultar en su editor."},
+        // (1.0.2, T10: the MH4U port's the same)
+        {"Touch controls hidden", "Controles táctiles ocultos"},
+        {"%s counts as a controller, so the touch controls are hidden. To show them anyway: gear, Controls, Show the touch controls, Always.",
+         "%s cuenta como un mando, así que los controles táctiles se ocultan. Para verlos igual: engranaje, Controles, Mostrar los controles táctiles, Siempre."},
+        {"A device", "Un dispositivo"},
         {"Combined buttons", "Botones combinados"},
         {"Button %d", "Botón %d"},
         {"Empty", "Vacío"},

@@ -1071,6 +1071,7 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ArtsWithController", touch_show[TB_ARTS_PAD], false),
     ON_OFF("Touch", "HoldToHide", touch_show[TB_HOLD_HIDE], false),
     ON_OFF("Touch", "SlideBoth", touch_show[TB_SLIDE_BOTH], false),
+    ON_OFF("Touch", "CameraRightHalf", touch_show[TB_CAM_RIGHT], false),  // (1.0.2, S-CAM)
 // (Combo<n>Pad: PADB_*'s order, config.h; 1.0.1.1's names first, as it wrote them; a version that doesn't know a name
 // reads None)
 #define COMBO_PADS "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad,A,B,X,Y,L,R,ZL,ZR,Plus,Up,Down,Left,Right," \

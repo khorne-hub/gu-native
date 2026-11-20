@@ -850,6 +850,19 @@ static bool real_pad_connected(void) {  // (from the open pads every call: follo
     return false;
 }
 static SDL_AtomicInt real_pad_seen;  // (host_input_real_pad: real_pad_connected at the last update, for other threads)
+// (1.0.2, T10) The first controller that hides the touch controls, by its name ("" none: runtime/touch.cpp's notice says
+// which one; the event thread, where the controllers come and go)
+const char *host_input_real_pad_name(void) {
+    static char name[128];
+    name[0] = 0;
+    for (int i = 0; i < npads; i++)
+        if (pads[i].real) {
+            const char *n = SDL_GetGamepadName(pads[i].pad);
+            snprintf(name, sizeof name, "%s", n ? n : "?");
+            break;
+        }
+    return name;
+}
 bool host_input_real_pad(void) { return SDL_GetAtomicInt(&real_pad_seen) != 0; }
 
 static void open_pad(SDL_JoystickID id) {
@@ -1267,7 +1280,11 @@ static int display_quarter(SDL_DisplayOrientation o) {  // (the device turned th
 static void gyro_off(void) {
     if (gyro_dev) SDL_CloseSensor(gyro_dev), gyro_dev = NULL;
     if (gyro_pad) SDL_SetGamepadSensorEnabled(gyro_pad, SDL_SENSOR_GYRO, false), gyro_pad = NULL;
-    if (gyro_on) LOG("[gyro] off\n");
+    if (gyro_on) {  // (why, for a report: the hunter's action, or a locked shot's own aim)
+        unsigned act = weapon_action(weapon_hunter());
+        LOG("[gyro] off (action %04x:%03u, weapon out %d%s)\n", act >> 16, act & 0xffff, weapon_drawn(),
+            touch_lock_assist() ? ", a locked shot aims" : "");
+    }
     gyro_on = false, gyro_ns = 0;
 }
 static void gyro_update(void) {

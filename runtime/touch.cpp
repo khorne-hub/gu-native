@@ -83,6 +83,7 @@ int weapon_drawn(void);  // (hle/weapon.c: 1 the weapon out, 0 sheathed, -1 not 
 SDL_Window *ui_window(void);
 bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platform.h: the save folder's path, as fopen takes it)
 bool plat_path_to_utf8(const char *native, char *out, size_t size);    // (...and back: SDL's file functions, a profile's .zip)
+const char *host_input_real_pad_name(void);  // (runtime/host_input.c: the controller that hides the controls, T10)
 }
 #include "app_actions.h"  // (ui_request_pictures: the layout editor's Add pictures)
 #include "haptics.h"  // (a short tick on the phone when a control is pressed)
@@ -1369,6 +1370,7 @@ struct Finger {
     uint64_t home_keep;    // ...and what it pressed there as it slid off it ([Touch] SlideBoth: kept with the next ones)
     bool hold_ok;          // it landed where no control is, the only finger: held still, it hides or shows the controls
                            // ([Touch] HoldToHide, touch_input); moved or joined by another finger, no longer
+    bool cam_off;          // ...on the screen's left half with [Touch] CameraRightHalf (1.0.2): its drag turns nothing
 };
 struct Pulse {
     uint64_t buttons, from, until;  // (held from .. until: a sequence starts some later)
@@ -1447,6 +1449,10 @@ struct State {
     bool loaded, touched, auto_wait;
     float smooth_x, smooth_y;  // a drag's turn not given to the camera yet, counts ([Touch] CameraSmoothing: touch_input)
     uint64_t smooth_ns;        // ...and the pass that gave the last of it
+    bool pad_hidden;         // (1.0.2, T10) the controls hidden by a controller ([Touch] Controls Auto, one connected)...
+    int pad_taps;            // ...the taps on the game since then, a few seconds apart at most, and the notice said once
+    uint64_t pad_tap_ns;
+    bool pad_said;
     bool user_hidden;        // the controls hidden by a long press where no control is ([Touch] HoldToHide), until another
     uint64_t hint_until;     // ...the line that says how to show them again, until then (the first time in a session)
     bool hint_said, hint_first;  // (the first time in a session: the line also says where to turn it off)
@@ -1832,6 +1838,10 @@ const char *target_letter(void) {
 // attack), the stick, the d-pads, the arrows, nor a bow's or gun's fire and aim (a slide on them aims). Off: 1.0's slides
 // exactly - a thumb from Guard or Evade slid onto the attacks becomes that attack, Guard keeping R with GuardSlide
 bool slide_both(const State &s) { return config_live_touch_show(TB_SLIDE_BOTH) && !s.menu; }
+// (1.0.2, S-CAM) [Touch] CameraRightHalf: a finger landing where no control is on the screen's left half turns no camera
+// (a missed touch near the stick); its long press still hides the controls. Not in the game's menus: a drag moves
+// their cursor anywhere
+bool cam_left(const State &s, float x) { return config_live_touch_show(TB_CAM_RIGHT) && !s.menu && x < s.w * .5f; }
 bool slide_keeps(int c) {
     switch (c) {
     case C_ATTACK: case C_CORNER: case C_HEAVY: case C_LIGHT: case C_R: case C_DODGE: case C_SHEATHE: case C_ZR: case C_ZL:
@@ -1892,6 +1902,24 @@ void to_menu(const SDL_Event *e) {
 
 int g_language;  // the settings menu's (touch_draw, each frame): the editor's texts in it
 const char *T(const char *english) { return settings_text(g_language, english); }
+// (1.0.2, T10, Discord: the touch controls gone in the middle of a game) The controls hidden because something counts as a
+// controller ([Touch] Controls Auto) while the player keeps tapping the game - three taps, each within 4 s of the last -:
+// once a session a notice names the device and says how to show them anyway (an earbud's or a keyboard's buttons the
+// phone calls a controller hid them, with nothing on the screen to say why)
+void pad_hidden_tap(State &s, uint64_t now) {
+    if (!s.pad_hidden || s.pad_said || s.menu) return;
+    s.pad_taps = now - s.pad_tap_ns < 4000 * MS ? s.pad_taps + 1 : 1;
+    s.pad_tap_ns = now;
+    if (s.pad_taps < 3) return;
+    s.pad_said = true;
+    const char *name = host_input_real_pad_name();
+    char t[400];
+    snprintf(t, sizeof t,
+             T("%s counts as a controller, so the touch controls are hidden. To show them anyway: gear, Controls, Show the touch controls, Always."),
+             name[0] ? name : T("A device"));
+    overlay_notice(T("Touch controls hidden"), t);
+    rt_logf("[touch] taps on the game with the controls hidden by a controller (%s): the notice said why\n", name[0] ? name : "?");
+}
 
 // The buttons a tap holds down (Layout.hold) can be: those that press the game's buttons for as long as they are down -
 // not the attacks' pill or band (a part each), the stick, the d-pads, the menu pad, the arrows (steps), the settings
@@ -2926,6 +2954,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 tap_due();
                 return true;
             }
+            pad_hidden_tap(s, now);
             // (a controller in the hands, a handheld's own: a tap on a Hunter Art's panel still performs it, without
             // letting go of the stick to reach the d-pad, #48)
             if (g_gear_only && !s.menu && config_live_touch_show(TB_ARTS_PAD)) {  // ([Touch] ArtsWithController)
@@ -2941,6 +2970,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             }
             f->kind = F_CAMERA;  // (hidden: a drag still turns the camera)
             f->hold_ok = alone;  // (held still, the controls the player hid show again: touch_input)
+            f->cam_off = cam_left(s, x);
             return true;
         }
         Zones z = zones();
@@ -3010,6 +3040,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
         } else {
             f->kind = F_CAMERA;
             f->hold_ok = alone;  // (an empty spot: held still, a long press hides the controls, touch_input)
+            f->cam_off = cam_left(s, x);
         }
         recompute_held(s);
         static int dbg = -1;  // (MHGU_TOUCH_LOG=1: what each finger landed on)
@@ -3058,7 +3089,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
             // Galaxy, "mantener R con distancia no apunta en vertical"; hle/mousecam.c touch_aim_pitch)
             s.cam_dx += dx, s.cam_ns = now;
             g_aim_pitch_deg = g_aim_pitch_deg.load() - dy / s.h * CAMERA_COUNTS * .08f * config_live_touch_camera();
-        } else if (f->kind == F_CAMERA || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
+        } else if ((f->kind == F_CAMERA && !f->cam_off) || (f->kind == F_BUTTON && f->ctl == C_RFIRE && f->moved && !f->done && !s.menu)) {
             s.cam_dx += dx, s.cam_dy += dy, s.cam_ns = now;  // (a drag on the shot aims while it is held)
         } else if (f->kind == F_STICK) stick_to(s, x, y);
         else if (f->kind == F_ITEM) {  // a swipe turns the bar, an item every so far; up or down with a gun: the ammo
@@ -3333,6 +3364,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     bool screen = s.touched;  // (a desktop: Auto shows them once a finger has touched the screen)
 #endif
     bool shown = !typing && (mode == TOUCH_ON || (mode == TOUCH_AUTO && !pad_connected && screen));  // (by the settings)
+    s.pad_hidden = !typing && mode == TOUCH_AUTO && pad_connected && screen;  // (T10: a controller hides them)
     // A long press where no control is ([Touch] HoldToHide, 1.0.1; Discord: the controls off to watch a cutscene took the
     // settings menu): the finger landed on an empty spot, the only one down, held HOLD_HIDE without moving past the slop a
     // drag of the camera starts with - the controls hide, every one, the settings button too; another long press shows them
@@ -6184,6 +6216,48 @@ extern "C" bool touch_profile_said(char *out, size_t size) {
     snprintf(out, size, "%s", g_io_said.c_str());
     g_io_said.clear();
     return true;
+}
+// (1.0.2, T18, GU#258) The settings' Show rows of the game's buttons the emulator-style layout has too: with that layout
+// in use they show and hide its button (its editor's Hide, kept in the layout), so Show L3 / Show R3 work there as well.
+// The setting's own value stays the port's layout's
+namespace {
+int emu_twin(int tb) {
+    switch (tb) {
+    case TB_PLUS: return C_EPLUS;
+    case TB_MINUS: return C_EMINUS;
+    case TB_DPAD: return C_EDPAD;
+    case TB_L: return C_EL;
+    case TB_ZL: return C_EZL;
+    case TB_ZR: return C_EZR;
+    case TB_L3: return C_EL3;
+    case TB_R3: return C_ER3;
+    default: return -1;
+    }
+}
+}  // namespace
+extern "C" int touch_emu_shown(int tb) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    ensure_loaded(g_s);
+    int c = emu_twin(tb);
+    if (c < 0 || g_s.layout.kind != KIND_EMU) return -1;
+    return !(g_s.layout.off >> c & 1);
+}
+extern "C" bool touch_emu_show(int tb, bool on) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    int c = emu_twin(tb);
+    if (c < 0 || s.layout.kind != KIND_EMU || editing(s)) return false;
+    if (on) s.layout.off &= ~(1ull << c);
+    else s.layout.off |= 1ull << c;
+    s.layout.profile_line = true;
+    s.saved = s.layout;
+    save_layout(s.layout, s.epanel);
+    publish_hud(s.layout);
+    bool ok = profile_store(s.layout);
+    rt_logf("[touch] emulator-style layout: %s %s (the settings' Show row, profile %d)\n", DEFS[c].key, on ? "shown" : "hidden",
+            s.layout.profile);
+    return ok;
 }
 extern "C" bool touch_profile_clear(int n) {
     std::lock_guard<std::mutex> lk(g_lock);
