@@ -361,7 +361,7 @@ bool config_validate(const Config *c, char *error, size_t size) {
 // (setting NULL)
 typedef struct { const ConfigSetting *setting; const char *section; char key[64], value[256]; bool seen; } Entry;
 // (every setting of g_settings, 172 now, 174 on a desktop (1.0.1: the log says "[settings] N of 174" on a PC), the quests set apart, the servers and keys remembered)
-#define ENTRY_MAX (HP_QUESTS_MAX + 192 + 2 * LDN_RECENT)
+#define ENTRY_MAX (HP_QUESTS_MAX + 256 + 2 * LDN_RECENT)  // (1.0.2: about 30 more: the colour presets, FSR 1, the HUD size, combined buttons 7 to 15...)
 // A RecentServer<n> / RecentKey<n> line's key, normalized: what config_save writes again or leaves out
 static bool recent_key(const char *normalized) {
     size_t at = !strncmp(normalized, "recentserver", 12) ? 12 : !strncmp(normalized, "recentkey", 9) ? 9 : 0;
