@@ -5138,6 +5138,12 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         if (pos_x <= 430.0f) anchor = ANCHOR_LEFT;
                         else if (pos_x >= 650.0f) anchor = ANCHOR_RIGHT;
                         else anchor = ANCHOR_CENTER;
+                        // (1.0.2) In a hunt, the middle of the screen keeps the middle: the mounting gauge, one bar across
+                        // x 640 (its pieces about x 540..745, y 517), was split by place with Edges / 21:9, its monster's end
+                        // past x 650 at the right edge and the rest in the middle (GU#219, GU#261: on a 1600x720 shot the end
+                        // sat 160 pixels right of the bar)
+                        if (hunt_hud && !town && pos_x > 430.0f && pos_x < 850.0f && pos_y >= 400.0f && pos_y <= 620.0f)
+                            anchor = ANCHOR_CENTER;
                         vanchor = pos_y < 240.0f ? V_TOP : pos_y > 480.0f ? V_BOTTOM : V_CENTER;
                         // 99.0: the results screen's rule between its rows (y 266) is drawn here, beside rows of layer 100 that sit
                         // Bottom: no center band, or the line cuts through the numbers.
