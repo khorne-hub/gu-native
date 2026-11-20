@@ -8,6 +8,17 @@ static inline const char *settings_text(int language, const char *english) {
         {"SETTINGS", "OPCIONES"},
         // (1.0's menu: its sections and pages, MENU.md; the MH4U port's the same)
         {"Mods & Cheats", "Mods y trucos"},
+        {"Mods, in load order", "Mods, en orden de carga"},  // (1.0.2: Mods' list, the MH4U port's section)
+        // (1.0.2: the helps the MH4U port's rows have, with its words)
+        {"Mods that change the same game files: where both are on, the one lower in the list is used. Select it to see each pair and choose which mod is used.",
+         "Mods que cambian los mismos archivos del juego: donde los dos están activados, se usa el de más abajo en la lista. Selecciónalo para ver cada par y elegir qué mod se usa."},
+        {"Orders the mods that change the same files from the biggest to the smallest, so a small tweak wins over a large overhaul. The others keep their places.",
+         "Ordena los mods que cambian los mismos archivos del más grande al más chico, para que un retoque pequeño gane sobre una reforma grande. Los demás quedan donde están."},
+        {"How far the camera turns for the mouse's movement.", "Cuánto gira la cámara con el movimiento del ratón."},
+        {"Closes the game and opens it again, for the options marked *. Save in the game first.",
+         "Cierra el juego y lo abre de nuevo, para las opciones marcadas con *. Guarda antes en el juego."},
+        {"Closes the game and the app. Save your hunt in the game first.", "Cierra el juego y la app. Guarda antes tu cacería en el juego."},
+        {"Closes this menu.", "Cierra este menú."},
         {"Control profiles", "Perfiles de controles"},
         {"Keyboard and mouse", "Teclado y ratón"},
         {"Picture and sound", "Imagen y sonido"},
