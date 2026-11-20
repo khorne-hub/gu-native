@@ -335,7 +335,7 @@ static void control_poll(void) {
                 config_huntaids_test(v[0], v[1], v[2], v[3], v[4]);
                 continue;
             }
-            if (!strcmp(cmd, "upscale")) {  // upscale 0|1: [Display] UpscaleFilter Smooth / Sharp from the next frame, as
+            if (!strcmp(cmd, "upscale")) {  // upscale 0|1|2: [Display] UpscaleFilter Smooth / Sharp / FSR1 from the next frame, as
                 config_upscale_test(atoi(arg));  // if saved in the menu (tests: the same scene both ways)
                 continue;
             }

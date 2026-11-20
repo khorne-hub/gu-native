@@ -930,6 +930,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(fsr_upscaler);
     SAME(fsr_quality);
     SAME(fsr_sharpness);
+    SAME(fsr1_sharpness);
     SAME(fsr_objmotion);
     SAME(fsr_reactive);
     SAME(fsr_animsurf);
@@ -2382,7 +2383,17 @@ void mods_rows(std::vector<Row> &r) {
 // Render resolution. Any percent from RENDER_SCALE_MIN to 100: left / right one percent, a tap the usual ones (gu-native
 // #204, 4u-native #51: 20 %, 55-60 %); a phone's list also has an exact size (RenderResolution, its Width and Height rows
 // under this one; a desktop has them as Render resolution Custom). A percent not among them, as the file may have it, shows
-// as it is
+// as it is. 1.0.2 (S11, TheKillerZombies550's suggestion; the MH4U port goes to 8x): up to RENDER_SCALE_MAX, the value in
+// red above 100 and a note under the row that it is at the player's own risk
+const char *scale_risk() {
+#ifdef __ANDROID__
+    return en_es("Above 100%: more GPU and memory. It can lower the FPS, heat the phone or close the game; at your own risk.",
+                 "Más de 100%: más GPU y memoria. Puede bajar los FPS, calentar el teléfono o cerrar el juego; bajo tu responsabilidad.");
+#else
+    return en_es("Above 100%: more GPU and memory. It can lower the FPS, heat the PC or close the game; at your own risk.",
+                 "Más de 100%: más GPU y memoria. Puede bajar los FPS, calentar la PC o cerrar el juego; bajo tu responsabilidad.");
+#endif
+}
 void scale_row(std::vector<Row> &r) {
     Config &c = s.draft;
     if (c.fsr && !c.low_end)
@@ -2391,7 +2402,7 @@ void scale_row(std::vector<Row> &r) {
     if (c.render_w)
         return;
 #endif
-    static const int presets[] = {100, 90, 80, 75, 66, 60, 55, 50, 40, 33, 25, 20};
+    static const int presets[] = {200, 175, 150, 125, 100, 90, 80, 75, 66, 60, 55, 50, 40, 33, 25, 20};
     const int n = (int)std::size(presets);
     // (the screen held landscape: the size a percent comes to, about, before the picture's shape; config.c has the exact one)
     const int sw = std::max(g_config.width, g_config.height), sh = std::min(g_config.width, g_config.height);
@@ -2403,10 +2414,11 @@ void scale_row(std::vector<Row> &r) {
         row.value = std::string(en_es("Exact", "Exacta")) + " (" + std::to_string(c.render_w) + "x" + std::to_string(c.render_h) + ")";
     } else {
         row.value = std::to_string(c.render_scale) + "%";
-        if (sw > 0 && c.render_scale < 100)
+        if (sw > 0 && c.render_scale != 100)
             row.value += " (" + std::to_string(sw * c.render_scale / 100 & ~1) + "x" + std::to_string(sh * c.render_scale / 100 & ~1) + ")";
         row.number = true;
-        row.adjust = [](int d) { s.draft.render_scale = std::clamp(s.draft.render_scale + d, RENDER_SCALE_MIN, 100); };
+        row.adjust = [](int d) { s.draft.render_scale = std::clamp(s.draft.render_scale + d, RENDER_SCALE_MIN, RENDER_SCALE_MAX); };
+        row.warn = c.render_scale > 100;
     }
     Row copy = row;
     row.menu = true;
@@ -2442,30 +2454,46 @@ void scale_row(std::vector<Row> &r) {
         "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a tap offers "
         "the usual ones and an exact size. Lower is faster and softer. The HUD and the text are drawn at this size too, so "
         "they soften with it, unless Low-end mode or FSR is on: drawing them at the screen's full size over a smaller 3D "
-        "picture costs a weak phone's GPU more than it gains.",
+        "picture costs a weak phone's GPU more than it gains. Above 100% (up to 200%) the picture is drawn bigger than the "
+        "screen and scaled down to it: smoother edges, for much more GPU and memory, at your own risk; FSR and the upscale "
+        "filter are not used there.",
         "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un toque "
         "ofrece los habituales y un tamaño exacto. Más bajo es más rápido y más suave. El HUD y los textos se dibujan a este "
         "tamaño también, así que se suavizan con él, salvo con el modo gama baja o FSR: dibujarlos al tamaño completo de la "
-        "pantalla sobre una imagen 3D más chica le cuesta a la GPU de un teléfono débil más de lo que gana.");
+        "pantalla sobre una imagen 3D más chica le cuesta a la GPU de un teléfono débil más de lo que gana. Por encima de "
+        "100% (hasta 200%) la imagen se dibuja más grande que la pantalla y se achica hasta ella: bordes más suaves, por "
+        "mucha más GPU y memoria, bajo tu responsabilidad; ahí no se usan FSR ni el filtro de escalado.");
 #else  // (config.c: below 100, the HUD at the screen's size over the smaller picture, fsr.c's plain scaling; the menus'
        // models drawn after its start get none of the anti-aliasing, as with FSR: nvn/vulkan/exec.c models_aa)
     row.help = en_es(
         "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a click "
         "offers the usual ones (Render resolution Custom sets an exact size). Lower is faster and softer; the HUD and the "
         "text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D "
-        "models in the menus get no anti-aliasing.",
+        "models in the menus get no anti-aliasing. Above 100% (up to 200%) the picture, HUD included, is drawn bigger than "
+        "the screen and scaled down to it: smoother edges, for much more GPU and memory, at your own risk; FSR and the "
+        "upscale filter are not used there.",
         "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un clic "
         "ofrece los habituales (Resolución de renderizado Personalizada fija un tamaño exacto). Más bajo es más rápido y más "
         "suave; el HUD y los textos siguen nítidos a resolución completa. En una GPU débil es lo que más acelera el juego. "
-        "Por debajo de 100%, los modelos 3D de los menús no tienen antialiasing.");
+        "Por debajo de 100%, los modelos 3D de los menús no tienen antialiasing. Por encima de 100% (hasta 200%) la "
+        "imagen, con el HUD, se dibuja más grande que la pantalla y se achica hasta ella: bordes más suaves, por mucha más "
+        "GPU y memoria, bajo tu responsabilidad; ahí no se usan FSR ni el filtro de escalado.");
 #endif
     r.push_back(std::move(row));
 #ifdef __ANDROID__
-    if (c.render_w) {  // (RenderResolution: config.c fits it to the picture's shape, at most the screen's)
-        number(r, "render.width", en_es("Width", "Ancho"), &c.render_w, 320, std::max(320, sw), 16, ini("RenderResolution"));
-        number(r, "render.height", en_es("Height", "Alto"), &c.render_h, 180, std::max(180, sh), 8, ini("RenderResolution"));
+    if (c.render_w) {  // (RenderResolution: config.c fits it to the picture's shape, at most twice the screen's: 1.0.2, S11)
+        const int mw = std::min(RENDER_SIDE_MAX, std::max(320, sw) * RENDER_SCALE_MAX / 100);
+        const int mh = std::min(RENDER_SIDE_MAX, std::max(180, sh) * RENDER_SCALE_MAX / 100);
+        number(r, "render.width", en_es("Width", "Ancho"), &c.render_w, 320, mw, 16, ini("RenderResolution"));
+        r.back().warn = sw > 0 && c.render_w > sw;
+        number(r, "render.height", en_es("Height", "Alto"), &c.render_h, 180, mh, 8, ini("RenderResolution"));
+        r.back().warn = sh > 0 && c.render_h > sh;
     }
+    if ((c.render_w && sw > 0 && (c.render_w > sw || c.render_h > sh)) || (!c.render_w && c.render_scale > 100))
+#else
+    if (c.render_scale > 100)
 #endif
+        note(r, "render.risk", scale_risk());
 }
 // S46 (group build): the game code made on the phone (android/.../BuilderActivity.java); 1.0.1, on a desktop, by MHGU.exe
 // itself (runtime/pc_builder.c, its page in runtime/launcher.cpp: asked first, the game closes into it). Its row, its
@@ -2974,12 +3002,19 @@ MENU_ENTRY("graphics", 30, rows_graphics_30, reset_graphics_30);
 // The upscale filter (1.0.1, gu-native #247: 540p on a 1080p screen looked blurry, where the MH4U port's nearest scaling
 // doesn't): how a 3D picture smaller than the screen is scaled up to it, Smooth (linear, as before) or Sharp (its nearest
 // pixels). Live, from the next frame after Save (nvn/vulkan/fsr.c scale_to_stand: under a HUD at the screen's size;
-// exec.c vk_present_draw: a picture with its HUD in it). FSR rebuilds the picture itself: none there
+// exec.c vk_present_draw: a picture with its HUD in it). FSR rebuilds the picture itself: none there.
+// 1.0.2 (S6, the suggestion threads and 4U#68; the MH4U port has the same choice): FSR 1, AMD's EASU and RCAS (exec.c
+// vk_fsr1_scale) under a HUD at the screen's size, with its own sharpness. A phone without Low-end mode gets that HUD
+// picture for it at the start (config.c fsr1_hud): there, changing to or from FSR 1 needs a restart (the row's *)
 void rows_graphics_35(std::vector<Row> &r) {
     add_choice(r, "upscale", en_es("Upscale filter", "Filtro de escalado"), s.draft.upscale_sharp,
-               {en_es("Smooth", "Suave"), en_es("Sharp (nearest)", "Nítido (vecino más cercano)")},
+               {en_es("Smooth", "Suave"), en_es("Sharp (nearest)", "Nítido (vecino más cercano)"), "FSR 1"},
                [](int v) { s.draft.upscale_sharp = v; }, ini("UpscaleFilter"));
     Row &row = r.back();
+#ifdef __ANDROID__
+    if (!s.draft.low_end && !s.draft.fsr)
+        row.cold = s.draft.upscale_sharp == UPSCALE_FSR1 || s.saved.upscale_sharp == UPSCALE_FSR1;
+#endif
     // (the 3D resolution's row isn't there either: FSRQuality sets the size. Where FSR can't run, g_fsr_unavailable, its
     // quality's size is scaled up plainly, and this filter does it: fsr.c plain_fallback)
     if (s.draft.fsr && !s.draft.low_end && !g_fsr_unavailable) {
@@ -2994,7 +3029,10 @@ void rows_graphics_35(std::vector<Row> &r) {
         "of that smaller picture, so they get the same filter; with Low-end mode they are drawn over it as before. Not "
         "used with FSR, which rebuilds the picture itself, except on a GPU where FSR can't run (Vulkan 1.1): there it scales "
         "up the FSR quality's size. It changes nothing at 100%, costs next to nothing, and works with "
-        "MSAA, FXAA, the Colour page, HDR and frame generation.",
+        "MSAA, FXAA, the Colour page, HDR and frame generation. FSR 1 (AMD FidelityFX Super Resolution 1) rebuilds the "
+        "edges as it scales up and then sharpens them: clearer than Smooth and with no blocks. With it the HUD and the "
+        "text are drawn sharp over the 3D picture at the screen's size, which costs some GPU (about 1 ms a frame on a "
+        "weak phone); without Low-end mode, changing to or from it needs a restart. Not used over the PS1 filter.",
         "Cómo se agranda la imagen 3D hasta la pantalla cuando la resolución 3D está por debajo de 100%. "
         "Suave mezcla sus píxeles: más suave, como antes. Nítido (vecino más cercano) hace de cada "
         "uno de sus píxeles un bloque nítido de la pantalla: definido, pero en bloques; se ve más parejo a "
@@ -3002,7 +3040,11 @@ void rows_graphics_35(std::vector<Row> &r) {
         "imagen más chica y llevan el mismo filtro; con el modo gama baja se dibujan encima como siempre. No se usa "
         "con FSR, que reconstruye la imagen él mismo, salvo en una GPU donde FSR no puede andar (Vulkan 1.1): ahí agranda el "
         "tamaño de la calidad de FSR. A 100% no cambia nada, casi no cuesta nada y funciona con MSAA, "
-        "FXAA, la página Color, HDR y la generación de cuadros.");
+        "FXAA, la página Color, HDR y la generación de cuadros. FSR 1 (AMD FidelityFX Super Resolution 1) "
+        "reconstruye los bordes al agrandar y después los afila: más claro que Suave y sin bloques. Con él, el HUD y "
+        "los textos se dibujan nítidos encima de la imagen 3D al tamaño de la pantalla, lo que cuesta algo de GPU "
+        "(alrededor de 1 ms por cuadro en un teléfono débil); sin el modo gama baja, cambiar a FSR 1 o volver de él "
+        "necesita reiniciar. No se usa con el filtro PS1.");
 #else
     row.help = en_es(
         "How the 3D picture is scaled up to the screen when it is smaller (3D resolution below 100%, or a Custom render "
@@ -3010,7 +3052,9 @@ void rows_graphics_35(std::vector<Row> &r) {
         "pixels a sharp block of the screen's: crisp, but blocky; it looks most even at 50%, where each pixel becomes "
         "exactly 2x2. The HUD and the text stay sharp at full resolution over it (with a Custom render resolution they "
         "are part of the picture and get the same filter). Not used with FSR, which rebuilds the picture itself. It costs "
-        "next to nothing, and works with MSAA, FXAA, the Colour page, HDR and frame generation.",
+        "next to nothing, and works with MSAA, FXAA, the Colour page, HDR and frame generation. FSR 1 (AMD FidelityFX "
+        "Super Resolution 1) rebuilds the edges as it scales up and then sharpens them: clearer than Smooth and with no "
+        "blocks, for a little GPU. Not used over the PS1 filter.",
         "Cómo se agranda la imagen 3D hasta la pantalla cuando es más chica (resolución 3D por debajo de "
         "100%, o una resolución de renderizado Personalizada menor que la de la pantalla). Suave mezcla sus "
         "píxeles: más suave, como antes. Nítido (vecino más cercano) hace de cada uno de sus "
@@ -3018,10 +3062,25 @@ void rows_graphics_35(std::vector<Row> &r) {
         "donde cada píxel queda justo en 2x2. El HUD y los textos siguen nítidos a resolución completa "
         "encima (con una resolución de renderizado Personalizada son parte de la imagen y llevan el mismo filtro). No "
         "se usa con FSR, que reconstruye la imagen él mismo. Casi no cuesta nada y funciona con MSAA, FXAA, la "
-        "página Color, HDR y la generación de cuadros.");
+        "página Color, HDR y la generación de cuadros. FSR 1 (AMD FidelityFX Super Resolution 1) reconstruye los "
+        "bordes al agrandar y después los afila: más claro que Suave y sin bloques, por un poco de GPU. No se usa "
+        "con el filtro PS1.");
 #endif
+    if (s.draft.upscale_sharp == UPSCALE_FSR1 && row.enabled) {  // (FSR 1's RCAS: FSR's Sharpness's numbers)
+        number(r, "upscale.fsr1sharp", en_es("FSR 1 sharpness", "Nitidez de FSR 1"), &s.draft.fsr1_sharpness,
+               lo("FSR1Sharpness"), hi("FSR1Sharpness"), .05f, ini("FSR1Sharpness"));
+        r.back().value = std::to_string((int)std::lround(s.draft.fsr1_sharpness * 100)) + " %";
+        r.back().help = en_es("How much FSR 1 sharpens the 3D picture after scaling it up: 0% not at all, 100% the most. "
+                              "Live.",
+                              "Cuánto afila FSR 1 la imagen 3D después de agrandarla: 0% nada, 100% lo máximo. Se ve "
+                              "al momento.");
+    }
 }
-void reset_graphics_35() { s.draft.upscale_sharp = config_defaults().upscale_sharp; }
+void reset_graphics_35() {
+    Config f = config_defaults();
+    s.draft.upscale_sharp = f.upscale_sharp;
+    s.draft.fsr1_sharpness = f.fsr1_sharpness;
+}
 MENU_ENTRY("graphics", 35, rows_graphics_35, reset_graphics_35);
 // The PS1 filter (1.0.1.1, the owner's, from a suggestion on Discord; MH4U for Android has the same row): the look of the
 // 3D games of the late 90s, style only - no setting changes with it, and Brick (Low-end mode) is the one for speed. Live

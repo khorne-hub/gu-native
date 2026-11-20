@@ -62,7 +62,7 @@ _Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for eac
 #else
 #define CONFIG_DEFAULT_FXAA 1
 #endif
-#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
+#define CONFIG_DEFAULT_VALUES DISPLAY_BORDERLESS, CONFIG_DEFAULT_SIZE, 0, 0, 60, 1, 1, CONFIG_DEFAULT_FXAA, FACE_POSITION, 39500, "", 0, 1, 1, {{1, 1, 1, 1}, 2}, 1.0f, 0.0f, 1.0f, UI_CENTER, 1, 100, 0, 0, 100, MENU_CONFIRM_ORIGINAL, 1, 0, FSR_NATIVE, 0.8f, 0.8f, 1, 0.9f, 1, FSR_UP_3, UPDATES_ON, 1, 1.0f, 0, COMBO_LENIENT, "", "", "/", FXAA_ORIGINAL, 0, DEFAULT_BINDS, THEME_HUNTER, 1, 1, 1, TOUCH_AUTO, 1, 1.0f, 0.8f, 100, 1, 1, 0, 1, 0, 1, \
     1, 0, 1, 1, TOUCH_SHOW_DEFAULT, 0, {{0}}, {PADB_NONE}, "Auto", 0, 1, 1, 1, 0, 1, {{0}}, {{0}}, 0, 1.0f, 1
 // (in Config's order, config.h: a new field there needs its value here, in its place - shadows, adreno_fix, bloom, reverb before
 // touch_show: without them the touch buttons' defaults moved two places and most buttons were off; after touch_show the
@@ -104,14 +104,20 @@ static const char DEFAULT_INI[] =
 #ifndef __ANDROID__  // (config_load: below 100, fsr.c's plain scaling with the HUD at the screen's size)
     "; Below 100 the HUD and the text stay sharp: they are drawn at the screen's full resolution over the 3D picture\n"
 #endif
-    "; Between 10 and 100 (any percent; the 3D picture is never smaller than 320x180)\n"
+    "; Between 10 and 200 (any percent; the 3D picture is never smaller than 320x180). Above 100 it is drawn bigger than\n"
+    "; the screen and scaled down to it: smoother edges, for much more GPU and memory; it can lower the FPS, heat the\n"
+    "; device or close the game, at your own risk. FSR and the upscale filter are not used above 100\n"
     "; Default: 100\n"
     "RenderScale = 100\n"
     "\n"
     "; How a 3D picture smaller than the screen (RenderScale below 100, a smaller RenderResolution) is scaled up to it:\n"
-    "; Smooth (blended, softer) or Sharp (nearest: each of its pixels a sharp block). Not used with FSR\n"
+    "; Smooth (blended, softer), Sharp (nearest: each of its pixels a sharp block) or FSR1 (AMD FidelityFX Super\n"
+    "; Resolution 1: edges rebuilt and sharpened, the HUD drawn sharp over the 3D picture). Not used with FSR\n"
     "; Default: Smooth\n"
     "UpscaleFilter = Smooth\n"
+    "; With UpscaleFilter FSR1: how much it sharpens, between 0.0 and 1.0\n"
+    "; Default: 0.8\n"
+    "FSR1Sharpness = 0.8\n"
     "\n"
     "; Set to 16:9 to preserve the game's native aspect ratio\n"
     "; Default: Auto\n"
@@ -953,9 +959,10 @@ const ConfigSetting g_settings[] = {
      "Windowed|window,Fullscreen|exclusive|exclusivefullscreen,Borderless|borderless*", NULL, true, ERR_SIZE},
     {"Display", "Resolution", SET_SIZE, F(width), F(height), 0, 0, "Desktop|auto", NULL, true, ERR_SIZE},
     {"Display", "RenderResolution", SET_SIZE, F(render_w), F(render_h), 0, 0, "Auto", NULL, true, ERR_SIZE},
-    {"Display", "RenderScale", SET_INT, F(render_scale), 0, RENDER_SCALE_MIN, 100, NULL, NULL, true, ERR_SIZE},
-    {"Display", "UpscaleFilter", SET_CHOICE, F(upscale_sharp), 0, 0, 0, "Smooth|linear|bilinear,Sharp|nearest|point", NULL,
+    {"Display", "RenderScale", SET_INT, F(render_scale), 0, RENDER_SCALE_MIN, RENDER_SCALE_MAX, NULL, NULL, true, ERR_SIZE},
+    {"Display", "UpscaleFilter", SET_CHOICE, F(upscale_sharp), 0, 0, 0, "Smooth|linear|bilinear,Sharp|nearest|point,FSR1|easu", NULL,
      false, ERR_MISC},
+    {"Display", "FSR1Sharpness", SET_FLOAT, F(fsr1_sharpness), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_MISC},
     {"Display", "AspectRatio", SET_ASPECT, F(aspect_ratio), 0, 0.5f, 10.0f, NULL, NULL, true, ERR_ASPECT},
     {"Display", "FOV", SET_FLOAT, F(fov), 0, 0.5f, 2.0f, NULL, NULL, false, ERR_VIEW},
     {"Display", "UIAnchor", SET_CHOICE, F(ui_anchor), 0, 0, 0, "Center|1|16:9,21:9|2,32:9|3,Edges", anchor_values, true,
@@ -1566,6 +1573,17 @@ static void lowend_hud(int h, int tw, int th, float aspect) {
     else fit_aspect(tw, th, aspect, &ow, &oh);
     g_fsr_output[0] = (uint32_t)ow, g_fsr_output[1] = (uint32_t)oh;
 }
+// (1.0.2: a phone's UpscaleFilter FSR1 without Low-end mode: the 3D picture w x h scaled up by FSR 1 to the screen's size,
+// in the picture's shape, with the HUD drawn there over it as on a desktop, fsr.c; without it the HUD and the letters are
+// part of the small picture, which FSR 1 would then sharpen too. The HUD's picture at the screen's size costs some GPU:
+// the player's choice, off by default)
+static void fsr1_hud(int w, int h, int tw, int th, float aspect) {
+    int ow, oh;
+    fit_aspect(tw, th, aspect, &ow, &oh);
+    if (ow <= w && oh <= h) return;
+    g_fsr_output[0] = (uint32_t)ow, g_fsr_output[1] = (uint32_t)oh;
+    LOG("[config] UpscaleFilter FSR1: the HUD at %dx%d over the %dx%d 3D picture\n", ow, oh, w, h);
+}
 #endif
 
 #ifndef __ANDROID__
@@ -1748,7 +1766,7 @@ void config_load(void) {
     if ((e = getenv("MHGU_GRASS"))) g_config.grass = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_EFFECTS"))) g_config.effects = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FPS_LIMIT")) && atoi(e) >= FPS_MIN && atoi(e) <= FPS_MAX) g_config.fps = atoi(e), config_live_test(&g_config);
-    if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= 100) g_config.render_scale = atoi(e);
+    if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= RENDER_SCALE_MAX) g_config.render_scale = atoi(e);
     if ((e = getenv("MHGU_SHADOWS"))) g_config.shadows = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FSR"))) g_config.fsr = atoi(e) != 0;  // (test runs: MHGU_FSR=0|1, MHGU_FSR_QUALITY=quality...)
 #ifdef __ANDROID__
@@ -1797,6 +1815,12 @@ void config_load(void) {
             LOG("[config] RenderScale %d%% would be below 320x180: using %d%%\n", g_config.render_scale, s);
         }
         fit_aspect(tw * s / 100, th * s / 100, aspect, &w, &h);
+        if (w > RENDER_SIDE_MAX || h > RENDER_SIDE_MAX) {  // (1.0.2: above 100%, never past what a GPU's images allow)
+            int sw = w, sh = h;
+            fit_aspect(w > h ? RENDER_SIDE_MAX : RENDER_SIDE_MAX * w / h, w > h ? RENDER_SIDE_MAX * h / w : RENDER_SIDE_MAX,
+                       aspect, &w, &h);
+            LOG("[config] RenderScale %d%% would be %dx%d, more than %d a side: using %dx%d\n", s, sw, sh, RENDER_SIDE_MAX, w, h);
+        }
 #ifdef __ANDROID__
         // (a 3D picture a few lines under 720 is 720 lines tall instead, the game's own HUD canvas height: 66% of a
         // 1080-line screen gave 1582x712, and an Adreno on a Vulkan 1.1 driver got AdrenoFix's 2x MSAA for those 8 lines
@@ -1809,8 +1833,12 @@ void config_load(void) {
         }
 #endif
         if (s < 100) LOG("[config] RenderScale %d%%: the 3D picture at %dx%d (screen %dx%d)\n", s, w, h, tw, th);
+        if (s > 100)  // (1.0.2, S11: the whole frame drawn bigger and scaled down as it is shown; no HUD of its own, FSR or filter)
+            LOG("[config] RenderScale %d%%: the picture at %dx%d, scaled down to the screen %dx%d as it is shown (above 100%%: "
+                "the player's own risk)\n", s, w, h, tw, th);
 #ifdef __ANDROID__
         if (g_config.low_end && !g_config.fsr && s < 100) lowend_hud(h, tw, th, aspect);
+        else if (g_config.upscale_sharp == UPSCALE_FSR1 && !g_config.fsr && s < 100) fsr1_hud(w, h, tw, th, aspect);
 #else
         // (a desktop, any RenderScale below 100 with or without Low-end mode: the HUD and the text stay sharp over the
         // smaller 3D picture, drawn at the screen's whole size (fsr.c's plain scaling, vk_fsr_init). A PC's GPU affords
@@ -1831,9 +1859,13 @@ void config_load(void) {
     } else {
         int rw = g_config.render_w, rh = g_config.render_h;
 #ifdef __ANDROID__
-        // (a phone's exact size, the menu's 3D resolution "Exact size": 320x180 to the screen's own)
-        rw = rw < 320 ? 320 : rw > tw ? tw : rw;
-        rh = rh < 180 ? 180 : rh > th ? th : rh;
+        // (a phone's exact size, the menu's 3D resolution "Exact size": 320x180 to the screen's own; 1.0.2, S11: to twice it,
+        // RenderScale's 200%)
+        int mw = tw * RENDER_SCALE_MAX / 100, mh = th * RENDER_SCALE_MAX / 100;
+        if (mw > RENDER_SIDE_MAX) mw = RENDER_SIDE_MAX;
+        if (mh > RENDER_SIDE_MAX) mh = RENDER_SIDE_MAX;
+        rw = rw < 320 ? 320 : rw > mw ? mw : rw;
+        rh = rh < 180 ? 180 : rh > mh ? mh : rh;
 #endif
         fit_aspect(rw, rh, aspect, &w, &h);
         if (w != g_config.render_w || h != g_config.render_h)
@@ -1842,6 +1874,7 @@ void config_load(void) {
 #ifdef __ANDROID__
         LOG("[config] RenderResolution: the 3D picture at %dx%d (screen %dx%d)\n", w, h, tw, th);
         if (g_config.low_end && !g_config.fsr && h < th) lowend_hud(h, tw, th, aspect);  // (as a percent's)
+        else if (g_config.upscale_sharp == UPSCALE_FSR1 && !g_config.fsr && h < th) fsr1_hud(w, h, tw, th, aspect);
 #endif
     }
     {   // ([Display] UpscaleFilter's: FSR off and a 3D picture smaller than at 100%, what the filter scales up; the HUD at
@@ -1850,8 +1883,11 @@ void config_load(void) {
         int fw, fh;
         fit_aspect(tw, th, aspect, &fw, &fh);
         g_scaled_3d = !g_config.fsr && (w < fw || h < fh);
-        if (g_scaled_3d && g_config.upscale_sharp)
+        if (g_scaled_3d && g_config.upscale_sharp == UPSCALE_SHARP)
             LOG("[config] UpscaleFilter Sharp: the %dx%d 3D picture scaled up by its nearest pixels\n", w, h);
+        if (g_scaled_3d && g_config.upscale_sharp == UPSCALE_FSR1)
+            LOG("[config] UpscaleFilter FSR1: the %dx%d 3D picture scaled up by FSR 1 (EASU, then RCAS at %.2f) under the "
+                "HUD\n", w, h, g_config.fsr1_sharpness);
     }
     if (render_auto && g_config.fsr && g_config.render_scale < 100)
         LOG("[config] RenderScale %d%% not used: FSR is on (FSRQuality sets the 3D size)\n", g_config.render_scale);

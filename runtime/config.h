@@ -98,6 +98,7 @@ typedef struct {
     int fsr;                  // [Upscaler] FSR 3.1: 1 on (runtime/nvn/vulkan/fsr.c), 0 off
     int fsr_quality;          // FSR_*: the render scale
     float fsr_sharpness;      // FSR's RCAS sharpening, 0..1
+    float fsr1_sharpness;     // [Display] FSR1Sharpness (1.0.2): UpscaleFilter FSR1's RCAS, 0..1 as FSR's (2 - 2x stops)
     int fsr_objmotion;        // FSR: motion vectors of moving objects (characters, monsters): 1 on, 0 camera only
     float fsr_reactive;       // FSR: reactive mask strength on the game's moving-object mask, 0 (off) .. 1
     int fsr_animsurf;         // FSR: surfaces animated through their texture (banners, water): 1 detected, 0 off
@@ -209,7 +210,8 @@ typedef struct {
                               // rate or less (nvn/vulkan/framegen.c); off by default (0: nothing in CONFIG_DEFAULT_VALUES)
     int upscale_sharp;        // [Display] UpscaleFilter (1.0.1, gu-native #247): a 3D picture smaller than the screen scaled
                               // up by its nearest pixels (Sharp, 1) instead of linearly (Smooth, 0: the default, as before);
-                              // FSR off only (nvn/vulkan/fsr.c scale_to_stand, exec.c vk_present_draw)
+                              // FSR off only (nvn/vulkan/fsr.c scale_to_stand, exec.c vk_present_draw). 1.0.2: or by
+                              // FSR 1 (UPSCALE_FSR1: EASU + RCAS, nvn/vulkan/exec.c vk_fsr1_scale), under the HUD only
     // The hunting aids (1.0.1, the owner's; runtime/hunt_aids.h, hle/huntaids.c, hunt_overlay.cpp; Graphics & Audio >
     // Screen and HUD), each off by default (0: nothing in CONFIG_DEFAULT_VALUES)
     int monsters_on_map;      // [Hunting Aids] MonstersOnMap: the large monsters on the game's maps from a quest's start, as
@@ -249,6 +251,10 @@ void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
 #define LDN_SERVERS {LDN_DEFAULT_SERVER}
 #define RENDER_SCALE_MIN 10  // [Display] RenderScale's least: any percent from it to 100 (the menu's 3D resolution; config.c
                              // keeps the 3D picture 320x180 at least)
+#define RENDER_SCALE_MAX 200  // ...and its most (1.0.2, S11): above 100 the 3D picture, its HUD in it, is drawn bigger than
+                              // the screen and scaled down to it as it is shown (supersampling), at the player's own risk:
+                              // GPU and memory 4 times 100%'s at 200. Never more than RENDER_SIDE_MAX a side (config.c)
+#define RENDER_SIDE_MAX 8192
 #define LOW_END_SCALE 40  // what the menu's Low-end mode sets: RenderScale, FPS
 #define LOW_END_FPS 30
 // [Performance] FPS: the most a phone takes; a desktop also takes more, up to FPS_UNLIMITED ("Unlimited" in the file
@@ -283,6 +289,7 @@ enum { UPDATES_OFF, UPDATES_ON };  // (an older file's Ask and Auto: On; Never: 
 enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_XESS };  // [Upscaler] Upscaler (a start-up setting: the device is made for it)
+enum { UPSCALE_SMOOTH, UPSCALE_SHARP, UPSCALE_FSR1 };  // [Display] UpscaleFilter (Config.upscale_sharp)
 enum { FSR_NATIVE, FSR_QUALITY, FSR_BALANCED, FSR_PERFORMANCE, FSR_ULTRA_PERFORMANCE };  // output / render: 1, 1.5, 1.7, 2, 3
 
 extern Config g_config;
@@ -389,7 +396,8 @@ int config_live_pause_menu(void);       // [Application] PauseInMenu
 int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
 int config_live_frame_gen(void);        // [Graphics] FrameGen (nvn/vulkan/framegen.c)
-int config_live_upscale_sharp(void);    // [Display] UpscaleFilter: 1 Sharp (nvn/vulkan/fsr.c, exec.c)
+int config_live_upscale_sharp(void);    // [Display] UpscaleFilter: UPSCALE_* (nvn/vulkan/fsr.c, exec.c)
+float config_live_fsr1_sharpness(void); // [Display] FSR1Sharpness (nvn/vulkan/fsr.c)
 void config_upscale_test(int sharp);    // (tests: MHGU_CONTROL "upscale 0|1") as if saved, until the next save
 int config_live_grass(void);            // [Performance] Grass
 int config_live_effects(void);          // [Performance] Effects
