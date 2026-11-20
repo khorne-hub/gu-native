@@ -291,9 +291,10 @@ const Def DEFS[C_COUNT] = {
     {"mzr", "ZR", I_LETTER, "ZR", B(BTN_ZR), true, 0, 0, .040f},
     {"mminus", "Minus  -", I_MINUS, "-", B(BTN_MINUS), true, 0, 0, .030f},  // (the item box: its other sections)
     // (1.0.2) the Smithy's weapon tree (runtime/weapon_tree.h): only while the Smithy shows a weapon, a menu of the game's;
-    // in the left column under the menu's, the map's and the settings' places, clear of the stick. It presses none of the
-    // game's buttons: a tap opens the tree
-    {"weapon_tree", "Weapon tree", I_TREE, "", 0, false, .065f, .31f, .046f},
+    // in the left column under the menu's, the map's and the settings' places, clear of the stick, one place below the
+    // map's button (which shows in a quest only), so the two never sit on each other in the editor. It presses none of
+    // the game's buttons: a tap opens the tree
+    {"weapon_tree", "Weapon tree", I_TREE, "", 0, false, .065f, .19f, .046f},
 };
 // which layout a control belongs to: the hunt's (the pill, B, the map, the stick), the menus' (the d-pad, the diamond,
 // Minus), or both

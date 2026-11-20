@@ -753,7 +753,7 @@ const char* Words(const char* english, bool spanish) {
         {"Weapon tree", "Árbol de armas"},
         {"In the box", "En la caja"},
         {"Equipped", "Equipada"},
-        {"Next: not known yet", "Siguiente: todavía no la conocés"},
+        {"Next: not known yet", "Siguiente: todavía no la conoces"},
         {"Forged from scratch", "Se forja desde cero"},
         {"Upgraded from", "Se mejora desde"},
         {"Upgrade from", "Mejora desde"},
