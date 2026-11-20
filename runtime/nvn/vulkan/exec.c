@@ -5215,6 +5215,29 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
                         }
                     }
                     if (!hud_moves && !part_custom) new_pos_x = pos_x, new_pos_y = pos_y;  // (told only: drawn where the game put it)
+                    // (1.0.2) The HUD's size ([Display] HUDSize, hud_global) for what the game draws as HUD in a hunt besides
+                    // the parts, each window whole toward its own corner (as the MH4U port's HUD_GROUPS): the central
+                    // notifications and banners (layer 94, "Time limit": the middle, at the top or the bottom), the talk and
+                    // help box with its yes / no (96, at the bottom left of the middle 16:9; the top's guides at their
+                    // corner), the Quest Complete stamp (the middle) and the prompts at the bottom right (100, not a
+                    // cinematic's bars). Not the hunt's menus (97 / 98: the pause menu, the pouch), the reticles and markers
+                    // (110), nor a town's, the results or a loading screen
+                    {
+                        float g = hud_global();
+                        if (g != 1.0f && hunt_hud && !town && part < 0 && !ui_loading_pass) {
+                            float ax = -1.0f, ay = 0.0f;
+                            bool z94 = pos_z < 95.0f, z96 = fabsf(pos_z - 96.0f) < 0.5f, z100 = fabsf(pos_z - 100.0f) < 0.5f;
+                            if (z94) ax = 640.0f, ay = vanchor == V_TOP ? 0.0f : vanchor == V_BOTTOM ? 720.0f : 360.0f;
+                            else if (z96 && pos_y >= 360.0f) ax = 640.0f - 640.0f * s, ay = 720.0f;
+                            else if (z96) ax = pos_x >= 650.0f ? anchor_right : anchor_left, ay = 0.0f;
+                            else if (ui_stamp_pass && fabsf(pos_z - 97.0f) < 0.5f) ax = 640.0f, ay = 360.0f;
+                            else if (z100 && pos_x >= 1000.0f && pos_y > 600.0f && pos_y < 712.0f) ax = anchor_right, ay = 720.0f;
+                            if (ax >= 0.0f) {
+                                new_pos_x = ax + (new_pos_x - ax) * g, new_pos_y = ay + (new_pos_y - ay) * g;
+                                part_k = g, part_custom = true;  // (moved and sized: its matrix below)
+                            }
+                        }
+                    }
                     if (window_piece) hud_window_piece(new_pos_x, new_pos_y);
                     {  // (a part moved from the game's place: where it went, and not drawn while it lies on a menu's window)
                         // (the touch arrangement moves all but the minimap)
