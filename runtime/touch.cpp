@@ -5815,6 +5815,48 @@ extern "C" bool touch_profile_new(int n, int kind) {
     profile_in_use(s, l, "the settings' New");
     return true;
 }
+// (1.0.2, T18, GU#258) The settings' Show rows of the game's buttons the emulator-style layout has too: with that layout
+// in use they show and hide its button (its editor's Hide, kept in the layout), so Show L3 / Show R3 work there as well.
+// The setting's own value stays the port's layout's
+namespace {
+int emu_twin(int tb) {
+    switch (tb) {
+    case TB_PLUS: return C_EPLUS;
+    case TB_MINUS: return C_EMINUS;
+    case TB_DPAD: return C_EDPAD;
+    case TB_L: return C_EL;
+    case TB_ZL: return C_EZL;
+    case TB_ZR: return C_EZR;
+    case TB_L3: return C_EL3;
+    case TB_R3: return C_ER3;
+    default: return -1;
+    }
+}
+}  // namespace
+extern "C" int touch_emu_shown(int tb) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    ensure_loaded(g_s);
+    int c = emu_twin(tb);
+    if (c < 0 || g_s.layout.kind != KIND_EMU) return -1;
+    return !(g_s.layout.off >> c & 1);
+}
+extern "C" bool touch_emu_show(int tb, bool on) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    int c = emu_twin(tb);
+    if (c < 0 || s.layout.kind != KIND_EMU || editing(s)) return false;
+    if (on) s.layout.off &= ~(1ull << c);
+    else s.layout.off |= 1ull << c;
+    s.layout.profile_line = true;
+    s.saved = s.layout;
+    save_layout(s.layout, s.epanel);
+    publish_hud(s.layout);
+    bool ok = profile_store(s.layout);
+    rt_logf("[touch] emulator-style layout: %s %s (the settings' Show row, profile %d)\n", DEFS[c].key, on ? "shown" : "hidden",
+            s.layout.profile);
+    return ok;
+}
 extern "C" bool touch_profile_clear(int n) {
     std::lock_guard<std::mutex> lk(g_lock);
     State &s = g_s;

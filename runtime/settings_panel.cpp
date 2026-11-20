@@ -4103,6 +4103,16 @@ void touch_button_rows(std::vector<Row> &r) {
             if (tb_elsewhere(i)) continue;  // (a row of its own elsewhere in the menu)
             add_bool(r, ("tb." + std::to_string(i)).c_str(), TB_TITLES[i], &c.touch_show[i], nullptr);
             r.back().key = TB_KEYS[i];
+            // (1.0.2, T18, GU#258: the emulator-style layout in use shows or hides its own button by these rows too)
+            int emu = touch_emu_shown(i);
+            if (emu >= 0) {
+                Row &row = r.back();
+                row.toggle = emu, row.value = tr(emu ? "On" : "Off"), row.key.clear();  // (not the setting's own value)
+                row.activate = [i, emu]() { touch_emu_show(i, emu == 0); };
+                row.adjust = [i](int d) { touch_emu_show(i, d > 0); };
+                row.help = tr("With an emulator-style layout in use, this shows or hides its own button, as Hide does in its editor.");
+                continue;
+            }
             if (i == TB_MINUS)  // (both platforms: the default ini's says only what the buttons are)
                 r.back().help = tr("The game's Minus, in a hunt. While it is off, the menu pad has a small Minus below it: the item box opens its other sections with it.");
             if (i == TB_DPAD)  // (both platforms, the MH4U port's words: the menu pad takes its place, touch.cpp under_mpad)
