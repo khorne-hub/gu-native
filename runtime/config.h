@@ -57,7 +57,6 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
 #define TOUCH_COMBOS 6
-enum { UPSCALE_SMOOTH, UPSCALE_SHARP, UPSCALE_FSR1 };  // [Display] UpscaleFilter (Config.upscale_sharp)
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
        PADB_TOUCHPAD, PADB_COUNT };
@@ -279,6 +278,7 @@ enum { UPDATES_OFF, UPDATES_ON };  // (an older file's Ask and Auto: On; Never: 
 enum { THEME_GOLD, THEME_BLUE, THEME_HUNTER };  // [Application] Theme
 enum { UI_CENTER = 1, UI_21_9, UI_32_9, UI_EDGES };  // the middle 16:9, 21:9, 32:9, the picture's sides
 enum { FSR_UP_3, FSR_UP_4, FSR_UP_XESS };  // [Upscaler] Upscaler (a start-up setting: the device is made for it)
+enum { UPSCALE_SMOOTH, UPSCALE_SHARP, UPSCALE_FSR1 };  // [Display] UpscaleFilter (Config.upscale_sharp)
 enum { FSR_NATIVE, FSR_QUALITY, FSR_BALANCED, FSR_PERFORMANCE, FSR_ULTRA_PERFORMANCE };  // output / render: 1, 1.5, 1.7, 2, 3
 
 extern Config g_config;
