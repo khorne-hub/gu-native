@@ -81,6 +81,7 @@ int weapon_drawn(void);  // (hle/weapon.c: 1 the weapon out, 0 sheathed, -1 not 
 #include "hle/mousemenu.h"  // (menu_pages_zl: the pair the game turns its pages with; menu_cursor_age: a menu takes input)
 SDL_Window *ui_window(void);
 bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platform.h: the save folder's path, as fopen takes it)
+const char *host_input_real_pad_name(void);  // (runtime/host_input.c: the controller that hides the controls, T10)
 }
 #include "app_actions.h"  // (ui_request_pictures: the layout editor's Add pictures)
 #include "haptics.h"  // (a short tick on the phone when a control is pressed)
@@ -1405,6 +1406,10 @@ struct State {
     bool loaded, touched, auto_wait;
     float smooth_x, smooth_y;  // a drag's turn not given to the camera yet, counts ([Touch] CameraSmoothing: touch_input)
     uint64_t smooth_ns;        // ...and the pass that gave the last of it
+    bool pad_hidden;         // (1.0.2, T10) the controls hidden by a controller ([Touch] Controls Auto, one connected)...
+    int pad_taps;            // ...the taps on the game since then, a few seconds apart at most, and the notice said once
+    uint64_t pad_tap_ns;
+    bool pad_said;
     bool user_hidden;        // the controls hidden by a long press where no control is ([Touch] HoldToHide), until another
     uint64_t hint_until;     // ...the line that says how to show them again, until then (the first time in a session)
     bool hint_said, hint_first;  // (the first time in a session: the line also says where to turn it off)
@@ -1852,6 +1857,24 @@ void to_menu(const SDL_Event *e) {
 
 int g_language;  // the settings menu's (touch_draw, each frame): the editor's texts in it
 const char *T(const char *english) { return settings_text(g_language, english); }
+// (1.0.2, T10, Discord: the touch controls gone in the middle of a game) The controls hidden because something counts as a
+// controller ([Touch] Controls Auto) while the player keeps tapping the game - three taps, each within 4 s of the last -:
+// once a session a notice names the device and says how to show them anyway (an earbud's or a keyboard's buttons the
+// phone calls a controller hid them, with nothing on the screen to say why)
+void pad_hidden_tap(State &s, uint64_t now) {
+    if (!s.pad_hidden || s.pad_said || s.menu) return;
+    s.pad_taps = now - s.pad_tap_ns < 4000 * MS ? s.pad_taps + 1 : 1;
+    s.pad_tap_ns = now;
+    if (s.pad_taps < 3) return;
+    s.pad_said = true;
+    const char *name = host_input_real_pad_name();
+    char t[400];
+    snprintf(t, sizeof t,
+             T("%s counts as a controller, so the touch controls are hidden. To show them anyway: gear, Controls, Show the touch controls, Always."),
+             name[0] ? name : T("A device"));
+    overlay_notice(T("Touch controls hidden"), t);
+    rt_logf("[touch] taps on the game with the controls hidden by a controller (%s): the notice said why\n", name[0] ? name : "?");
+}
 
 // The buttons a tap holds down (Layout.hold) can be: those that press the game's buttons for as long as they are down -
 // not the attacks' pill or band (a part each), the stick, the d-pads, the menu pad, the arrows (steps), the settings
@@ -2824,6 +2847,7 @@ extern "C" bool touch_event(const SDL_Event *e) {
                 tap_due();
                 return true;
             }
+            pad_hidden_tap(s, now);
             // (a controller in the hands, a handheld's own: a tap on a Hunter Art's panel still performs it, without
             // letting go of the stick to reach the d-pad, #48)
             if (g_gear_only && !s.menu && config_live_touch_show(TB_ARTS_PAD)) {  // ([Touch] ArtsWithController)
@@ -3233,6 +3257,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     bool screen = s.touched;  // (a desktop: Auto shows them once a finger has touched the screen)
 #endif
     bool shown = !typing && (mode == TOUCH_ON || (mode == TOUCH_AUTO && !pad_connected && screen));  // (by the settings)
+    s.pad_hidden = !typing && mode == TOUCH_AUTO && pad_connected && screen;  // (T10: a controller hides them)
     // A long press where no control is ([Touch] HoldToHide, 1.0.1; Discord: the controls off to watch a cutscene took the
     // settings menu): the finger landed on an empty spot, the only one down, held HOLD_HIDE without moving past the slop a
     // drag of the camera starts with - the controls hide, every one, the settings button too; another long press shows them

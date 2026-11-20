@@ -735,6 +735,19 @@ static bool real_pad_connected(void) {  // (from the open pads every call: follo
     return false;
 }
 static SDL_AtomicInt real_pad_seen;  // (host_input_real_pad: real_pad_connected at the last update, for other threads)
+// (1.0.2, T10) The first controller that hides the touch controls, by its name ("" none: runtime/touch.cpp's notice says
+// which one; the event thread, where the controllers come and go)
+const char *host_input_real_pad_name(void) {
+    static char name[128];
+    name[0] = 0;
+    for (int i = 0; i < npads; i++)
+        if (pads[i].real) {
+            const char *n = SDL_GetGamepadName(pads[i].pad);
+            snprintf(name, sizeof name, "%s", n ? n : "?");
+            break;
+        }
+    return name;
+}
 bool host_input_real_pad(void) { return SDL_GetAtomicInt(&real_pad_seen) != 0; }
 
 static void open_pad(SDL_JoystickID id) {
