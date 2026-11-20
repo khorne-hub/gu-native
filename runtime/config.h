@@ -57,9 +57,14 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
 #define TOUCH_COMBOS 6
-// a controller's buttons a combined button can be on (the less used ones)
+// a controller's button a combined button can be on ([Touch] Combo<n>Pad, runtime/host_input.c): up to 1.0.1.1 the less
+// used ones; from 1.0.2 (S1) any of them, the face buttons by their place (A on the right, as on the Switch, whatever
+// [Controls] FaceButtons says) and ZL and ZR (axes: pressed past half); and a button the controller's map doesn't name, by
+// its number (PADB_RAW0 + n, "Raw<n>" in the file: an 8BitDo's paddles on Android, T32), which the settings' Press a
+// controller button takes. The values up to PADB_TOUCHPAD are 1.0.1.1's, in its order
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
-       PADB_TOUCHPAD, PADB_COUNT };
+       PADB_TOUCHPAD, PADB_A, PADB_B, PADB_X, PADB_Y, PADB_L, PADB_R, PADB_ZL, PADB_ZR, PADB_PLUS, PADB_UP, PADB_DOWN,
+       PADB_LEFT, PADB_RIGHT, PADB_NAMED, PADB_RAW0 = PADB_NAMED, PADB_RAWS = 64, PADB_COUNT = PADB_RAW0 + PADB_RAWS };
 typedef struct {
     float scale[4];  // by the number of hunters (index: hunters - 1)
     float village;   // Village quests posted in the Hub / Pub: this first, then scale ([Village Quests] HubHP)

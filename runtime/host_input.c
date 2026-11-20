@@ -265,6 +265,8 @@ static void finger_due(void) {
             SDL_PushEvent(&e);
         }
 }
+static SDL_Joystick *vpads[4];  // (tests: the control file's virtual controllers, vpad / vpadraw)
+static int nv;
 static void finger_command(const char *line) {
     int n = -1, ms = 0;
     char what[16] = "";
@@ -565,15 +567,26 @@ static void control_poll(void) {
                 LOG("[control] key %s%s (%d)\n", text, !release ? " down" : !press ? " up" : "", (int)sc);
                 continue;
             }
-            if (!strcmp(cmd, "vpad")) {  // vpad: attach an SDL virtual controller (tests: picking the controller)
-                static SDL_Joystick *vpads[4];
-                static int nv;
+            // vpadaxis <n> <SDL axis number> <value>: that axis of virtual controller n (the triggers: 4 and 5, 0..32767)
+            if (!strcmp(cmd, "vpadaxis")) {
+                int n = atoi(arg), axis = atoi(arg2), v = 0;
+                sscanf(line, "%*s %*s %*s %d", &v);
+                if (n >= 0 && n < nv && vpads[n]) SDL_SetJoystickVirtualAxis(vpads[n], axis, (Sint16)SDL_clamp(v, -32768, 32767));
+                continue;
+            }
+            // vpad: attach an SDL virtual controller (tests: picking the controller); vpadraw: one whose map names only
+            // the face buttons, Back, Guide, Start, the sticks' clicks, the shoulders and the d-pad (SDL's 0 to 14), with
+            // 5 buttons more it doesn't name (15 to 19: as an 8BitDo's paddles on Android, T32)
+            if (!strcmp(cmd, "vpad") || !strcmp(cmd, "vpadraw")) {
+                bool raw = !strcmp(cmd, "vpadraw");
                 if (!strcmp(arg, "") && nv < 4) {
                     SDL_VirtualJoystickDesc d;
                     SDL_INIT_INTERFACE(&d);
-                    d.type = SDL_JOYSTICK_TYPE_GAMEPAD, d.naxes = SDL_GAMEPAD_AXIS_COUNT, d.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
-                    d.name = nv ? "Virtual pad 2" : "Virtual pad 1";
-                    d.vendor_id = 0x1234, d.product_id = (Uint16)(nv + 1);  // (SDL names it by its mapping: one per id)
+                    d.type = SDL_JOYSTICK_TYPE_GAMEPAD, d.naxes = SDL_GAMEPAD_AXIS_COUNT;
+                    d.nbuttons = raw ? 20 : SDL_GAMEPAD_BUTTON_COUNT;
+                    if (raw) d.button_mask = (1u << (SDL_GAMEPAD_BUTTON_DPAD_RIGHT + 1)) - 1;
+                    d.name = raw ? "Virtual pad with paddles" : nv ? "Virtual pad 2" : "Virtual pad 1";
+                    d.vendor_id = 0x1234, d.product_id = (Uint16)(nv + 1 + (raw ? 8 : 0));  // (SDL names it by its mapping: one per id)
                     SDL_JoystickID id = SDL_AttachVirtualJoystick(&d);
                     vpads[nv] = id ? SDL_OpenJoystick(id) : NULL;
                     LOG("[control] vpad %d: %s\n", nv, vpads[nv] ? "attached" : SDL_GetError());
@@ -689,6 +702,88 @@ static void control_poll(void) {
     }
     fclose(f);
 }
+// ---- (S1, T32) a combined button on any of a controller's buttons
+// SDL's button for each PADB_* up to PADB_NAMED (ZL and ZR are axes: none)
+static const SDL_GamepadButton PAD_OF[PADB_NAMED] = {
+    SDL_GAMEPAD_BUTTON_INVALID, SDL_GAMEPAD_BUTTON_LEFT_STICK, SDL_GAMEPAD_BUTTON_RIGHT_STICK, SDL_GAMEPAD_BUTTON_BACK,
+    SDL_GAMEPAD_BUTTON_GUIDE, SDL_GAMEPAD_BUTTON_MISC1, SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, SDL_GAMEPAD_BUTTON_LEFT_PADDLE1,
+    SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2, SDL_GAMEPAD_BUTTON_LEFT_PADDLE2, SDL_GAMEPAD_BUTTON_TOUCHPAD,
+    SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_NORTH, SDL_GAMEPAD_BUTTON_WEST,  // (A B X Y: by place)
+    SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, SDL_GAMEPAD_BUTTON_INVALID, SDL_GAMEPAD_BUTTON_INVALID,
+    SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_DOWN, SDL_GAMEPAD_BUTTON_DPAD_LEFT,
+    SDL_GAMEPAD_BUTTON_DPAD_RIGHT};
+#define TAKEN_ZL (1ull << 62)  // (a combined button's taken triggers, beside SDL's buttons' bits)
+#define TAKEN_ZR (1ull << 63)
+// The joystick buttons of a controller that its map gives no name (bits, the first 64): a press of one is nobody's but a
+// combined button's (Raw<n>). Asked again every few seconds and for another controller (a map saved in between)
+static uint64_t unnamed_buttons(SDL_Gamepad *g) {
+    static SDL_Gamepad *of;
+    static uint64_t mask, at;
+    uint64_t now = plat_now_ns();
+    if (g == of && now - at < 3000000000ull) return mask;
+    of = g, at = now, mask = 0;
+    SDL_Joystick *j = SDL_GetGamepadJoystick(g);
+    int n = j ? SDL_GetNumJoystickButtons(j) : 0, nb = 0;
+    for (int i = 0; i < n && i < 64; i++) mask |= 1ull << i;
+    SDL_GamepadBinding **b = SDL_GetGamepadBindings(g, &nb);
+    for (int i = 0; b && i < nb; i++)
+        if (b[i]->input_type == SDL_GAMEPAD_BINDTYPE_BUTTON && b[i]->input.button >= 0 && b[i]->input.button < 64)
+            mask &= ~(1ull << b[i]->input.button);
+    SDL_free(b);
+    return mask;
+}
+// The named ones held (bit: PADB_*) and the unnamed ones (bit: their number)
+static uint64_t named_held(SDL_Gamepad *g) {
+    uint64_t m = 0;
+    for (int v = PADB_NONE + 1; v < PADB_NAMED; v++) {
+        bool on = v == PADB_ZL || v == PADB_ZR
+                      ? SDL_GetGamepadAxis(g, v == PADB_ZL ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER : SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16384
+                      : SDL_GetGamepadButton(g, PAD_OF[v]);
+        if (on) m |= 1ull << v;
+    }
+    return m;
+}
+static uint64_t unnamed_held(SDL_Gamepad *g) {
+    uint64_t un = unnamed_buttons(g), m = 0;
+    SDL_Joystick *j = SDL_GetGamepadJoystick(g);
+    for (int i = 0; j && un >> i; i++)
+        if ((un >> i & 1) && SDL_GetJoystickButton(j, i)) m |= 1ull << i;
+    return m;
+}
+static SDL_AtomicInt cap_on, cap_got = {-1};
+void host_input_pad_capture(bool on) { SDL_SetAtomicInt(&cap_on, on); }
+int host_input_pad_captured(void) { return SDL_GetAtomicInt(&cap_got); }
+// (each update, with the controller read) Press a controller button's press; and a button with no name pressed, said
+// once in the log (T32: a combined button can take it)
+static void pad_buttons_seen(SDL_Gamepad *g) {
+    static bool was_on;
+    static uint64_t skip_named, skip_raw, said;
+    static SDL_Gamepad *said_of;
+    bool on = SDL_GetAtomicInt(&cap_on) != 0;
+    uint64_t named = named_held(g), raw = unnamed_held(g);
+    if (said_of != g) said_of = g, said = 0;
+    for (int i = 0; i < 64; i++)
+        if ((raw >> i & 1) && !(said >> i & 1)) {
+            said |= 1ull << i;
+            LOG("[input] %s: its button %d has no name in the controller's map (a combined button can take it: Press a "
+                "controller button)\n", SDL_GetGamepadName(g), i);
+        }
+    if (on && !was_on) skip_named = named, skip_raw = raw, SDL_SetAtomicInt(&cap_got, -1);  // (held as it began: once let go)
+    was_on = on;
+    if (!on) return;
+    skip_named &= named, skip_raw &= raw;
+    uint64_t n = named & ~skip_named, r = raw & ~skip_raw;
+    if (SDL_GetAtomicInt(&cap_got) >= 0 || (!n && !r)) return;
+    int v = -1;
+    for (int i = 0; i < 64 && v < 0; i++)
+        if (n >> i & 1) v = i;
+    for (int i = 0; i < PADB_RAWS && v < 0; i++)
+        if (r >> i & 1) v = PADB_RAW0 + i;
+    SDL_SetAtomicInt(&cap_got, v);
+    LOG("[input] Press a controller button: %s took %s %d\n", SDL_GetGamepadName(g), v >= PADB_RAW0 ? "its unnamed button" : "PADB",
+        v >= PADB_RAW0 ? v - PADB_RAW0 : v);
+}
+
 // ---- events
 // Which controller the game reads. Every one is open, and a button pressed on one makes it the one read: the first
 // one SDL listed was not always the one in the player's hands (a Steam Deck's own controls and a controller plugged
@@ -1527,19 +1622,28 @@ void host_input_update(void) {
     mouse_update(&rx, &ry);
 
     uint64_t before_pad = b;  // (what the controller adds: an editor's B and +, below)
+    uint64_t pad_plain = 0;   // (...and what it would add without the combined buttons: the settings menu's, below)
     if (pad) {
-        // combined buttons on the controller's own ([Touch] Combo*Pad): that button is theirs now, not what it was
-        static const SDL_GamepadButton pad_of[PADB_COUNT] = {
-            SDL_GAMEPAD_BUTTON_INVALID, SDL_GAMEPAD_BUTTON_LEFT_STICK, SDL_GAMEPAD_BUTTON_RIGHT_STICK, SDL_GAMEPAD_BUTTON_BACK,
-            SDL_GAMEPAD_BUTTON_GUIDE, SDL_GAMEPAD_BUTTON_MISC1, SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, SDL_GAMEPAD_BUTTON_LEFT_PADDLE1,
-            SDL_GAMEPAD_BUTTON_RIGHT_PADDLE2, SDL_GAMEPAD_BUTTON_LEFT_PADDLE2, SDL_GAMEPAD_BUTTON_TOUCHPAD};
+        // combined buttons on the controller's own ([Touch] Combo*Pad): that button is theirs now, not what it was.
+        // 1.0.2 (S1): any button, the triggers past half, and one the controller's map doesn't name (T32)
+        pad_buttons_seen(pad);
         uint64_t taken = 0;
+        SDL_Joystick *joy = SDL_GetGamepadJoystick(pad);
         for (int i = 0; i < TOUCH_COMBOS; i++) {
             int on = config_live_touch_combo_pad(i);
             uint32_t combo = config_live_touch_combo(i);
             if (on <= PADB_NONE || on >= PADB_COUNT || !combo) continue;
-            taken |= 1ull << pad_of[on];
-            if (SDL_GetGamepadButton(pad, pad_of[on])) b |= combo;
+            bool held;
+            if (on >= PADB_RAW0) {
+                held = joy && SDL_GetJoystickButton(joy, on - PADB_RAW0);
+            } else if (on == PADB_ZL || on == PADB_ZR) {
+                taken |= on == PADB_ZL ? TAKEN_ZL : TAKEN_ZR;
+                held = SDL_GetGamepadAxis(pad, on == PADB_ZL ? SDL_GAMEPAD_AXIS_LEFT_TRIGGER : SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 16384;
+            } else {
+                taken |= 1ull << PAD_OF[on];
+                held = SDL_GetGamepadButton(pad, PAD_OF[on]);
+            }
+            if (held) b |= combo;
         }
         static const struct { SDL_GamepadButton sdl; int btn; } pad_buttons[] = {
             {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, BTN_L}, {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, BTN_R},
@@ -1549,7 +1653,10 @@ void host_input_update(void) {
             {SDL_GAMEPAD_BUTTON_LEFT_STICK, BTN_LSTICK}, {SDL_GAMEPAD_BUTTON_RIGHT_STICK, BTN_RSTICK},
         };
         for (unsigned i = 0; i < sizeof pad_buttons / sizeof *pad_buttons; i++)
-            if (!(taken >> pad_buttons[i].sdl & 1) && SDL_GetGamepadButton(pad, pad_buttons[i].sdl)) b |= B(pad_buttons[i].btn);
+            if (SDL_GetGamepadButton(pad, pad_buttons[i].sdl)) {
+                pad_plain |= B(pad_buttons[i].btn);
+                if (!(taken >> pad_buttons[i].sdl & 1)) b |= B(pad_buttons[i].btn);
+            }
         // face buttons: SDL names them by position (south, east, west, north). Settings FaceButtons: Position = the
         // Switch layout; Label = the letter on the button (PlayStation symbols as an Xbox pad's letters at that place)
         static const SDL_GamepadButton face[4] = {SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST,
@@ -1577,12 +1684,21 @@ void host_input_update(void) {
             menu_positions[semantic] = i;
             bool pressed = SDL_GetGamepadButton(pad, face[i]);
             held_face |= pressed;
-            if (pressed && !wait_face_release) b |= B(btn);
+            if (pressed && !wait_face_release) {
+                pad_plain |= B(btn);
+                if (!(taken >> face[i] & 1)) b |= B(btn);  // (a combined button's now: S1)
+            }
         }
         if (!held_face) wait_face_release = false;
         overlay_face_positions(menu_positions);
-        if (SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 8000) b |= B(BTN_ZL);
-        if (SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8000) b |= B(BTN_ZR);
+        if (SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 8000) {
+            pad_plain |= B(BTN_ZL);
+            if (!(taken & TAKEN_ZL)) b |= B(BTN_ZL);
+        }
+        if (SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8000) {
+            pad_plain |= B(BTN_ZR);
+            if (!(taken & TAKEN_ZR)) b |= B(BTN_ZR);
+        }
         // sticks: SDL's y is down; a small dead zone against drift
         int ax[4] = {SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTX), -SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_LEFTY),
                      SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTX), -SDL_GetGamepadAxis(pad, SDL_GAMEPAD_AXIS_RIGHTY)};
@@ -1666,9 +1782,13 @@ void host_input_update(void) {
     }
     if (padmap_active()) b = 0, lx = ly = rx = ry = 0;  // (being mapped: its presses are the mapping's)
     if (menu) {  // Forge's menu has the controller (as in Forge: A activates, B cancels, stick and d-pad move)
-        OverlayPad p = {b & B(BTN_A), b & B(BTN_B), b & B(BTN_X), b & B(BTN_Y), b & B(BTN_UP), b & B(BTN_DOWN),
-                        b & B(BTN_LEFT), b & B(BTN_RIGHT), b & B(BTN_L), b & B(BTN_R), b & B(BTN_PLUS),
-                        b & B(BTN_MINUS), clamp_axis(lx) / 32767.0f, clamp_axis(ly) / 32767.0f};
+        // (the controller's own buttons there, not the combined buttons a button of it was given; none while the
+        // settings' Press a controller button waits for one: S1)
+        uint64_t mb = SDL_GetAtomicInt(&cap_on) ? 0 : (b & ~pad_b) | pad_plain;
+        if (SDL_GetAtomicInt(&cap_on)) lx = ly = 0;
+        OverlayPad p = {mb & B(BTN_A), mb & B(BTN_B), mb & B(BTN_X), mb & B(BTN_Y), mb & B(BTN_UP), mb & B(BTN_DOWN),
+                        mb & B(BTN_LEFT), mb & B(BTN_RIGHT), mb & B(BTN_L), mb & B(BTN_R), mb & B(BTN_PLUS),
+                        mb & B(BTN_MINUS), clamp_axis(lx) / 32767.0f, clamp_axis(ly) / 32767.0f};
         overlay_pad(&p);
         b = 0, lx = ly = rx = ry = 0;
     }

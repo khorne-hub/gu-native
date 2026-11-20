@@ -1031,9 +1031,12 @@ const ConfigSetting g_settings[] = {
     ON_OFF("Touch", "ArtsWithController", touch_show[TB_ARTS_PAD], false),
     ON_OFF("Touch", "HoldToHide", touch_show[TB_HOLD_HIDE], false),
     ON_OFF("Touch", "SlideBoth", touch_show[TB_SLIDE_BOTH], false),
+// (Combo<n>Pad: PADB_*'s order, config.h; 1.0.1.1's names first, as it wrote them; a version that doesn't know a name
+// reads None)
+#define COMBO_PADS "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad,A,B,X,Y,L,R,ZL,ZR,Plus,Up,Down,Left,Right," \
+    "Raw0,Raw1,Raw2,Raw3,Raw4,Raw5,Raw6,Raw7,Raw8,Raw9,Raw10,Raw11,Raw12,Raw13,Raw14,Raw15,Raw16,Raw17,Raw18,Raw19,Raw20,Raw21,Raw22,Raw23,Raw24,Raw25,Raw26,Raw27,Raw28,Raw29,Raw30,Raw31,Raw32,Raw33,Raw34,Raw35,Raw36,Raw37,Raw38,Raw39,Raw40,Raw41,Raw42,Raw43,Raw44,Raw45,Raw46,Raw47,Raw48,Raw49,Raw50,Raw51,Raw52,Raw53,Raw54,Raw55,Raw56,Raw57,Raw58,Raw59,Raw60,Raw61,Raw62,Raw63"
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
-    {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, \
-     "None,L3,R3,Minus,Guide,Misc,Paddle1,Paddle2,Paddle3,Paddle4,Touchpad", NULL, false, ERR_MISC}
+    {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, COMBO_PADS, NULL, false, ERR_MISC}
     COMBO(1), COMBO(2), COMBO(3), COMBO(4), COMBO(5), COMBO(6),
     {"Touch", "CameraSpeed", SET_FLOAT, F(touch_camera), 0, 0.2f, 5.0f, NULL, NULL, false, ERR_VIEW},
     {"Touch", "CameraSmoothing", SET_INT, F(touch_cam_smooth), 0, 0, 100, NULL, NULL, false, ERR_MISC},

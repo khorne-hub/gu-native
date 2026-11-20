@@ -50,11 +50,14 @@ extern "C" bool vk_surface_hdr10(void);         // (nvn/vulkan/device.c: the win
 extern "C" const char *vk_hdr_fallback(void);   // (why the picture stays SDR with HDR on; NULL: it doesn't)
 extern "C" bool host_input_real_pad(void);  // (runtime/host_input.c)
 extern "C" bool host_input_keyboard_mouse(void);  // (runtime/host_input.c: a phone's keyboard and mouse, S14)
+extern "C" void host_input_pad_capture(bool on);  // (runtime/host_input.c: Press a controller button, S1)
+extern "C" int host_input_pad_captured(void);
 
 namespace {
 // (Page: a page one level down from a section's, State::at; MENU.md)
 enum class View { Main, Page, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons,
-                  ComboEdit, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord, Profiles, ProfileSlot,
+                  ComboEdit, PadCapture, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord, Profiles,
+                  ProfileSlot,
                   Chat, Friends, ChatOn,  // (the chat's pages and its question: settings_chat.inc)
                   Verify,  // (Verify game files: runtime/verify.c)
                   BuildCode };  // (a desktop's Build the game code: the game closes into its builder, runtime/pc_builder.c)
@@ -901,7 +904,7 @@ bool confirmation() {
 int view_guides() {
     switch (s.view) {
     case View::Main: case View::Page: return GUIDE_ALL;
-    case View::KeyCapture: case View::Keyboard: case View::Move: case View::PadMap: return 0;
+    case View::KeyCapture: case View::Keyboard: case View::Move: case View::PadMap: case View::PadCapture: return 0;
     case View::Licenses: return GUIDE_NAV | GUIDE_BACK;
     default: return confirmation() ? GUIDE_CONFIRM | GUIDE_BACK : GUIDE_NAV | GUIDE_CONFIRM | GUIDE_BACK;
     }
@@ -4091,6 +4094,10 @@ const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, 
                                 TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE};
 static_assert(TB_COUNT == 32, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
+std::string pad_button_name(int v);
+void set_combo_pad(int k, int v);
+extern int s_cap_combo;
+extern uint64_t s_cap_t0;
 void touch_button_rows(std::vector<Row> &r) {
     Config &c = s.draft;
     bool fingers = touch_rows() && !s_combos_alone;  // (none: the combined buttons alone, for a controller's button or a key)
@@ -4276,10 +4283,23 @@ void combo_rows(std::vector<Row> &r) {
         };
         r.push_back(std::move(row));
     }
-    add_choice(r, "ce.pad", "Controller button", c.touch_combo_pad[k],
-               {tr("None"), "L3", "R3", tr("Minus"), "Guide", "Misc", "Paddle 1", "Paddle 2", "Paddle 3", "Paddle 4", "Touchpad"},
-               [k](int v) { s.draft.touch_combo_pad[k] = v; });
-    r.back().help = tr("That button of a controller does the same, and no longer does what it did.");
+    // (1.0.2, S1: any of a controller's buttons, the face buttons by their place; one a combined button has is no longer
+    // what it was. A button the controller's map doesn't name comes from Press a controller button, by its number)
+    int cur = c.touch_combo_pad[k];
+    std::vector<std::string> names;
+    for (int v = 0; v < PADB_NAMED; v++) names.push_back(pad_button_name(v));
+    if (cur >= PADB_RAW0 && cur < PADB_COUNT) names.push_back(pad_button_name(cur));
+    add_choice(r, "ce.pad", "Controller button", cur >= PADB_RAW0 ? PADB_NAMED : cur, names,
+               [k, cur](int v) { set_combo_pad(k, v < PADB_NAMED ? v : cur); });
+    r.back().help = cur > PADB_NONE && cur < PADB_COUNT
+                        ? fmt("That controller button presses these buttons instead of its own (%s). Only one combined button can have it.",
+                              pad_button_name(cur).c_str())
+                        : tr("That button of a controller does the same, and no longer does what it did.");
+    action(r, "ce.press", tr("Press a controller button"), [k]() {
+        s_cap_combo = k, s_cap_t0 = SDL_GetTicksNS();
+        push(View::PadCapture, "pc.cancel");
+    });
+    r.back().help = tr("Press the controller button you want for it, even one the list doesn't name (a paddle, say).");
 #ifdef __ANDROID__  // (a key does the same while held: [Keybinds] Combo<n>Key, also in Keybinds; a phone's with a keyboard
     if (host_input_keyboard_mouse())  // and a mouse connected, S14)
 #endif
@@ -4293,6 +4313,41 @@ void combo_rows(std::vector<Row> &r) {
         s.draft.touch_combo_pad[k] = 0;
     });
     action(r, "ce.back", tr("Back"), []() { pop(); });
+}
+// (S1, T32) A combined button's controller button: its name (the face buttons by their place), and the choice, which
+// takes it from another combined button that had it (one button, one combined button)
+std::string pad_button_name(int v) {
+    static const char *const NAMES[PADB_NAMED] = {"None", "L3", "R3", "Minus", "Guide", "Misc", "Paddle 1", "Paddle 2",
+                                                  "Paddle 3", "Paddle 4", "Touchpad", "A (right)", "B (bottom)", "X (top)",
+                                                  "Y (left)", "L", "R", "ZL", "ZR", "Plus", "D-pad up", "D-pad down",
+                                                  "D-pad left", "D-pad right"};
+    if (v >= PADB_RAW0 && v < PADB_COUNT) return fmt("Button %d (no name)", v - PADB_RAW0);
+    return tr(NAMES[v > 0 && v < PADB_NAMED ? v : 0]);
+}
+void set_combo_pad(int k, int v) {
+    s.draft.touch_combo_pad[k] = v;
+    for (int j = 0; j < TOUCH_COMBOS; j++)
+        if (j != k && v > PADB_NONE && s.draft.touch_combo_pad[j] == v) s.draft.touch_combo_pad[j] = PADB_NONE;
+}
+// Press a controller button (View::PadCapture): the controller's next button (runtime/host_input.c host_input_pad_capture),
+// for 8 seconds; meanwhile the controller moves nothing in the menu, a tap or the mouse can Cancel
+int s_cap_combo;
+uint64_t s_cap_t0;
+void pad_capture_rows(std::vector<Row> &r) {
+    int got = host_input_pad_captured();
+    if (got > PADB_NONE && got < PADB_COUNT) {
+        set_combo_pad(s_cap_combo, got);
+        pop();
+        return;
+    }
+    int left = 8 - (int)((SDL_GetTicksNS() - s_cap_t0) / 1000000000ull);
+    if (left <= 0) {
+        pop();
+        return;
+    }
+    note(r, "pc.what", host_input_real_pad() ? fmt("For combined button %d: %d seconds left.", s_cap_combo + 1, left)
+                                             : tr("No controller is connected."));
+    action(r, "pc.cancel", tr("Cancel"), []() { pop(); });
 }
 // Mapping a controller (runtime/padmap.c): the list of those connected, then its steps
 void pad_list_rows(std::vector<Row> &r) {
@@ -4351,6 +4406,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::Chat) { chat_page_rows(r); return r; }
     if (s.view == View::Friends) { friends_page_rows(r); return r; }
     if (s.view == View::ComboEdit) { combo_rows(r); return r; }
+    if (s.view == View::PadCapture) { pad_capture_rows(r); return r; }
     if (s.view == View::Profiles) { profile_rows(r); return r; }
     if (s.view == View::ProfileSlot) { profile_slot_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
@@ -4965,7 +5021,7 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         width -= s.m.line * 3;  // (room for the scroll mark at the list's right: scroll_mark)
     bool keyboard_view = s.view == View::Keyboard && !list;
     bool passive = s.dropdown.open && !list;
-    bool plated = touch && !list && (confirmation() || s.view == View::KeyCapture || s.view == View::Move);
+    bool plated = touch && !list && (confirmation() || s.view == View::KeyCapture || s.view == View::PadCapture || s.view == View::Move);
     float gap = ImGui::GetStyle().ItemSpacing.x;
     float cell = (width - 9 * gap) / 10;
     float bs = std::min(s.m.row * .84f, font * 2.3f);  // (the phone: a - or + button's side)
@@ -5541,6 +5597,7 @@ std::string view_title() {
                     : s.view == View::Keybinds   ? "Keybinds"
                     : s.view == View::TouchButtons ? (touch_rows() && !s_combos_alone ? "Buttons on the screen" : "Combined buttons")
                     : s.view == View::ComboEdit  ? "Combined button"
+                    : s.view == View::PadCapture ? "Press a controller button"
                     : s.view == View::Profiles   ? "Control profiles"
                     : s.view == View::ProfileSlot ? "Control profile"
                     : s.view == View::PadList    ? "Map a controller"
@@ -5785,7 +5842,7 @@ void touch_panel(bool *open, const Config &before) {
         navigate(s.dropdown.open ? options : rows, s.dropdown.open);
     picker_keys(options);
     help_keys(rows);
-    bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::Move;
+    bool dialog = confirmation() || s.view == View::KeyCapture || s.view == View::PadCapture || s.view == View::Move;
     bool picking = s.dropdown.open && !options.empty();  // (the picker over the menu this frame: the menu dimmed)
     // The header: Back at its left, the community's Discord and the official page (their marks), Save and Close at its
     // right, the title between
@@ -6086,6 +6143,7 @@ void report(bool *open) {
     is_dirty = *open && (dirty() || pending_text());
     is_confirming = *open && confirmation();
     is_capturing = *open && s.view == View::KeyCapture;
+    host_input_pad_capture(*open && s.view == View::PadCapture);  // (S1: the controller's next button is the combined button's)
     // (a click on the capture view's buttons is theirs; anywhere else it is the mouse button chosen - a finger's tap
     // is no mouse button)
 #ifdef __ANDROID__  // (S14: a phone's mouse, with a keyboard connected: a finger's tap is never a mouse button, overlay.cpp)

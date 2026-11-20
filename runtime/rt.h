@@ -148,6 +148,11 @@ enum { HIB_OUTPUT = 1, HIB_PADMAP, HIB_SCRIPT, HIB_PAD, HIB_RUMBLE, HIB_MENU, HI
 void ui_loop_wake(void);                 // (MHGU_PERF_INPUT_WAKE) any thread: the window loop runs a pass now (a frame, a rumble)
 bool host_input_press(const char *button, unsigned frames);  // scripted press from the next frame (UI thread)
 bool host_input_real_pad(void);          // a controller in the player's hands is connected (the touch controls' rule; any thread)
+// (S1, T32) The settings' Press a controller button: on, the next button pressed on the controller read (one held as it
+// began, once let go), a trigger past half, else a button the controller's map doesn't name, is host_input_pad_captured's
+// (PADB_*; -1 none yet), and the controller moves nothing in the menu meanwhile. Any thread
+void host_input_pad_capture(bool on);
+int host_input_pad_captured(void);
 bool host_input_keyboard_mouse(void);    // a keyboard and a mouse are connected (a desktop: always; a phone: the settings show
                                          // Keybinds and the mouse's rows then; any thread)
 void quickhunt_poll(void);               // (debug) MHGU_QUICKHUNT's presses (runtime/hle/quickhunt.c; UI thread)
