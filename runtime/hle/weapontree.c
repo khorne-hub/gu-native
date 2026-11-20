@@ -9,7 +9,8 @@
 //   2 the classes, 3 Forge's list of a class, 7 Upgrade (+0x05 1 the box's grid, 0x19 the upgrades of the one chosen).
 //   +0x2108 a cFestaEquip, the equipment it shows now (the list's row under the cursor, the box's cell, the upgrade
 //   picked: its model, "Actual:", its stats): +0x210c u16 the kind (bits 0..4: 7 the great sword .. 21 the charge
-//   blade, the table's class + 7; 1..6 armour, a talisman) and the level - 1 (bits 5 on), +0x210e u16 the base.
+//   blade, the table's class + 7; 1..6 armour, a talisman), the level - 1 (bits 5..11) and a flag (bit 15: set in
+//   Forge's list on the Anbernic, 0x8007, not on the PC), +0x210e u16 the base.
 //   Forge's list, the first great swords of a save: Petrified Blade 1, Iron Sword 11, Bone Blade 26, each level 1;
 //   Upgrade's grid on a Petrified Blade (its level written 3): base 1 level 3, attack 90; its upgrades: level 4 (Level
 //   up), Defender (base 8), Type 41 Wyvernator (base 6), as the game's own list shows them.
@@ -30,7 +31,7 @@
 #define FN_SMITHY_UPDATE 0x8f1ae8u   // its update (vtable slot 9)
 #define SM_STATE         0x04u       // u8: 3 Forge's list, 7 Upgrade
 #define SM_SHOWN         0x2108u     // cFestaEquip: what it shows
-#define EQ_KIND_LEVEL    0x04u       // (a cFestaEquip's) u16: kind in bits 0..4, level - 1 above
+#define EQ_KIND_LEVEL    0x04u       // (a cFestaEquip's) u16: kind in bits 0..4, level - 1 in bits 5..11, bit 15 a flag
 #define EQ_BASE          0x06u       // u16
 #define KIND_WEAPON      7u          // (kinds 7 .. 21: the classes 0 .. 14)
 #define G_EQUIPBOX       0x1a56fe8u  // sEquipBox *
@@ -63,7 +64,7 @@ WtSmithy weapontree_smithy(void) { return unpack(__atomic_load_n(&g_packed, __AT
 // A cFestaEquip's weapon: its class (0..14, no 5), base and level; false for none or not a weapon
 static bool weapon_of(uint32_t eq, int *cls, int *base, int *level) {
     uint32_t kl = LD16(eq + EQ_KIND_LEVEL), kind = kl & 0x1f;
-    int b = LD16(eq + EQ_BASE), lv = (int)(kl >> 5) + 1;
+    int b = LD16(eq + EQ_BASE), lv = (int)(kl >> 5 & 0x7f) + 1;  // (bit 15: a flag, seen set on a phone's Forge list)
     if (kind < KIND_WEAPON || kind > KIND_WEAPON + 14 || kind == KIND_WEAPON + 5 || b <= 0 || b > 255 || lv > 255) return false;
     *cls = (int)(kind - KIND_WEAPON), *base = b, *level = lv;
     return true;
