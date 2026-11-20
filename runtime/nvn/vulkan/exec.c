@@ -4238,6 +4238,12 @@ typedef struct {
 #define PIPEREC_MAGIC 0x31504950u  // "PIP1"
 #define PIPECACHE_PATH "cache/pipelines.bin"
 static FILE *pipecache_f;
+// (1.0.2) pipelines.bin only grows (a record for every new pipeline of every run) and all of it is built at the start:
+// at most PIPECACHE_KEEP records are kept, the newest (the file's last); the older ones are let go and the file written
+// again without them (a pipeline of theirs is made again, and recorded again, when a draw needs it). The players' logs
+// so far had 167 to 2,039: nothing changes for them. The MH4U port's list reached 25,000 on an Adreno 610, whose driver
+// keeps two memory map entries a pipeline: 50,000 of them, and the device was lost.
+#define PIPECACHE_KEEP 16384
 
 static void build_pipeline(void *arg);
 static void prewarm_pipelines(Prog *p) {
@@ -4271,6 +4277,12 @@ static void pipecache_init(const CacheHeader *hdr) {
         fh.stamp == hash_words(hdr->stamp, (uint64_t[]){sizeof(PipeRec)}, 8)) {
         good = (long)sizeof fh;
         PipeRec r;
+        // (1.0.2) the records past PIPECACHE_KEEP, the oldest, are skipped and dropped from the file below
+        long total = 0;
+        while (fread(&r, sizeof r, 1, f) == 1 && r.magic == PIPEREC_MAGIC && r.k.ncolor <= 8) total++;
+        const long skip = total > PIPECACHE_KEEP ? total - PIPECACHE_KEEP : 0;
+        good = (long)sizeof fh + skip * (long)sizeof r;
+        fseek(f, good, SEEK_SET);
         while (fread(&r, sizeof r, 1, f) == 1 && r.magic == PIPEREC_MAGIC && r.k.ncolor <= 8) {
             good = ftell(f);
             Prog **c = progcache_slot(r.ck, false);
@@ -4285,6 +4297,18 @@ static void pipecache_init(const CacheHeader *hdr) {
             (*c)->prewarm = pp;
             n++;
         }
+        if (skip) {  // (the kept records moved to the front: the file is the header and them)
+            const long first = (long)sizeof fh, kept = good - first - skip * (long)sizeof r;
+            char *buf = kept > 0 ? malloc((size_t)kept) : NULL;
+            if (buf && fseek(f, first + skip * (long)sizeof r, SEEK_SET) == 0 && fread(buf, (size_t)kept, 1, f) == 1 &&
+                fseek(f, first, SEEK_SET) == 0 && fwrite(buf, (size_t)kept, 1, f) == 1) {
+                good = first + kept;
+                LOG("[vk] pipeline cache: the %ld oldest of %ld records let go (%d kept at most)\n", skip, total,
+                    PIPECACHE_KEEP);
+            }
+            free(buf);
+        }
+        fflush(f);
         fseek(f, good, SEEK_SET);
         if (ftruncate(fileno(f), good)) {}
     } else {
