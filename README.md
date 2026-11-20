@@ -75,6 +75,8 @@ doesn't sync by itself: a free sync app does it on the phone, and on the PC you 
 - The settings menu works by touch and matches the game's look
 - **Faster drinking and eating:** two optional cheats, off by default, under the gear, **Mods & Cheats**, **Cheats**. They speed up the animation x1.7 or x2.5, but they don't let you walk while drinking
 - **Send all to the box:** at the end of a quest, the game's **Send to the Item Box** sends every reward at once, as in the newer games; what doesn't fit in the box stays in the list. Off by default: under the gear, **Gameplay**, **Send all to the box**. Alfonso's idea
+- **Supply Box without the wait:** in a quest, each item goes to your pouch at once and you can take the next one right away (it was about half a second each). The game's rules stay: room in the pouch, each item's limit, and online the host still hands out each item. Always on. Alfonso's idea
+- **Weapon tree at the Smithy:** while the Smithy shows a weapon (Forge or Upgrade), a round button at the left edge, or the right stick's click, opens that weapon's tree over the game: the ones you own (in the box or worn), the ones before them, and the next step from each as "?". Read-only: you still forge at the Smithy. **Controls**, **Buttons on the screen**, **Weapon tree button** takes the button off the screen
 - **A shortcut with your own picture:** under the gear, **System**, **Home screen shortcut** puts the game on your home screen with a picture and a name you choose. The app's own icon stays as it is
 - **Your own cheats and mods:** see [Cheats and mods](#cheats-and-mods)
 - Import your save from an emulator, another device or the PC game, and export it to take it there; bring the event quests you already have; keep your save in the cloud: see [Saves](#saves)
@@ -87,11 +89,12 @@ doesn't sync by itself: a free sync app does it on the phone, and on the PC you 
 - **HUD size** (**Graphics & Audio**, **Screen and HUD**): the whole hunting HUD smaller, 60 to 100 %, every part toward its corner, on top of each part's own size. It applies at once
 - **Map button:** in a hunt, a button at the left edge hides the minimap and shows it again (the HUD's Map, as **Hide** in the editor). Move it, resize it or give it a picture in the editor; **Controls**, **Buttons on the screen**, **Map button** takes it off the screen
 - The editor's panel moves out of the way of what you are placing: drag it by its title (the grips at its ends). Tap its title and - / + or a pinch make it smaller, down to 60 %. It stays where you leave it, and as big
-- **Control profiles:** 10 slots, each with a whole layout: the buttons, the HUD in both arrangements, the FPS counter's place, and the buttons below. In the editor, **Profile** opens them: **Load** one, **Save here** the layout you are editing, start a **New** one of either kind, or **Delete** one; replacing or emptying one asks for a second tap. The editor's **Save** plays with the profile you are editing. They are kept in the `layout profiles` folder of your save folder (or the app's folder if you didn't choose one), so they go with your saves to your other devices and stay if the app is uninstalled. Your layout from before is profile 1, unchanged. Designed by tabarong
+- **Control profiles:** 10 slots, each with a whole layout: the buttons, the HUD in both arrangements, the FPS counter's place, and the buttons below. In the editor, **Profile** opens them: **Load** one, **Save here** the layout you are editing, start a **New** one of either kind, or **Delete** one; replacing or emptying one asks for a second tap. The editor's **Save** plays with the profile you are editing. They are kept in the `layout profiles` folder of your save folder (or the app's folder if you didn't choose one), so they go with your saves to your other devices and stay if the app is uninstalled. Your layout from before is profile 1, unchanged. Designed by tabarong. **Export** and **Import** (**Controls**, **Control profiles**, a profile) put a profile in a .zip with its pictures and combined buttons and bring one back, to share it or take it to another device; a picture whose name is taken comes in renamed. Leaving a profile without saving never empties it, and the editor asks before **Load** or **New** drop changes you haven't saved
 - **Emulator-style layout:** any profile can be one: **A**, **B**, **X** and **Y** in a diamond, the D-pad, the shoulders, **+** and **-**, and the sticks' clicks, each pressing only its own button of the game's, as an emulator's on-screen pad, in the port's own button style. Move, resize and hide each one in the editor (**Hide** / **Show**); dragging the screen still turns the camera
 - **Buttons that stay pressed:** tap a button in the editor and turn on **Hold**: in the game, a tap holds it down and the next tap lets it go. A held button is lit, with a small padlock
 - **Your own pictures:** tap a control in the editor and choose **Picture** to put a picture of your own on it (**Add pictures** copies PNG, JPG or WebP files from your phone). Every control the editor places takes one: the buttons, the stick (its base and its knob, each with its own), both d-pads, the sprint lock, the item bar's arrows, the attack pill, the corner band and the menu pad. Your picture is the control's whole look: only your PNG is drawn, a little smaller and darker while pressed. What you add is your own responsibility
 - **The FPS counter** can be dragged anywhere in the editor; **Reset** puts it back at the top
+- **Camera on the right half only** (**Controls**, **Touch controls**, off by default): a drag turns the camera only on the right half of the screen, so a missed touch near the stick doesn't move it
 - **Floating stick:** under the gear, **Controls**, **Touch controls**, turn on **Floating stick** and the movement stick comes to where your thumb lands near it, and goes back when you lift it. Off by default
 - **Hide the controls:** hold one finger still for a moment on an empty spot (no button there) and every touch control hides, for cutscenes or clean screenshots; do it again anywhere to bring them back. A camera drag, a hold that starts on a button or a second finger never hides them. On by default; turn it off under **Controls**, **Touch controls**, **Long press hides the controls**
 - **Slide between buttons:** a thumb that slides from one button onto another keeps both pressed, as two fingers would (R onto X is R + X, R onto B is R + B); slid back onto the first, that one alone. On by default: **Controls**, **Buttons on the screen**, **Slide between buttons: both pressed**
@@ -99,19 +102,20 @@ doesn't sync by itself: a free sync app does it on the phone, and on the PC you 
 - The game's HUD is rearranged to stay clear of your thumbs (**Move the HUD for touch**). Turned off, the HUD is the same as with a controller. The editor's **HUD: controller** button arranges the HUD you get with a controller, without connecting one, and a controller's B closes the editor without saving
 - Adjustable control opacity and camera speed, and **Camera smoothing** (**Controls**, off by default): a drag's turn of the camera eased in, the whole turn still given. **Camera shake** (**Controls**, off by default) shakes the hunt camera while the game rumbles (a roar, a heavy blow)
 - **Buttons on the screen:** under the gear, **Controls**, **Buttons on the screen**, choose which ones show. You can add L, ZL, ZR, -, the d-pad and the stick clicks, which are hidden by default (the d-pad gives way to the menu pad while a menu of the game's is open). In town ZL always shows, because it opens the multiplayer menu. In the game's menus you can add ZL and ZR too (**ZL in menus**, **ZR in menus**), which some menus use to change sections or show more information
-- **Combined buttons:** on that same page, make up to 6 buttons of your own that press several at once, such as A+X. Place them with the editor, and you can also put them on a controller button
+- **Combined buttons:** on that same page, make up to 15 buttons of your own that press several at once, such as A+X; each control profile keeps its own. Place them with the editor, and put each one on any controller button: A, B, X and Y (by their place), L, R, ZL, ZR, Plus, Minus, the D-pad, the stick clicks, the paddles or the touchpad. **Press a controller button** takes even one the controller's map doesn't name, as some paddles on Android. That button then presses the combined button instead of its own
 
 #### Display and performance
 
 - Up to 120 fps on powerful phones, with a configurable frame rate limit (from 15)
 - Fills the whole screen, from ultra-wide phones to 4:3 handhelds
-- Adjustable 3D resolution, any percentage from 10% to 100% (left and right change it one at a time; a tap offers the usual ones and an **Exact size**), to gain performance on modest devices. The HUD and the text are drawn at that size too, so they soften with it, unless **Low-end mode** or FSR is on: drawing them at the screen's full size over a smaller picture costs a weak phone's GPU more than it gains
-- **Upscale filter** (gear, **Graphics & Audio**): how a 3D resolution below 100% is scaled up to the screen. **Smooth** (the default) blends its pixels; **Sharp (nearest)** keeps each one a crisp block, as in the MH4U port, and looks most even at 50%. Not used while FSR runs
+- Adjustable 3D resolution, any percentage from 10% to 200% (left and right change it one at a time; a tap offers the usual ones and an **Exact size**), to gain performance on modest devices. The HUD and the text are drawn at that size too, so they soften with it, unless **Low-end mode** or FSR is on: drawing them at the screen's full size over a smaller picture costs a weak phone's GPU more than it gains
+- **Above 100%** the 3D picture is drawn bigger and scaled down to the screen: sharper, but it takes more GPU and memory, and can lower the frame rate, heat the phone or close the game. At your own risk: the value turns red
+- **Upscale filter** (gear, **Graphics & Audio**): how a 3D resolution below 100% is scaled up to the screen. **Smooth** (the default) blends its pixels; **Sharp (nearest)** keeps each one a crisp block, as in the MH4U port, and looks most even at 50%. Not used while FSR runs. **FSR 1** (AMD FidelityFX Super Resolution 1, off by default) rebuilds the smaller picture with sharper edges, with its own **FSR 1 sharpness**; the HUD stays sharp over it, and it works on Vulkan 1.1 too
 - **Shadows:** turn them off for more speed, under the gear, **Graphics & Audio**, **Shadows**. On a Moto g06 it cut the GPU's work per frame by about 15% in a hunt
 - **Low-end mode:** for weak phones. It turns off bloom, depth of field and shadows, uses lighter textures and keeps the HUD sharp over a smaller 3D picture
 - **Toaster mode:** the third choice of Low-end mode, for the weakest phones and for the battery: 25% 3D resolution, 30 fps, no reverb or grass, and a lighter HUD and textures still. On a Moto g06 it held 30 fps and used about a third less power than Low-end mode at 60 fps
 - **Bloom and depth of field** and **Reverb** (gear, **Graphics & Audio**, **Picture and sound**): switches of their own. Off, the GPU or the processor does less
-- **Colour** (gear, **Graphics & Audio**, **Colour**): hue, temperature, tint, brightness, contrast, saturation and gamma for the game's picture (its HUD and menus too, never the touch controls or this menu), all at 0, no change, by default, with **Reset colour**. On a screen with HDR10, **HDR output** (off by default, needs a restart) makes the bright parts of the picture shine brighter; not yet tried on an HDR phone
+- **Colour** (gear, **Graphics & Audio**, **Colour**): hue, temperature, tint, brightness, contrast, saturation and gamma for the game's picture (its HUD and menus too, never the touch controls or this menu), all at 0, no change, by default, with **Reset colour**. On a screen with HDR10, **HDR output** (off by default, needs a restart) makes the bright parts of the picture shine brighter; not yet tried on an HDR phone. **Preset 1** to **Preset 3**, on the same page, keep a colour setting each: **Save the current colour here**, and **Use** brings it back
 - **Grass** (gear, **Graphics & Audio**): off, the tall grass and foliage of the maps are left out, faster where there is a lot of it (the Marshland's area 8)
 - **Effects** (gear, **Graphics & Audio**): off, the game's particle effects are left out (hits, sparks, fire, breath, dust, rain), faster where there are many. The effects that warn of a monster's attack go too: that's your call
 - **Clear shader cache** (gear, **Graphics & Audio**, **Advanced**): the next start deletes the shaders the game built and kept and builds them again, for a picture that shows something wrong after a GPU driver update or a crash. While the shaders are built, a small plate says how far they are
@@ -120,7 +124,10 @@ doesn't sync by itself: a free sync app does it on the phone, and on the PC you 
 - The screen follows your FPS limit: at 60 fps it runs at 60 Hz even if it can do 120
 - **If your phone runs hot, lower the FPS limit.** Nothing helps more: going from 120 to 60 used a quarter to a third less power on a Galaxy S25 Ultra, and going from 60 to 30 a fifth less on a Moto g06
 - On Mali GPUs textures are decoded on several cores, to reduce stutter
-- **Your own GPU driver:** Adreno only, at your own risk. Under the gear, **Graphics & Audio**, **Advanced**, **GPU driver**, add a .zip with `meta.json` and the library. By default the system's is used, and if one fails at start or doesn't load, the app goes back to it by itself and says so
+- **Your own GPU driver:** on any GPU, at your own risk. Under the gear, **Graphics & Audio**, **Advanced**, **GPU driver**, add a .zip with `meta.json` and the library. By default the system's is used, and if one fails at start or doesn't load, the app goes back to it by itself and says so. The log and the error screen name the driver in use
+- **Full-size textures** (**Graphics & Audio**, **Advanced**, off by default; only on devices with under 5 GB of memory): the 3D textures keep their largest size, at your own risk: more memory, and the game may close. It needs a restart
+- **Sound in screen recordings** (**Graphics & Audio**, **Picture and sound**, off by default): for phones whose screen recorder records no sound of the game. From the next start
+- **Damage numbers** (**Graphics & Audio**, **Screen and HUD**, off by default): every hit gets its own number, on small monsters too. **Damage number colour**, **By hit**, shows weak points in orange, hard parts in grey, fixed damage in blue-green, a red spark on critical hits and the element's damage as a second, smaller number; **Damage number style** is **Classic**, **Outlined**, **Compact** or **Burst** (a run of hits adds up in one number)
 - **Adreno fix:** on an Adreno with a Vulkan 1.1 driver, at a low 3D resolution, the app keeps 2x MSAA so the picture doesn't repeat in a grid. If it looks dark or flickers, or for more speed, set **Adreno fix** to **Off** under the gear, **Graphics & Audio**, **Advanced**
 
 #### With a controller
@@ -476,6 +483,8 @@ three chats, and private messages with your friends:
 - **General:** everyone in the online chat who plays MHGU, on Android and PC.
 - **Global:** everyone in the online chat of both ports, MHGU and MH4U.
 
+On the **Chat** page the newest line comes first, right under **Say something**, so you don't have to scroll to read it.
+
 **Both chats start off.** Until you turn one on, at the top of the **Chat** page, nothing of the chat shows over the game:
 **Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
 
@@ -596,6 +605,7 @@ dots, **Add games**.
 | Black picture with only the touch controls, or it closes when you press A | The copy of `romfs` to your device didn't finish. Copy it again and check that it takes up 12.3 GB |
 | The game says **Game files incomplete** | Some files of `romfs` were cut short while copying, and the game can close or draw black where it reads them. Copy `romfs` again and check that it takes up 12.3 GB |
 | It closes after a few minutes of play | Update to 0.1.6 or newer: it uses video memory differently on PowerVR GPUs. If it still happens, share the log: it notes the memory every minute |
+| The game takes minutes to start, with its folder on an SD card | The first start lists the game's files slowly there. From 1.0.2 the list is kept and later starts only check it, and a notice says when the folder is on slow storage. Moving the game folder to the phone's own memory starts much faster |
 | On a weak phone it runs slowly | Turn on Low-end mode, turn off **Shadows**, and try a 3D resolution of 33% or 25%. Still slow: Low-end mode, **Toaster** |
 
 If it still fails, ask in the [Discord](https://discord.gg/sk5xEjEMwF) or open an [issue](../../issues) with your device model, the app's version and the log. If the game closes because of an error, a screen lets you
@@ -652,8 +662,8 @@ the program itself: open it, choose your game folder and press **Build the game 
   doesn't jump when a menu of the game's opens. A part that would sit over that menu's window hides until the menu closes
 - **On a wide screen,** **HUD anchor** (**F1**, **Graphics & Audio**, **Screen and HUD**) lays the HUD out over the middle 16:9, 21:9, 32:9 or the whole
   width
-- **Combined buttons:** up to 6 buttons of your own that press several at once, such as A+X, on a key (**Keybinds**) or a
-  controller button (**Controls**, **Controller**, **Combined buttons**)
+- **Combined buttons:** up to 15 buttons of your own that press several at once, such as A+X, each control profile with
+  its own, on a key (**Keybinds**) or any controller button (**Controls**, **Controller**, **Combined buttons**)
 
 #### Display and performance
 
@@ -864,8 +874,9 @@ On a laptop with integrated graphics, or on a 4K screen, lower **3D resolution**
 text stay sharp), or turn on **Low-end mode** under **Graphics & Audio**: the 3D picture goes to about 720 lines (66% at 1080p,
 50% at 1440p, 33% at 4K), and bloom, depth of field, MSAA and FSR turn off. Its third choice, **Toaster**, goes to about 540
 lines, 30 fps and no shadows or FXAA. Both take effect when the game restarts. The 3D resolution takes any percentage from
-10% to 100% (left and right change it one at a time, a click offers the usual ones); **Render resolution**, **Custom**, sets an
-exact size instead.
+10% to 200% (left and right change it one at a time, a click offers the usual ones; above 100% it is drawn bigger and
+scaled down, at your own risk); **Render resolution**, **Custom**, sets an exact size instead. **Upscale filter** offers
+**FSR 1** too, and the **Colour** page its three presets, as on the phone.
 
 **Effects**, under **Graphics & Audio**, leaves out the game's particle effects (hits, sparks, fire, breath, dust, rain): faster
 where there are many, but the effects that warn of a monster's attack go too. **Clear shader cache**, under its **Advanced**, makes the next
