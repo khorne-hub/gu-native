@@ -58,7 +58,6 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
 #define TOUCH_COMBOS 6
 #define COLOUR_PRESETS 3  // [Colour] Preset1..3 (1.0.2)
-#define COLOUR_PRESETS 3  // [Colour] Preset1..3 (1.0.2)
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
        PADB_TOUCHPAD, PADB_COUNT };
