@@ -379,6 +379,14 @@ public class GameActivity extends SDLActivity {
         if (activity != null) activity.startActivity(new Intent(activity, PicturesActivity.class));
     }
 
+    /** Ajustes -> Perfiles de controles -> un perfil -> Exportar / Importar (runtime/touch.cpp, S3): su .zip, afuera o adentro. */
+    public static void exportProfile() { startProfileZip(false); }
+    public static void importProfile() { startProfileZip(true); }
+    private static void startProfileZip(boolean in) {
+        SDLActivity activity = mSingleton;
+        if (activity != null) activity.startActivity(new Intent(activity, ProfileZipActivity.class).putExtra("import", in));
+    }
+
     public static void showSaveExport() {
         SDLActivity activity = mSingleton;
         if (activity != null) activity.startActivity(new Intent(activity, SaveExportActivity.class));

@@ -779,6 +779,33 @@ void pc_import_pictures(void) {
     SDL_ShowOpenFileDialog(pictures_picked, NULL, ui_window(), filters, 1, NULL, true);
 }
 
+// ---- (1.0.2, S3) a control profile out to a .zip in a folder the player chooses, or in from one (runtime/touch.cpp: the
+// .zip's checks, the pictures, the settings' page told what happened)
+static int g_profile_slot;  // (the slot the last dialog was for: the tests' pick too)
+static void SDLCALL profile_export_picked(void *ud, const char *const *list, int filter) {
+    (void)filter;
+    if (!list || !list[0]) return;
+    int n = (int)(intptr_t)ud;
+    char name[96], to[1400];
+    touch_profile_zip_name(n, name, sizeof name);
+    snprintf(to, sizeof to, "%s/%s", list[0], name);
+    touch_profile_export(n, to);
+}
+void pc_profile_export(int n) {
+    g_profile_slot = n;
+    SDL_ShowOpenFolderDialog(profile_export_picked, (void *)(intptr_t)n, ui_window(), NULL, false);
+}
+static void SDLCALL profile_import_picked(void *ud, const char *const *list, int filter) {
+    (void)filter;
+    if (list && list[0]) touch_profile_import((int)(intptr_t)ud, list[0]);
+}
+void pc_profile_import(int n) {
+    static SDL_DialogFileFilter filters[1];  // (kept until the dialog answers)
+    filters[0] = (SDL_DialogFileFilter){T("Control profiles (.zip)"), "zip"};
+    g_profile_slot = n;
+    SDL_ShowOpenFileDialog(profile_import_picked, (void *)(intptr_t)n, ui_window(), filters, 1, NULL, false);
+}
+
 // ---- removing a mod (the Mods tab): mods/_remove.txt hides it at once (mods_installed leaves out what it names), its
 // lines leave load_order.txt, and its folder goes: on a thread of its own now, or at the next start when the game loaded
 // it at this one (it reads the mod's files while it runs: deleted under it, a later read would get nothing)
@@ -926,6 +953,8 @@ void pc_test_pick(const char *what, const char *path) {
     else if (!strcmp(what, "export")) export_picked(NULL, list, 0);
     else if (!strcmp(what, "cheats")) cheats_picked(NULL, list, 0);
     else if (!strcmp(what, "mod")) mod_picked(NULL, list, 0);
+    else if (!strcmp(what, "profile_export")) profile_export_picked((void *)(intptr_t)g_profile_slot, list, 0);
+    else if (!strcmp(what, "profile_import")) profile_import_picked((void *)(intptr_t)g_profile_slot, list, 0);
     else LOG("[pc] pick: no dialog called %s\n", what);
 }
 

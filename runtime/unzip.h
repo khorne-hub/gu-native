@@ -1,4 +1,5 @@
-// Reading a .zip on a desktop (runtime/unzip.c, for Add a mod in runtime/pc_actions.c): its entries from the central
+// Reading a .zip (runtime/unzip.c: Add a mod in runtime/pc_actions.c on a desktop; a control profile's Import in
+// runtime/touch.cpp on both, 1.0.2): its entries from the central
 // directory (ZIP64 too), each one's data stored or compressed with Deflate, checked against its size and CRC-32. Paths
 // are UTF-8 and go through SDL's file functions.
 #pragma once

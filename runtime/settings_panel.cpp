@@ -4210,6 +4210,9 @@ void profile_rows(std::vector<Row> &r) {
     action(r, "pf.back", tr("Back"), []() { pop(); });
 }
 void profile_slot_rows(std::vector<Row> &r) {
+    touch_profile_import_poll();  // (Android: the .zip the app's screen copied in, S3)
+    char said[400];
+    if (touch_profile_said(said, sizeof said)) s_prof_said = said, s_prof_arm.clear();
     int n = s_profile, active = touch_profile_active(), kind = touch_profile_kind(n);
     bool used = kind >= 0, in_use = n == active;
     note(r, "ps.what", profile_what(n));
@@ -4252,6 +4255,32 @@ void profile_slot_rows(std::vector<Row> &r) {
     r.back().help = tr("Opens the layout editor on this profile: it is the one in use from then on.");
     armed("ps.clear", "Clear", "Tap again to empty it", true, [n]() { return touch_profile_clear(n); }, "Emptied");
     r.back().enabled = used && !in_use;
+    // (1.0.2, S3) the profile in a .zip with its pictures and combined buttons, in a folder the player chooses, and back:
+    // the app's screen on Android, the system's dialog on a desktop; what happened comes back to this page
+    action(r, "ps.export", tr("Export"), [n]() {
+        s_prof_arm.clear(), s_prof_said.clear();
+#ifdef __ANDROID__
+        if (touch_profile_export_app(n)) ui_request_activity("exportProfile");
+#else
+        pc_profile_export(n);
+#endif
+    }, used);
+    r.back().help = tr("Saves this profile with its pictures and combined buttons in a .zip, in a folder you choose.");
+    bool arm = s_prof_arm == "ps.import";
+    action(r, "ps.import", tr(arm ? "Tap again to replace it" : "Import"), [n, used]() {
+        if (used && s_prof_arm != "ps.import") {
+            s_prof_arm = "ps.import";
+            return;
+        }
+        s_prof_arm.clear(), s_prof_said.clear();
+#ifdef __ANDROID__
+        touch_profile_import_wait(n);
+        ui_request_activity("importProfile");
+#else
+        pc_profile_import(n);
+#endif
+    });
+    r.back().help = tr("Puts a profile from a .zip made with Export in this slot, with its pictures.");
     if (!s_prof_said.empty()) note(r, "ps.said", s_prof_said);
     action(r, "ps.back", tr("Back"), []() { s_prof_arm.clear(), pop(); });
 }

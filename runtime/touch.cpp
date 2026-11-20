@@ -58,6 +58,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -81,6 +82,7 @@ int weapon_drawn(void);  // (hle/weapon.c: 1 the weapon out, 0 sheathed, -1 not 
 #include "hle/mousemenu.h"  // (menu_pages_zl: the pair the game turns its pages with; menu_cursor_age: a menu takes input)
 SDL_Window *ui_window(void);
 bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platform.h: the save folder's path, as fopen takes it)
+bool plat_path_to_utf8(const char *native, char *out, size_t size);    // (...and back: SDL's file functions, a profile's .zip)
 }
 #include "app_actions.h"  // (ui_request_pictures: the layout editor's Add pictures)
 #include "haptics.h"  // (a short tick on the phone when a control is pressed)
@@ -89,6 +91,12 @@ bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platfor
 #include "perfstats.h"  // (perfstats_rect: the FPS counter's plate, which the editor moves)
 #include "hunt_aids.h"  // (hunt_bars_rect: the monster health bars, which the editors move and size)
 #include "savefolder.h"  // (savefolder_chosen: the layout profiles' folder)
+#include "unzip.h"       // (a profile's .zip: Import, S3)
+#include "zipw.h"        // (...and Export)
+#include <ctime>
+#ifdef __ANDROID__
+#include <unistd.h>  // (getcwd: utf8_of)
+#endif
 #include "settings_locale.h"
 #include "settings_panel.h"  // (SETTINGS_VIEW_GAME_TEXT: the keyboard plate's)
 #include "textinput.h"
@@ -5909,6 +5917,246 @@ extern "C" bool touch_combo_set(int k, const char *text) {
     rt_logf("[touch] combined button %d: %s (profile %d%s)\n", k + 1, t[0] ? t : "none", s.layout.profile,
             ok ? "" : ", its file not written");
     return ok;
+}
+// ---- (1.0.2, S3) A profile in a .zip and back: Export and Import on the settings' profile page. The .zip holds
+// mhgu_profile.txt (the profile's file, its combined buttons too) and images/<file> for each picture it names that the
+// images folder has (never the port's own art). Read with runtime/unzip.c (stored or Deflate), written by zipw.c. A .zip
+// with any other entry, a path that would go outside (.., absolute, a drive), no profile file or one without its
+// layout_kind line is turned down whole; so are more than 64 entries, a profile file over 256 KB, a picture over 16 MB
+// or over 128 MB in all. Its pictures come into the images folder: one of the same name and bytes is that picture;
+// another of that name stays, and the new one is <name>_2 (_3...), the profile's lines changed to match. The MH4U
+// port's the same (mh4u_profile.txt: one game's profile is no profile of the other's)
+namespace {
+const char *const ZIP_PROFILE = "mhgu_profile.txt", *const IMPORT_FILE = "profile_import.zip", *const EXPORT_DIR = "profile_export";
+const size_t ZIP_PROFILE_MOST = 256 << 10, ZIP_PICTURE_MOST = 16 << 20;
+const uint64_t ZIP_ALL_MOST = 128ull << 20;
+const int ZIP_ENTRIES_MOST = 64;
+std::mutex g_io_lock;
+std::string g_io_said;              // what the last export or import did (touch_profile_said)
+std::atomic<int> g_import_wait{0};  // (Android) the slot the .zip the app's screen copies in goes to
+void io_say(const char *english, int n = 0) {
+    char t[400];
+    snprintf(t, sizeof t, T(english), n);
+    std::lock_guard<std::mutex> l(g_io_lock);
+    g_io_said = t;
+}
+// A path for SDL's file functions: UTF-8, and whole on Android (where SDL takes a relative one as the app's internal
+// storage's or its assets', not the folder the runtime works in)
+std::string utf8_of(const std::string &native) {
+    std::string p = native;
+#ifdef __ANDROID__
+    char cwd[1024];
+    if (!p.empty() && p[0] != '/' && getcwd(cwd, sizeof cwd)) p = std::string(cwd) + "/" + p;
+#endif
+    char out[1400];
+    return plat_path_to_utf8(p.c_str(), out, sizeof out) ? std::string(out) : p;
+}
+// A picture's name in the .zip (images/<it>): one file, a picture's extension, no character a file name can't have
+bool zip_picture_name(const char *f) {
+    size_t n = strlen(f);
+    if (!n || n >= IMAGE_NAME - 4 || f[0] == '.' || f[0] == ' ') return false;
+    for (const char *p = f; *p; p++)
+        if ((unsigned char)*p < 32 || strchr("/\\:*?\"<>|", *p)) return false;
+    const char *dot = strrchr(f, '.');
+    if (!dot) return false;
+    static const char *const EXT[] = {".png", ".jpg", ".jpeg", ".webp", ".bmp"};
+    for (const char *x : EXT)
+        if (!SDL_strcasecmp(dot, x)) return true;
+    return false;
+}
+// A path in the .zip that would go outside the folder it is unpacked in: absolute, a drive, ..
+bool zip_escapes(const char *name) {
+    if (name[0] == '/' || strchr(name, ':')) return true;
+    for (const char *p = name; *p;) {
+        size_t n = strcspn(p, "/");
+        if (n == 2 && p[0] == '.' && p[1] == '.') return true;
+        p += n;
+        if (*p) p++;
+    }
+    return false;
+}
+}  // namespace
+extern "C" void touch_profile_zip_name(int n, char *out, size_t size) {
+    time_t t = time(nullptr);
+    struct tm tm;
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    snprintf(out, size, "MHGU_profile_%02d_%04d-%02d-%02d.zip", n, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+}
+extern "C" bool touch_profile_export(int n, const char *path) {
+    Layout l;
+    std::string text, tmp = profiles_dir() + "/export.tmp";
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        State &s = g_s;
+        ensure_loaded(s);
+        if (n < 1 || n > PROFILES_N) return false;
+        if (n == s.layout.profile) keep_in_use(s.layout);  // (in use with no file of its own yet: written now)
+        if (!load_layout_file(profile_path(n).c_str(), &l, nullptr)) {
+            io_say("Profile %d is empty", n);
+            return false;
+        }
+        // (its file as this version writes it: the combined buttons it takes from the settings, for one from before)
+        l.profile = n, l.profile_line = true;
+        if (!make_folder(profiles_dir()) || !save_layout_file(tmp.c_str(), l, nullptr) || !read_text(tmp.c_str(), &text)) {
+            remove(tmp.c_str());
+            io_say("It couldn't be done. Is the save folder there?");
+            return false;
+        }
+        remove(tmp.c_str());
+    }
+    std::vector<std::string> names, data;
+    auto picture = [&](const char *name) {
+        std::string bytes;
+        if (!name[0] || std::find(names.begin(), names.end(), name) != names.end()) return;
+        if (!read_text((images_dir() + "/" + name).c_str(), &bytes)) return;  // (named, and gone: left out)
+        names.push_back(name), data.push_back(std::move(bytes));
+    };
+    for (int i = 0; i < C_LAID; i++) picture(l.image[i]);
+    picture(l.knob);
+    std::vector<std::string> zipped(names.size());
+    std::vector<ZipItem> items;
+    items.push_back({ZIP_PROFILE, text.data(), text.size()});
+    for (size_t i = 0; i < names.size(); i++) {
+        zipped[i] = "images/" + names[i];
+        items.push_back({zipped[i].c_str(), data[i].data(), data[i].size()});
+    }
+    if (!zip_write(path, items.data(), (int)items.size())) {
+        rt_logf("[touch] profiles: profile %d not exported: %s\n", n, SDL_GetError());
+        io_say("It couldn't be done. Is the save folder there?");
+        return false;
+    }
+    const char *base = strrchr(path, '/');
+    if (const char *b2 = strrchr(path, '\\')) base = !base || b2 > base ? b2 : base;
+    rt_logf("[touch] profiles: profile %d exported with %d picture(s) to %s\n", n, (int)names.size(), path);
+    char t[400];
+    snprintf(t, sizeof t, T("Exported: %s"), base ? base + 1 : path);
+    std::lock_guard<std::mutex> io(g_io_lock);
+    g_io_said = t;
+    return true;
+}
+extern "C" int touch_profile_import(int n, const char *path) {
+    if (n < 1 || n > PROFILES_N) return IMPORT_FAILED;
+    Unzip z;
+    if (unzip_open(&z, path) != UNZIP_OK) {
+        unzip_close(&z);
+        rt_logf("[touch] profiles: import into %d: not a .zip (%s)\n", n, path);
+        io_say("That file is not a .zip, or it is damaged.");
+        return IMPORT_NOT_ZIP;
+    }
+    int prof = -1, why = IMPORT_OK;
+    uint64_t total = 0;
+    std::vector<int> pics;
+    if (z.count > ZIP_ENTRIES_MOST) why = IMPORT_NOT_PROFILE;
+    for (int i = 0; i < z.count && why == IMPORT_OK; i++) {
+        const UnzipEntry *e = &z.entries[i];
+        const char *nm = e->name;
+        total += e->size;
+        if (zip_escapes(nm)) why = IMPORT_ESCAPES;
+        else if (e->flags & 1) why = IMPORT_NOT_PROFILE;
+        else if (!strcmp(nm, ZIP_PROFILE) && !e->dir && prof < 0 && e->size <= ZIP_PROFILE_MOST) prof = i;
+        else if (!strcmp(nm, "images/") && e->dir) continue;
+        else if (!strncmp(nm, "images/", 7) && !e->dir && zip_picture_name(nm + 7) && e->size <= ZIP_PICTURE_MOST) pics.push_back(i);
+        else why = IMPORT_NOT_PROFILE;
+    }
+    if (why == IMPORT_OK && (prof < 0 || total > ZIP_ALL_MOST)) why = IMPORT_NOT_PROFILE;
+    std::string text, dir = profiles_dir(), tmp = dir + "/import.tmp";
+    if (why == IMPORT_OK) {
+        if (!make_folder(dir)) why = IMPORT_FAILED;
+        else if (unzip_extract(&z, prof, utf8_of(tmp).c_str(), nullptr, nullptr) != UNZIP_OK || !read_text(tmp.c_str(), &text))
+            why = IMPORT_NOT_PROFILE;
+        remove(tmp.c_str());
+        bool kind = false;  // (its signature: the layout_kind line every profile file has)
+        for (size_t at = text.find("layout_kind "); at != std::string::npos && !kind; at = text.find("layout_kind ", at + 1))
+            kind = at == 0 || text[at - 1] == '\n';
+        if (why == IMPORT_OK && !kind) why = IMPORT_NOT_PROFILE;
+    }
+    Layout l;
+    if (why == IMPORT_OK) {
+        parse_layout(text, &l, nullptr);
+        std::string images = images_dir();
+        if (!pics.empty() && !make_folder(images)) why = IMPORT_FAILED;
+        for (size_t p = 0; p < pics.size() && why == IMPORT_OK; p++) {
+            const char *name = z.entries[pics[p]].name + 7;
+            std::string got, there, part = images + "/import.tmp";
+            if (unzip_extract(&z, pics[p], utf8_of(part).c_str(), nullptr, nullptr) != UNZIP_OK || !read_text(part.c_str(), &got)) {
+                remove(part.c_str());
+                why = IMPORT_NOT_PROFILE;
+                break;
+            }
+            // (its name in the folder: the same picture there already, or a name nothing has)
+            std::string stem = name, ext, final_name;
+            size_t dot = stem.rfind('.');
+            ext = stem.substr(dot), stem.resize(dot);
+            for (int k = 1; k < 100 && final_name.empty(); k++) {
+                std::string cand = k == 1 ? std::string(name) : stem + "_" + std::to_string(k) + ext;
+                std::string at = images + "/" + cand;
+                if (!is_file(at)) {
+                    if (rename(part.c_str(), at.c_str()) == 0) final_name = cand;
+                    else why = IMPORT_FAILED;
+                    break;
+                }
+                if (read_text(at.c_str(), &there) && there == got) final_name = cand;
+            }
+            remove(part.c_str());
+            if (final_name.empty() && why == IMPORT_OK) why = IMPORT_FAILED;
+            if (final_name != name) {  // (the profile's lines with the name it has here)
+                for (int i = 0; i < C_COUNT; i++)
+                    if (!strcmp(l.image[i], name)) snprintf(l.image[i], IMAGE_NAME, "%s", final_name.c_str());
+                if (!strcmp(l.knob, name)) snprintf(l.knob, IMAGE_NAME, "%s", final_name.c_str());
+                rt_logf("[touch] profiles: import: the picture %s is %s here (another one had its name)\n", name, final_name.c_str());
+            }
+        }
+    }
+    unzip_close(&z);
+    if (why == IMPORT_OK) {
+        std::lock_guard<std::mutex> lk(g_lock);
+        State &s = g_s;
+        ensure_loaded(s);
+        l.profile = n, l.profile_line = true;
+        if (editing(s) || !profile_store(l)) why = IMPORT_FAILED;
+        else if (n == s.layout.profile) profile_in_use(s, l, "the settings' Import");  // (the one in use: replaced, as asked)
+    }
+    rt_logf("[touch] profiles: import into %d from %s: %s (%d picture(s))\n", n, path,
+            why == IMPORT_OK ? "done" : why == IMPORT_ESCAPES ? "turned down, a path goes outside"
+            : why == IMPORT_NOT_PROFILE ? "turned down, not a control profile" : "failed", (int)pics.size());
+    if (why == IMPORT_OK) io_say("Imported into profile %d", n);
+    else if (why == IMPORT_ESCAPES) io_say("That .zip has files that would go outside its folder: it was not imported.");
+    else if (why == IMPORT_NOT_PROFILE) io_say("That .zip is not a control profile of this game.");
+    else io_say("It couldn't be done. Is the save folder there?");
+    return why;
+}
+extern "C" bool touch_profile_export_app(int n) {
+    char name[96];
+    make_folder(EXPORT_DIR);
+    if (DIR *d = opendir(EXPORT_DIR)) {  // (one .zip there at a time: the one the app's screen copies out)
+        while (dirent *e = readdir(d))
+            if (e->d_name[0] != '.') remove((std::string(EXPORT_DIR) + "/" + e->d_name).c_str());
+        closedir(d);
+    }
+    touch_profile_zip_name(n, name, sizeof name);
+    return touch_profile_export(n, utf8_of(std::string(EXPORT_DIR) + "/" + name).c_str());
+}
+extern "C" void touch_profile_import_wait(int n) {
+    remove(IMPORT_FILE);
+    g_import_wait = n;
+}
+extern "C" void touch_profile_import_poll(void) {
+    int n = g_import_wait.load();
+    if (!n || !is_file(IMPORT_FILE)) return;
+    g_import_wait = 0;
+    touch_profile_import(n, utf8_of(IMPORT_FILE).c_str());
+    remove(IMPORT_FILE);
+}
+extern "C" bool touch_profile_said(char *out, size_t size) {
+    std::lock_guard<std::mutex> l(g_io_lock);
+    if (g_io_said.empty()) return false;
+    snprintf(out, size, "%s", g_io_said.c_str());
+    g_io_said.clear();
+    return true;
 }
 extern "C" bool touch_profile_clear(int n) {
     std::lock_guard<std::mutex> lk(g_lock);

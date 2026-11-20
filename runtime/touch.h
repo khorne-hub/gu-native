@@ -112,6 +112,20 @@ bool touch_profile_clear(int n);
 uint32_t touch_combo_live(int k);
 void touch_combo_text(int k, char *out, size_t size);
 bool touch_combo_set(int k, const char *text);
+// (1.0.2, S3) A control profile in a .zip and back (the settings' profile page: Export, Import). The .zip's name for
+// slot n (MHGU_profile_<n>_<date>.zip); slot n written into the .zip `path` (UTF-8: a desktop's folder from its dialog);
+// a .zip made so put into slot n (it is the layout in use when n is), its pictures into the images folder: IMPORT_*.
+// Android: the .zip made in the app's folder for its screen to copy out (profile_export/), and the one its screen copies
+// in (profile_import.zip) taken for slot n once it is there (touch_profile_import_poll, the settings' page each frame).
+// What the last one did, for the page (true: something new, into out)
+enum { IMPORT_OK, IMPORT_NOT_ZIP, IMPORT_NOT_PROFILE, IMPORT_ESCAPES, IMPORT_FAILED };
+void touch_profile_zip_name(int n, char *out, size_t size);
+bool touch_profile_export(int n, const char *path);
+int touch_profile_import(int n, const char *path);
+bool touch_profile_export_app(int n);
+void touch_profile_import_wait(int n);
+void touch_profile_import_poll(void);
+bool touch_profile_said(char *out, size_t size);
 // The layout profiles' images folder, where the players' own pictures for the buttons go (the runtime's spelling of a
 // path; runtime/pc_actions.c copies them in)
 void touch_pictures_dir(char *out, size_t size);

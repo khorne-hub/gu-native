@@ -664,6 +664,14 @@ static void control_poll(void) {
                 continue;
             }
 #endif
+            if (!strcmp(cmd, "profilezip")) {  // profilezip export|import <slot> <path>: a profile's .zip out or in (S3)
+                char path[1024] = "", said[400];
+                sscanf(line, "%*s %*s %*s %1023[^\r\n]", path);
+                if (!strcmp(arg, "export")) touch_profile_export(atoi(arg2), path);
+                else touch_profile_import(atoi(arg2), path);
+                if (touch_profile_said(said, sizeof said)) LOG("[control] profilezip: %s\n", said);
+                continue;
+            }
             if (!strcmp(cmd, "finger")) { finger_command(line); continue; }
             if (!strcmp(cmd, "touchedit")) { touch_edit_begin(); continue; }  // (as from the settings menu: once it is closed)
             if (!strcmp(cmd, "fakewindow")) { touch_test_window(atoi(arg)); continue; }  // fakewindow <ms> (runtime/touch.cpp)

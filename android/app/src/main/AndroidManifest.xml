@@ -140,6 +140,12 @@
             android:screenOrientation="sensorLandscape"
             android:exported="false" />
 
+        <!-- Ajustes -> Perfiles de controles -> un perfil -> Exportar / Importar (el .zip del perfil, 1.0.2) -->
+        <activity android:name=".ProfileZipActivity"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+            android:screenOrientation="sensorLandscape"
+            android:exported="false" />
+
         <!-- Ajustes -> Carpeta de partidas (y la pantalla de arranque si esa carpeta tiene un problema) -->
         <activity android:name=".SaveFolderActivity"
             android:theme="@android:style/Theme.NoTitleBar.Fullscreen"

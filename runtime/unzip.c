@@ -1,7 +1,6 @@
-// A .zip read on a desktop (unzip.h). Deflate (RFC 1951) is decoded here: canonical Huffman codes looked up by their
-// next 10 bits when that short, the longer ones searched by length, into a 64 KiB ring that holds the 32 KiB a match
-// reaches back and the bytes waiting to be written.
-#ifndef __ANDROID__
+// A .zip read (unzip.h): a mod's on a desktop, a control profile's on both (1.0.2, S3). Deflate (RFC 1951) is decoded
+// here: canonical Huffman codes looked up by their next 10 bits when that short, the longer ones searched by length, into
+// a 64 KiB ring that holds the 32 KiB a match reaches back and the bytes waiting to be written.
 #include "unzip.h"
 
 #include <stdlib.h>
@@ -420,4 +419,3 @@ UnzipResult unzip_extract(Unzip *z, int i, const char *to, void (*progress)(void
     if (r != UNZIP_OK) SDL_RemovePath(to);
     return r;
 }
-#endif
