@@ -54,6 +54,8 @@ void vk_unlock(void);
 SDL_Window *ui_window(void);
 void vi_pause_game(void);
 bool romfs_incomplete(double *gb, int *empty);  // (romfs.c)
+double romfs_list_slow_ms(void);
+bool romfs_list_changed(char *file, size_t size);
 }
 
 static std::atomic<bool> g_enabled, g_ready, g_open;
@@ -614,6 +616,40 @@ static void romfs_notice(uint64_t now) {
     LOG("[overlay] notice: the game's files look incomplete (%s GB, %d empty, %d cut short)\n", incomplete ? size : "-", empty, cut);
 }
 
+// (1.0.2) A game folder slow to list (a phone's SD card through Android's FUSE: 248 s on a Galaxy A15, the screen black):
+// the player is told why that start took so long, that the next starts take the list kept now (romfs.c) and that the
+// internal storage starts faster still. And a file the game opened whose size isn't the kept list's: start again.
+static const double ROMFS_SLOW_NOTICE_MS = 20000;
+static void romfs_list_notice(uint64_t now) {
+    static uint64_t first;
+    static bool slow_done, changed_done;
+    if (changed_done) return;
+    if (!first) first = now;
+    if (now - first < ROMFS_NOTICE_NS || notice_due(now) || settings_panel_credits_up()) return;
+    int lang = config_language();
+    char text[600], file[200];
+    if (romfs_list_changed(file, sizeof file)) {
+        changed_done = true;
+        snprintf(text, sizeof text,
+                 settings_text(lang, "The game's files changed since the last start (%s). Close the game and open it again."),
+                 file);
+        overlay_notice(settings_text(lang, "Game files changed"), text);
+        LOG("[overlay] notice: a game file's size isn't the kept list's (%s): start again\n", file);
+        return;
+    }
+    if (slow_done) return;
+    slow_done = true;
+    double ms = romfs_list_slow_ms();
+    if (ms < ROMFS_SLOW_NOTICE_MS) return;
+    snprintf(text, sizeof text,
+             settings_text(lang, "Listing the game's files took %d s: the game folder is on slow storage (an SD card?). The "
+                                 "next starts use the list kept now and open faster. On the internal storage the game starts "
+                                 "much faster still."),
+             (int)(ms / 1000 + .5));
+    overlay_notice(settings_text(lang, "Slow game folder"), text);
+    LOG("[overlay] notice: listing the game folder took %.0f s\n", ms / 1000);
+}
+
 static void draw_plate(const std::string &title, const std::string &text, float alpha, float scale);
 static void draw_notice(uint64_t now, float scale) {
     std::string title, text;
@@ -913,6 +949,7 @@ static void frame_once(void *cpu) {
     menu_hint(now);
 #endif
     romfs_notice(now);
+    romfs_list_notice(now);
     if (g_modal_open) notice_hold(now);
     bool notice = notice_due(now);
     std::string plate_title, plate_text;

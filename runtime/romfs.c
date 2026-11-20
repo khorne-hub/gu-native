@@ -29,6 +29,7 @@ typedef struct {
     uint32_t off;
     Dir *parent;
     char *rpath;        // path inside the RomFS
+    _Atomic bool listed;  // (its size from the list kept between starts: checked when the game first opens it)
 } File;
 struct Dir {
     char *name;
@@ -38,7 +39,22 @@ struct Dir {
     int ndirs, nfiles, cdirs, cfiles;
     uint32_t off;
     bool gone;  // (scan_par) it could not be listed: taken out of its parent once the scan is over
+    bool mt;    // (the top LIST_DEPTH levels) its time of change as it was listed: mt_s, mt_ns
+    int64_t mt_s, mt_ns;
 };
+
+// (the list kept between starts, below) folders this deep have their time of change kept with it: the game's 79
+#define LIST_DEPTH 3
+static void dir_mtime(Dir *d, int fd, const char *path) {
+    struct stat st;
+    if ((fd >= 0 ? fstat(fd, &st) : stat(path, &st)) != 0) return;
+    d->mt = true, d->mt_s = (int64_t)st.st_mtime;
+#ifdef _WIN32
+    d->mt_ns = 0;
+#else
+    d->mt_ns = (int64_t)st.st_mtim.tv_nsec;
+#endif
+}
 
 static int by_name_dir(const void *a, const void *b) { return strcmp((*(Dir *const *)a)->name, (*(Dir *const *)b)->name); }
 static int by_name_file(const void *a, const void *b) { return strcmp((*(File *const *)a)->name, (*(File *const *)b)->name); }
@@ -154,6 +170,7 @@ static void scan_job(ScanQueue *q, ScanJob *j) {
         j->dir->gone = true;
         return;
     }
+    if (j->depth <= LIST_DEPTH) dir_mtime(j->dir, fd, NULL);  // (before its entries are read)
     struct dirent *e;
     while ((e = readdir(dd))) {
         if (e->d_name[0] == '.') continue;
@@ -237,6 +254,7 @@ static Dir *scan(const char *path, const char *name, int depth) {
 #ifdef _WIN32
     Dir *dir = calloc(1, sizeof *dir);
     dir->name = strdup(name);
+    if (depth <= LIST_DEPTH) dir_mtime(dir, -1, path);  // (before its entries are read)
     ScanAt at = {dir, path, depth};
     if (!plat_list_dir(path, scan_listed, &at)) {
         if (depth) unread(path);  // (a top folder that isn't there is told where it is opened)
@@ -252,6 +270,7 @@ static Dir *scan(const char *path, const char *name, int depth) {
     }
     Dir *dir = calloc(1, sizeof *dir);
     dir->name = strdup(name);
+    if (depth <= LIST_DEPTH) dir_mtime(dir, dirfd(dd), NULL);  // (before its entries are read)
     struct dirent *e;
     while ((e = readdir(dd))) {
         if (e->d_name[0] == '.') continue;
@@ -275,6 +294,7 @@ static int merge(Dir *dst, Dir *src) {
         while (k < dst->nfiles && strcasecmp(dst->files[k]->name, f->name)) k++;
         if (k < dst->nfiles) {
             File *d = dst->files[k];
+            d->listed = false;  // (the mod's file, or both's archive: listed now, its size known)
             size_t nl = strlen(f->name);
             char merged[1200];
             if (d->orig && nl > 4 && !strcasecmp(f->name + nl - 4, ".arc") &&
@@ -402,30 +422,259 @@ static void mod_bytes(const Dir *d, int *files, uint64_t *bytes, int *tex, uint6
 
 // ---- main.c's count of the game's files at the start (romfs_prescan): that scan's tree is the one build() takes, so
 // the folder is listed once, not twice (up to 1.0.1 the count listed every folder, and the game's first fsp-srv call
-// listed them all again: a Moto g06 spent 8.5 s on the one and 7.5 on the other)
-static struct { char *dir; Dir *root; double ms; int unread; } g_pre;
+// listed them all again: a Moto g06 spent 8.5 s on the one and 7.5 on the other). 1.0.2: a desktop too (it counted
+// with plat_count_files, then listed again). listed: the tree is the list kept at a start before (below), whose
+// listing took list_ms then; its folders checked in ms.
+static struct { char *dir; Dir *root; double ms, list_ms; int unread, checked; bool listed; } g_pre;
 
-#ifndef _WIN32
 static int count_tree(const Dir *d) {
     int n = d->nfiles;
     for (int i = 0; i < d->ndirs; i++) n += count_tree(d->dirs[i]);
     return n;
 }
+
+static void free_tree(Dir *d) {
+    if (!d) return;
+    for (int i = 0; i < d->nfiles; i++) free(d->files[i]->name), free(d->files[i]->path), free(d->files[i]);
+    for (int i = 0; i < d->ndirs; i++) free_tree(d->dirs[i]);
+    free(d->name), free(d->dirs), free(d->files), free(d);
+}
+
+// ---- The game's file list kept between starts (1.0.2). On a phone's SD card each folder listed and each file's size
+// asked go through Android's FUSE daemon to a slow card: a Galaxy A15 took 248 s (166 s another time) to list the
+// 35,531 files, the screen black all along, where its internal storage takes about 1.4 s. A listing that took
+// LIST_SLOW_MS or more, with nothing it couldn't read, is kept (cache/romfs_list.bin, in the app's own folder) and the
+// next start takes it instead, once the folders whose time of change it has (LIST_DEPTH levels: the game's 79) are
+// found unchanged. A file added, removed or renamed in one of them changes it; a file copied over one of the same name,
+// or one deeper down, may not (copied from a PC, a card's folders often keep their time), so the list is also dropped,
+// and the next start lists the folder again:
+//  - when the game first opens a file whose size isn't the list's (an fstat of the open file; the player is told to
+//    start again: romfs_list_changed, overlay.cpp);
+//  - when the size check against version 1.4.0's (verify.c) finds a file cut short in a start that took the list: a
+//    copy repaired over the old one is listed anew, and the check is never left with a list's sizes for long;
+//  - when the player runs Verify game files.
+// MHGU_ROMFS_LIST=0: neither taken nor kept; =2: kept however fast the listing was (a test).
+#define LIST_FILE "cache/romfs_list.bin"
+#define LIST_MAGIC "MHGU romfs list1"  // (16 bytes)
+#define LIST_SLOW_MS 5000
+static int list_mode(void) {
+    static int m = -1;
+    if (m < 0) {
+        const char *e = getenv("MHGU_ROMFS_LIST");
+        m = !e ? 1 : atoi(e) <= 0 ? 0 : atoi(e) >= 2 ? 2 : 1;
+        if (e) LOG("[romfs] MHGU_ROMFS_LIST=%s: the list kept between starts %s\n", e,
+                   m == 0 ? "neither taken nor kept" : m == 2 ? "kept however fast the listing was" : "as usual");
+    }
+    return m;
+}
+static bool g_from_list;  // (this start's tree is the kept list)
+static double g_listed_ms;  // (this start listed the folder: how long that took)
+static _Atomic int g_list_changed;  // (a file's size isn't the list's: 1 being told, 2 g_list_changed_file set)
+static char g_list_changed_file[200];
+
+typedef struct { uint8_t *p; size_t n, cap; bool bad; } LBuf;
+static void lput(LBuf *b, const void *v, size_t n) {
+    if (b->bad) return;
+    if (b->n + n > b->cap) {
+        size_t c = b->cap ? b->cap : 1 << 20;
+        while (c < b->n + n) c *= 2;
+        uint8_t *q = realloc(b->p, c);
+        if (!q) { b->bad = true; return; }
+        b->p = q, b->cap = c;
+    }
+    memcpy(b->p + b->n, v, n), b->n += n;
+}
+static void lput_str(LBuf *b, const char *s) {
+    size_t n = strlen(s);
+    if (n > 0xFFFF) { b->bad = true; return; }
+    uint16_t n16 = (uint16_t)n;
+    lput(b, &n16, 2), lput(b, s, n);
+}
+// a folder: its name, time of change (if kept), files (name, size), then its folders the same way
+static void lput_dir(LBuf *b, const Dir *d) {
+    uint8_t mt = d->mt;
+    uint32_t nf = (uint32_t)d->nfiles, nd = (uint32_t)d->ndirs;
+    lput_str(b, d->name);
+    lput(b, &mt, 1), lput(b, &d->mt_s, 8), lput(b, &d->mt_ns, 8), lput(b, &nf, 4), lput(b, &nd, 4);
+    for (int i = 0; i < d->nfiles; i++) lput_str(b, d->files[i]->name), lput(b, &d->files[i]->size, 8);
+    for (int i = 0; i < d->ndirs; i++) lput_dir(b, d->dirs[i]);
+}
+
+static void list_save(const Dir *root, const char *base_dir, double ms) {
+    LBuf b = {0};
+    lput(&b, LIST_MAGIC, 16), lput_str(&b, base_dir), lput(&b, &ms, 8);
+    lput_dir(&b, root);
+    lput(&b, "END.", 4);
+    mkdir("cache", 0755);
+    FILE *f = b.bad ? NULL : fopen(LIST_FILE ".tmp", "wb");
+    bool ok = f && fwrite(b.p, 1, b.n, f) == b.n;
+    if (f && fclose(f)) ok = false;
+#ifdef _WIN32
+    if (ok) remove(LIST_FILE);  // (rename doesn't replace a file there)
 #endif
+    ok = ok && rename(LIST_FILE ".tmp", LIST_FILE) == 0;
+    if (!ok) remove(LIST_FILE ".tmp");
+    LOG("[romfs] listing the game folder took %.0f ms: %s (%.1f MB), for the next starts\n", ms,
+        ok ? "its list is kept in " LIST_FILE : "its list could NOT be kept in " LIST_FILE, b.n / 1048576.0);
+    free(b.p);
+}
+
+typedef struct { const uint8_t *p, *end; bool bad; } LRd;
+static bool lget(LRd *r, void *v, size_t n) {
+    if (r->bad || (size_t)(r->end - r->p) < n) return r->bad = true, false;
+    memcpy(v, r->p, n), r->p += n;
+    return true;
+}
+static char *lget_str(LRd *r) {
+    uint16_t n;
+    if (!lget(r, &n, 2) || (size_t)(r->end - r->p) < n) return r->bad = true, NULL;
+    char *s = malloc((size_t)n + 1);
+    memcpy(s, r->p, n), s[n] = 0, r->p += n;
+    return s;
+}
+typedef struct { char **path; const Dir **dir; int n, cap; } LChecks;
+// (path: the folder's host path, base_dir for the top one)
+static Dir *lget_dir(LRd *r, const char *parent, int depth, LChecks *ck) {
+    Dir *d = calloc(1, sizeof *d);
+    uint8_t mt = 0;
+    uint32_t nf = 0, nd = 0;
+    d->name = lget_str(r);
+    lget(r, &mt, 1), lget(r, &d->mt_s, 8), lget(r, &d->mt_ns, 8), lget(r, &nf, 4), lget(r, &nd, 4);
+    if (r->bad || !d->name || depth > 32 || nf > 1000000 || nd > 100000) {
+        r->bad = true;
+        return d;
+    }
+    char *path = depth ? join(parent, d->name) : strdup(parent);
+    d->mt = mt;
+    for (uint32_t i = 0; i < nf && !r->bad; i++) {
+        File *f = calloc(1, sizeof *f);
+        f->name = lget_str(r);
+        lget(r, &f->size, 8);
+        f->path = f->name ? join(path, f->name) : NULL;
+        f->listed = true;
+        add_file(d, f);
+    }
+    for (uint32_t i = 0; i < nd && !r->bad; i++) add_dir(d, lget_dir(r, path, depth + 1, ck));
+    if (d->mt && !r->bad) {
+        if (ck->n == ck->cap) ck->path = realloc(ck->path, sizeof *ck->path * (ck->cap = ck->cap ? ck->cap * 2 : 128)),
+                              ck->dir = realloc(ck->dir, sizeof *ck->dir * ck->cap);
+        ck->path[ck->n] = path, ck->dir[ck->n++] = d;
+    } else {
+        free(path);
+    }
+    return d;
+}
+
+// The kept folders' times of change against the folder's now, by up to 8 threads (each one a lookup through FUSE)
+typedef struct { const LChecks *ck; _Atomic int next, changed; } LCheckRun;
+static void *list_check_worker(void *arg) {
+    LCheckRun *c = arg;
+    for (int i; !atomic_load(&c->changed) && (i = atomic_fetch_add(&c->next, 1)) < c->ck->n;) {
+        Dir now = {0};
+        dir_mtime(&now, -1, c->ck->path[i]);
+        if (!now.mt || now.mt_s != c->ck->dir[i]->mt_s || now.mt_ns != c->ck->dir[i]->mt_ns) {
+            int none = 0;
+            atomic_compare_exchange_strong(&c->changed, &none, i + 1);
+        }
+    }
+    return NULL;
+}
+
+// The list kept for base_dir, its folders unchanged: its tree (each file's path and size); else NULL
+static Dir *list_load(const char *base_dir, double *list_ms, int *checked) {
+    FILE *f = fopen(LIST_FILE, "rb");
+    if (!f) return NULL;
+    uint8_t *buf = NULL;
+    long n = fseek(f, 0, SEEK_END) == 0 ? ftell(f) : -1;
+    if (n > 0 && n < (64l << 20) && fseek(f, 0, SEEK_SET) == 0 && (buf = malloc((size_t)n)) &&
+        fread(buf, 1, (size_t)n, f) != (size_t)n)
+        free(buf), buf = NULL;
+    fclose(f);
+    if (!buf) return NULL;
+    LRd r = {buf, buf + n, false};
+    char magic[16], end[4];
+    LChecks ck = {0};
+    Dir *root = NULL;
+    char *dir = NULL;
+    const char *why = NULL;
+    if (!lget(&r, magic, 16) || memcmp(magic, LIST_MAGIC, 16)) why = "another version's";
+    else if (!(dir = lget_str(&r)) || strcmp(dir, base_dir)) why = "another folder's";
+    else if (!lget(&r, list_ms, 8) || !(root = lget_dir(&r, base_dir, 0, &ck)) || r.bad || !lget(&r, end, 4) ||
+             memcmp(end, "END.", 4) || r.p != r.end)
+        why = "not whole";
+    free(dir), free(buf);
+    if (!why) {
+        LCheckRun run = {&ck, 0, 0};
+        pthread_t th[7];
+        int nt = 0;
+        while (nt < 7 && nt < ck.n / 8 && pthread_create(&th[nt], NULL, list_check_worker, &run) == 0) nt++;
+        list_check_worker(&run);
+        for (int i = 0; i < nt; i++) pthread_join(th[i], NULL);
+        int c = atomic_load(&run.changed);
+        if (c) {
+            LOG("[romfs] the game folder changed since its list was kept (%s): it is listed again\n", ck.path[c - 1]);
+            why = "";
+        }
+        *checked = ck.n;
+    } else {
+        LOG("[romfs] the list of the game's files kept at a start before is %s: the folder is listed again\n", why);
+    }
+    for (int i = 0; i < ck.n; i++) free(ck.path[i]);
+    free(ck.path), free(ck.dir);
+    if (why) {
+        free_tree(root);
+        remove(LIST_FILE);
+        return NULL;
+    }
+    return root;
+}
+
+// (romfs_read's first open of a file from the kept list) its size now against the list's
+static void list_check_size(File *f, int fd) {
+    struct stat st;
+    if (fstat(fd, &st) != 0 || (uint64_t)st.st_size == f->size) return;
+    LOG("[romfs] WARNING: %s has %lld bytes, the list kept at a start before %llu: the list is dropped, the next start "
+        "lists the folder again\n", f->rpath, (long long)st.st_size, (unsigned long long)f->size);
+    if (atomic_exchange(&g_list_changed, 1)) return;
+    snprintf(g_list_changed_file, sizeof g_list_changed_file, "%s", f->rpath);
+    remove(LIST_FILE);
+    atomic_store(&g_list_changed, 2);
+}
+
+void romfs_list_forget(bool only_if_taken, const char *why) {
+    if (only_if_taken && !g_from_list) return;
+    if (remove(LIST_FILE) == 0)
+        LOG("[romfs] the list of the game's files kept between starts is dropped (%s): the next start lists the folder "
+            "again\n", why);
+}
+
+double romfs_list_slow_ms(void) { return g_listed_ms; }
+
+bool romfs_list_changed(char *file, size_t size) {
+    if (atomic_load(&g_list_changed) != 2) return false;
+    if (file && size) snprintf(file, size, "%s", g_list_changed_file);
+    return true;
+}
 
 int romfs_prescan(const char *base_dir) {
-#ifdef _WIN32
-    return plat_count_files(base_dir);
-#else
+#ifndef _WIN32
     if (scan_threads() <= 1) return plat_count_files(base_dir);  // (MHGU_PERF_ROMFS=0: counted now, scanned again later)
-    int u0 = g_unread;
+#endif
+    int u0 = g_unread, checked = 0;
+    double list_ms = 0;
     uint64_t t0 = plat_now_ns();
-    Dir *root = scan(base_dir, "", 0);
+    Dir *root = list_mode() ? list_load(base_dir, &list_ms, &checked) : NULL;
+    bool listed = root != NULL;
+    if (!root) root = scan(base_dir, "", 0);
     if (!root) return 0;
     g_pre.ms = (plat_now_ns() - t0) / 1e6;
     g_pre.dir = strdup(base_dir), g_pre.root = root, g_pre.unread = g_unread - u0;
+    g_pre.listed = listed, g_pre.list_ms = list_ms, g_pre.checked = checked;
+    if (!listed && list_mode() && !g_pre.unread && (g_pre.ms >= LIST_SLOW_MS || list_mode() == 2))
+        list_save(root, base_dir, g_pre.ms);
+    else if (!listed)
+        remove(LIST_FILE);  // (a folder listed fast, or not whole: no list; one kept for another folder goes)
     return count_tree(root);
-#endif
 }
 
 #ifndef _WIN32
@@ -557,12 +806,18 @@ static bool build(RomfsImage *im, const char *base_dir, const char *const *overl
     im->files = l.files;  // (flatten order is data order)
     im->nfiles = l.nf;
     free(l.dirs);
+    if (pre && g_pre.listed)
+        LOG("[romfs] %d files, %d folders, image %.1f GB (the list kept at a start before, its %d folders checked: %.0f ms; "
+            "listing the folder took %.0f ms then)\n", l.nf, l.nd, im->size / 1e9, g_pre.checked, scan_ms, g_pre.list_ms);
+    else
 #ifdef _WIN32
-    LOG("[romfs] %d files, %d folders, image %.1f GB (its folder listed in %.0f ms)\n", l.nf, l.nd, im->size / 1e9, scan_ms);
+        LOG("[romfs] %d files, %d folders, image %.1f GB (its folder listed in %.0f ms%s)\n", l.nf, l.nd, im->size / 1e9,
+            scan_ms, pre ? ", as the game started" : "");
 #else
-    LOG("[romfs] %d files, %d folders, image %.1f GB (its folder listed in %.0f ms by %d thread%s%s)\n", l.nf, l.nd,
-        im->size / 1e9, scan_ms, scan_threads(), scan_threads() > 1 ? "s" : "", pre ? ", as the game started" : "");
+        LOG("[romfs] %d files, %d folders, image %.1f GB (its folder listed in %.0f ms by %d thread%s%s)\n", l.nf, l.nd,
+            im->size / 1e9, scan_ms, scan_threads(), scan_threads() > 1 ? "s" : "", pre ? ", as the game started" : "");
 #endif
+    if (game) g_from_list = pre && g_pre.listed, g_listed_ms = g_from_list ? 0 : scan_ms;
     if (!game) return true;
     // (version 1.4.0's is 12.3 GB, 1.4 of them its movies, and none of its files is empty. A copy cut short, with every
     // file there but some of them empty or short, starts and then fails in ways that look like the port's: a black
@@ -652,6 +907,7 @@ static int64_t read_file(File *f, uint8_t *dst, uint64_t off, uint64_t n) {
         uint64_t t0 = HITCH_ON ? plat_now_ns() : 0;
         int mine = open(f->path, O_RDONLY | O_BINARY);
         if (mine < 0) LOG("[romfs] cannot open %s\n", f->path);
+        else if (f->listed && atomic_exchange(&f->listed, false)) list_check_size(f, mine);  // (once a file)
         if (HITCH_ON) hitch_add_label(HC_FILE_OPEN, plat_now_ns() - t0, 0, f->rpath, -1);
         fdc_take();
         slot = fdc_find(f, &oldest);
