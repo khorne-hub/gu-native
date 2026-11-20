@@ -922,6 +922,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(grass);
     SAME(effects);
     SAME(reverb);
+    SAME(rec_audio);
     SAME(adreno_fix);
     SAME(fps);
     SAME(fsr);
@@ -3222,11 +3223,14 @@ void rows_graphics_picture_80(std::vector<Row> &r) {
     add_bool(r, "reverb", "Reverb", &s.draft.reverb, ini("Reverb"));
 #ifndef __ANDROID__  // (a phone: not worth a row)
     add_bool(r, "mutebg", "Mute in background", &s.draft.mute_in_background, ini("MuteInBackground"));
+#else  // (1.0.2: a phone's screen recorder; from the next start)
+    add_bool(r, "recaudio", "Sound in screen recordings", &s.draft.rec_audio, ini("ScreenRecording"));
 #endif
 }
 void reset_graphics_picture_80() {
     Config f = config_defaults();
     s.draft.reverb = f.reverb;
+    s.draft.rec_audio = f.rec_audio;
     s.draft.mute_in_background = f.mute_in_background;
 }
 MENU_ENTRY("graphics/picture", 80, rows_graphics_picture_80, reset_graphics_picture_80);
@@ -4538,6 +4542,8 @@ const PhoneHelp PHONE_HELP[] = {
      "El resplandor alrededor de las luces y el desenfoque de lo lejano. Apagado: más rápido en un teléfono débil. El modo gama baja lo apaga."},
     {"Reverb", "The echo of caves and rooms. Off: the sound is dry, and a weak phone's processor does less.",
      "El eco de cuevas y salas. Apagada: el sonido queda seco y el procesador de un teléfono débil trabaja menos."},
+    {"ScreenRecording", "The phone's screen recorder records the game's sound too. The sound goes through the phone's usual path instead of its fastest one, so it may come a little later. From the next start.",
+     "La grabación de pantalla del teléfono graba también el sonido del juego. El sonido va por el camino de siempre del teléfono en vez del más rápido, así que puede llegar un poco después. Desde el próximo inicio."},
     {"LowEnd", "For a weak phone: no bloom or depth of field, cheaper and smaller textures, and the HUD stays sharp over a smaller 3D picture. Toaster: everything for speed and the battery before looks. Brick, for very weak phones: Toaster's and textures in big sharp squares, a retro look.",
      "Para un teléfono débil: sin resplandor ni profundidad de campo, texturas más livianas y más chicas, y el HUD sigue nítido sobre una imagen 3D más chica. Tostadora: todo para la velocidad y la batería antes que el aspecto. Ladrillo, para teléfonos muy débiles: lo de Tostadora y texturas en cuadrados grandes y nítidos, un aspecto retro."},
     {"Shadows", "The shadows of hunters, monsters and scenery. Off: a little faster on a weak phone.",

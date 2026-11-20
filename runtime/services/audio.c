@@ -1697,12 +1697,25 @@ static void renderer_perf_init(Renderer *r) {
             r->perf_sleep ? "coarse" : "precise", r->perf_check ? ", checked against the old way" : "");
 }
 
+// (1.0.2, Android) [Audio] ScreenRecording: SDL's AAudio stream without its low-latency mode. Low latency plays through the
+// phone's MMAP path where it has one, which bypasses the mixer Android's playback capture listens to: screen recordings
+// had no game sound (Discord "No sound when screen recording", an Infinix Smart 10). Before each stream is opened
+static void rec_audio_hint(void) {
+#ifdef __ANDROID__
+    static bool told;
+    if (!g_config.rec_audio) return;
+    SDL_SetHint(SDL_HINT_ANDROID_LOW_LATENCY_AUDIO, "0");
+    if (!told) told = true, LOG("[audio] sound in screen recordings: the sound without the low-latency mode\n");
+#endif
+}
+
 static void renderer_open_output(Renderer *r) {
     if (getenv("MHGU_AUDIO_WAV")) {
         r->wav = fopen(getenv("MHGU_AUDIO_WAV"), "wb");
         if (r->wav) wav_header(r->wav, 0);
     }
     if (getenv("MHGU_NO_AUDIO") && strcmp(getenv("MHGU_NO_AUDIO"), "0")) return;
+    rec_audio_hint();
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) { LOG("[audren] SDL audio init failed: %s\n", SDL_GetError()); return; }
     SDL_AudioSpec spec = {SDL_AUDIO_F32, 2, (int)r->sample_rate};
     r->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
@@ -2008,6 +2021,7 @@ SERVICE("audout:u", audout_u) {
         pthread_mutex_init(&a->lock, NULL);
         a->event = kernel_create_event_pair(&a->ev_w, &a->ev_r);
         if (getenv("MHGU_AUDOUT_WAV")) a->wav = fopen(getenv("MHGU_AUDOUT_WAV"), "wb");
+        rec_audio_hint();
         if (!(getenv("MHGU_NO_AUDIO") && strcmp(getenv("MHGU_NO_AUDIO"), "0")) && SDL_InitSubSystem(SDL_INIT_AUDIO)) {
             SDL_AudioSpec spec = {SDL_AUDIO_S16, (int)a->channels, (int)a->rate};
             a->stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
