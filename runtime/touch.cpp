@@ -160,15 +160,16 @@ enum Ctl {
     C_MZL, C_MZR,        // the other pair above them, when [Touch] ShowMenuZL / ZR say so; Minus below it, with the
     C_MMINUS,            // hunt's own Minus hidden)
     C_TREE,              // (1.0.2: the Smithy's weapon tree, runtime/weapon_tree.h; last, so the layouts' bits stay)
+    C_CHAT,              // (1.0.2: the chat's button, drawn and tapped by the chat: chat_port.cpp, at this place and size)
     C_COUNT
 };
 const int C_LAID = C_STICK + 1;
 // The controls the editor places, kept in touch_layout.txt by their keys: those up to the stick, and the weapon tree's
 // button (1.0.2: last in the list, so the layouts' bits of the others stay)
-bool laid(int i) { return (i >= 0 && i < C_LAID) || i == C_TREE; }
+bool laid(int i) { return (i >= 0 && i < C_LAID) || i == C_TREE || i == C_CHAT; }
 enum Icon { I_ATTACK, I_DODGE, I_SHIELD, I_BURST, I_TARGET_SELECT, I_CAMERA, I_MENU, I_MAP, I_GEAR, I_SHEATHE, I_RUN, I_STICK, I_DPAD,
             I_LETTER, I_MINUS, I_COMBO, I_SHOT, I_BOW, I_RELOAD, I_SCOPE, I_CROUCH, I_COATING, I_MELEE, I_GATHER, I_UP, I_DOWN,
-            I_LEFT, I_RIGHT, I_LOCKON, I_MAPTOG, I_TREE };
+            I_LEFT, I_RIGHT, I_LOCKON, I_MAPTOG, I_TREE, I_CHAT };
 // The menu pad (C_MPAD), in its base's radius: a thumb within MPAD_GRAB is its, before anything else (a tap on its
 // edge is a step that way, never a tab); a direction comes on past MPAD_ON and stays down to MPAD_OFF
 const float MPAD_GRAB = 1.35f, MPAD_ON = .35f, MPAD_OFF = .25f;
@@ -295,6 +296,8 @@ const Def DEFS[C_COUNT] = {
     // map's button (which shows in a quest only), so the two never sit on each other in the editor. It presses none of
     // the game's buttons: a tap opens the tree
     {"weapon_tree", "Weapon tree", I_TREE, "", 0, false, .065f, .19f, .046f},
+    // (1.0.2) the chat's button: where it was as it came (a ninth of a 16:9 screen's width in, 30 % down), its size
+    {"chat_button", "Chat button", I_CHAT, "", 0, false, .196f, .70f, .048f},
 };
 // which layout a control belongs to: the hunt's (the pill, B, the map, the stick), the menus' (the d-pad, the diamond,
 // Minus), or both
@@ -401,6 +404,7 @@ bool tree_here() {
     return g_kind.load() != KIND_EMU || !(g_off[C_TREE >> 6].load() >> (C_TREE & 63) & 1);
 }
 bool in_mode(int i, bool menu) {
+    if (i == C_CHAT) return false;  // (the chat draws it and takes its finger: chat_port.cpp, at its place - touch_chat_place)
     if (i == C_TREE) return tree_here();
     if (g_kind.load() == KIND_EMU) return emu_mode(i, menu);
     if (emu_ctl(i)) return false;  // (the emulator-style layout's alone)
@@ -436,6 +440,7 @@ bool in_mode(int i, bool menu) {
 // whether a menu is open or not; its tabs and Minus go with it)
 bool in_editor(int i) {
     if (i == C_TREE) return config_live_touch_show(TB_WEAPON_TREE) != 0;  // (1.0.2: placed in either layout's editor)
+    if (i == C_CHAT) return chat_bubble_on();  // (1.0.2: the chat's button, while Chat > Options > Chat button is on)
     if (g_kind.load() == KIND_EMU) {  // (the emulator-style layout's: the hidden ones too, faded, for its Show)
         if (emu_ctl(i) || i == C_STICK || i == C_SETTINGS) return true;
         if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
@@ -3747,6 +3752,16 @@ extern "C" void touch_game_held(bool on) { g_held_ns = on ? SDL_GetTicksNS() : 0
 extern "C" float touch_aim_pitch(void) { return g_aim_pitch_deg.exchange(0.0f); }
 
 extern "C" void touch_hud_step(void) { g_part_moved_ns = SDL_GetTicksNS(); }
+// (1.0.2) The chat's button where the editor has it (chat_port.cpp: chat_overlay.h OverlayPort.place), the layout in use's:
+// its centre, fractions of the screen, and its radius, a fraction of the screen's height
+extern "C" bool touch_chat_place(float *fx, float *fy, float *fr) {
+    std::lock_guard<std::mutex> l(g_lock);
+    const State &s = g_s;
+    if (!s.loaded || s.w <= 0 || s.h <= 0) return false;
+    const Geo g = place(s.layout, C_CHAT, s.w, s.h);
+    *fx = g.c.x / s.w, *fy = g.c.y / s.h, *fr = g.r / s.h;
+    return true;
+}
 extern "C" bool touch_editor_step(void) {
     const uint64_t EDIT_STEP = 100 * MS, now = SDL_GetTicksNS();
     if (g_part_moved_ns.load() <= g_step_ns.load() || now - g_step_ns.load() < EDIT_STEP) return false;
@@ -4404,6 +4419,13 @@ void icon(ImDrawList *dl, Icon ic, ImVec2 c, float r, ImU32 col, ImU32 deep) {
         }
         for (int d = -1; d <= 1; d += 2)
             dl->AddTriangleFilled(P(c, s, .95f * d, 0), P(c, s, .68f * d, -.24f), P(c, s, .68f * d, .24f), col);
+        break;
+    }
+    case I_CHAT: {  // (1.0.2) the chat's button: a speech bubble with three dots (chat_overlay.cpp's, the MH4U port's the same)
+        const ImVec2 a = P(c, s, -.62f, -.42f), b = P(c, s, .62f, .3f);
+        dl->AddRectFilled(a, b, col, .22f * s);
+        dl->AddTriangleFilled(P(c, s, -.3f, .28f), P(c, s, -.46f, .66f), P(c, s, .02f, .28f), col);
+        for (int i = -1; i <= 1; i++) dl->AddCircleFilled(P(c, s, i * .3f, -.06f), .09f * s, IM_COL32(28, 20, 15, 255), 10);
         break;
     }
     case I_TREE: {  // (1.0.2) the weapon tree: a trunk and three branches, a node at each end (the MH4U port's the same)

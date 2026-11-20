@@ -6017,6 +6017,8 @@ std::string view_title() {
 #endif
     if (s.view == View::ColourPreset)
         return fmt(en_es("Colour preset %d", "Preset de color %d"), s_colour_preset + 1);
+    if (chat_options())
+        return std::string(cs("Chat options", "Opciones del chat"));
     if (s.view == View::Chat)
         return chat_title();  // (which chat: Chat · Global)
     return s.view == View::Keyboard ? s.keyboard.title
@@ -6304,6 +6306,10 @@ void chat_window_rect(const ImGuiViewport *vp, ImVec2 *at, ImVec2 *size) {
         *at = g_chat_drag.now_pos, *size = g_chat_drag.now_size;
     else if (chat::window(&x, &y, &w, &h))
         *at = ImVec2(vp->WorkPos.x + x * W, vp->WorkPos.y + y * H), *size = ImVec2(w * W, h * H);
+    else {  // (as it comes: half the screen's width, near its top, not over the whole game)
+        *size = ImVec2(std::max(W * .5f, CHAT_MIN_W * H), H * .7f);
+        *at = ImVec2(vp->WorkPos.x + (W - size->x) * .5f, vp->WorkPos.y + H * .05f);
+    }
     chat_window_fit(vp, at, size);
     if (chat_typing() && !g_chat_drag.mode) {  // (the phone's keyboard up: at the screen's top, as tall as it leaves)
         at->y = vp->WorkPos.y;
@@ -6401,7 +6407,10 @@ void touch_panel(bool *open, const Config &before) {
     // The header: Back at its left, the community's Discord and the official page (their marks), Save and Close at its
     // right, the title between
     float x0 = window->Pos.x, y0 = window->Pos.y, x1 = x0 + window->Size.x, y1 = y0 + window->Size.y;
-    float band = std::max(.11f * H, f * 2.9f), side = band * .8f, by = y0 + (band - side) * .5f + line * .5f;
+    // (1.0.2, the owner's: the chat window's own header, smaller - which chat, a picker for it, the gear for its options, X)
+    const bool chat_head = chat_win && s.view == View::Chat && !chat_options() && chat_strip();
+    float band = chat_win ? std::max(.075f * H, f * 2.1f) : std::max(.11f * H, f * 2.9f), side = band * .8f,
+          by = y0 + (band - side) * .5f + line * .5f;
     dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), k.band);
     if (look.game) {  // (the game's red and green rules under it)
         dl->AddRectFilled(ImVec2(x0, y0 + band), ImVec2(x1, y0 + band + line), IM_COL32(176, 34, 30, 255));
@@ -6412,89 +6421,131 @@ void touch_panel(bool *open, const Config &before) {
     float title_x = x0 + pad * 1.5f, right = x1 - pad;
     bool held = false;
     std::function<void()> later;  // (what the header or a tab asked for: once the frame is drawn as it began)
-    if (s.view != View::Main) {  // (a submenu or a dialog: a step back)
-        ImRect r(x0 + pad, by, x0 + pad + side, by + side);
-        if (touch_button("###back", r, true, &held))
-            later = [open]() { ask_back(open); };
-        plate(dl, r, line, held, true);
-        chevron(dl, r.GetCenter(), side * .2f, -1, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
-        title_x = r.Max.x + pad * 1.2f;
-    }
-    if (!dialog) {  // (a dialog asks for those itself)
+    if (chat_head) {  // (1.0.2: the chat window's header - "Chat · Hub", its picker, the gear and X)
         ImRect r(right - side, by, right, by + side);
         if (touch_button("###close", r, true, &held))
             later = [open]() { ask_close(open); };
         plate(dl, r, line, held, true);
         cross(dl, r.GetCenter(), side * .2f, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
-        bool can = dirty() || pending_text();
-        const char *label = tr("Save");
-        ImVec2 ts = ImGui::CalcTextSize(label);
-        float sw = std::max(side * 1.8f, ts.x + f * 1.8f);
-        ImRect save_rect(r.Min.x - pad - sw, by, r.Min.x - pad, by + side);
-        if (touch_button("###save", save_rect, can, &held))
-            s.command = Command::Save;
-        plate(dl, save_rect, line, held, can);
-        shadow_text(dl, f,
-                    ImVec2(save_rect.GetCenter().x - ts.x * .5f, save_rect.GetCenter().y - ts.y * .5f),
-                    can ? k.glow : look.text_off, label);
-        right = save_rect.Min.x - pad;
-        if (!chat_win) {  // (the chat window: Save and Close alone, its header the more room to move it by)
-            // (the project's page, a little apart from Save: GitHub's mark, as in the MH4U port)
-            ImRect site(save_rect.Min.x - pad * 1.6f - side, by, save_rect.Min.x - pad * 1.6f, by + side);
-            if (touch_button("###site", site, true, &held))  // (asks first: the browser can make Android close the game)
-                later = []() { push(View::OpenSite, "dialog.cancel"); };
-            plate(dl, site, line, held, true);
-            github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
-            // (the community's Discord beside it, the same size: the title fits in what is left)
-            ImRect chat(site.Min.x - pad - side, by, site.Min.x - pad, by + side);
-            if (touch_button("###discord", chat, true, &held))  // (asks first, as the page)
-                later = []() { push(View::OpenDiscord, "dialog.cancel"); };
-            plate(dl, chat, line, held, true);
-            discord_mark(dl, chat.GetCenter(), side * .27f, held ? k.glow : k.ink);
-            right = chat.Min.x - pad;
+        ImRect g(r.Min.x - pad - side, by, r.Min.x - pad, by + side);  // (the chat's options)
+        bool hg = false;
+        if (touch_button("###chatopts", g, true, &hg))
+            later = []() { chat_options_open(); };
+        plate(dl, g, line, hg, true);
+        {  // (a gear: a ring with eight teeth)
+            const ImVec2 c = g.GetCenter();
+            const float gr = side * .22f, th = std::max(2.f, line * 1.4f);
+            const ImU32 col = hg ? k.glow : k.ink;
+            for (int i = 0; i < 8; i++) {
+                const float t = i * 3.14159265f / 4;
+                dl->AddLine(ImVec2(c.x + cosf(t) * gr, c.y + sinf(t) * gr), ImVec2(c.x + cosf(t) * gr * 1.45f, c.y + sinf(t) * gr * 1.45f), col, th * 1.3f);
+            }
+            dl->AddCircle(c, gr, col, 20, th);
+            dl->AddCircle(c, gr * .4f, col, 12, th * .8f);
         }
-    }
-    {  // (the title; the tab's name or the submenu's after it. Where the header's buttons leave less room (a large Menu
-       // size on a 4:3 screen), both smaller to fit, down to .6 of their size; narrower still, the name alone, its last
-       // words left out if need be: never a word cut in two. The same in the MH4U port)
-        const char *title = tr("SETTINGS");
-        ImFont *tf = title_font();
-        float size = std::floor(f * 1.1f), cy = by + side * .5f, room = right - title_x;
-        std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();  // (a page: Section › Page)
-        auto sized = [](float full, float q) { return q < 1 ? std::floor(full * q) : full; };
-        auto name_w = [&](float q) { return font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str()).x; };
-        auto both_w = [&](float q) {
-            return tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title).x + (sub.empty() ? 0 : f * q * 1.4f + name_w(q));
-        };
-        float q = std::clamp(room / both_w(1), .6f, 1.f);
-        while (q > .6f && both_w(q) > room)
-            q = std::max(.6f, q - .02f);
-        bool alone = !sub.empty() && both_w(q) > room;  // (the name without the title before it)
-        if (alone) {
-            q = std::clamp(room / name_w(1), .6f, 1.f);
-            while (q > .6f && name_w(q) > room)
-                q = std::max(.6f, q - .02f);
-            std::string cut = whole_words(font, sized(f, q), sub, room);
-            if (cut.empty())  // (not even its first word: the title as it was, at its size, clipped at the buttons)
-                alone = false, q = 1;
-            else
-                sub = cut;
+        ImRect pk(g.Min.x - pad - side, by, g.Min.x - pad, by + side);  // (which chat: a picker)
+        bool hp = false;
+        if (touch_button("###chatpick", pk, true, &hp))
+            later = []() { chat_channel_pick(); };
+        plate(dl, pk, line, hp, true);
+        {
+            const ImVec2 c = pk.GetCenter();
+            const float tr_ = side * .16f;
+            dl->AddTriangleFilled(ImVec2(c.x - tr_, c.y - tr_ * .5f), ImVec2(c.x + tr_, c.y - tr_ * .5f), ImVec2(c.x, c.y + tr_ * .7f),
+                                  hp ? k.glow : k.ink);
         }
+        right = pk.Min.x - pad;
+        const std::string name = chat_title();
+        const float size = std::floor(f * 1.05f);
+        ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, name.c_str());
         dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        float x = title_x;
-        if (!alone) {
-            ImVec2 ts = tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title);
-            shadow_text(dl, tf, sized(size, q), ImVec2(x, cy - ts.y * .5f), k.glow, title);
-            x += ts.x + f * q * .7f;
-            if (!sub.empty())
-                diamond(dl, ImVec2(x, cy), f * q * .18f, k.rule);
-            x += f * q * .7f;
-        }
-        if (!sub.empty()) {
-            ImVec2 ss = font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str());
-            shadow_text(dl, sized(f, q), ImVec2(x, cy - ss.y * .5f), k.ink, sub.c_str());
-        }
+        shadow_text(dl, size, ImVec2(title_x, by + side * .5f - ts.y * .5f), k.glow, name.c_str());
         dl->PopClipRect();
+    } else {
+        if (s.view != View::Main) {  // (a submenu or a dialog: a step back)
+            ImRect r(x0 + pad, by, x0 + pad + side, by + side);
+            if (touch_button("###back", r, true, &held))
+                later = [open]() { ask_back(open); };
+            plate(dl, r, line, held, true);
+            chevron(dl, r.GetCenter(), side * .2f, -1, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
+            title_x = r.Max.x + pad * 1.2f;
+        }
+        if (!dialog) {  // (a dialog asks for those itself)
+            ImRect r(right - side, by, right, by + side);
+            if (touch_button("###close", r, true, &held))
+                later = [open]() { ask_close(open); };
+            plate(dl, r, line, held, true);
+            cross(dl, r.GetCenter(), side * .2f, held ? k.glow : k.ink, std::max(2.f, line * 1.5f));
+            bool can = dirty() || pending_text();
+            const char *label = tr("Save");
+            ImVec2 ts = ImGui::CalcTextSize(label);
+            float sw = std::max(side * 1.8f, ts.x + f * 1.8f);
+            ImRect save_rect(r.Min.x - pad - sw, by, r.Min.x - pad, by + side);
+            if (touch_button("###save", save_rect, can, &held))
+                s.command = Command::Save;
+            plate(dl, save_rect, line, held, can);
+            shadow_text(dl, f,
+                        ImVec2(save_rect.GetCenter().x - ts.x * .5f, save_rect.GetCenter().y - ts.y * .5f),
+                        can ? k.glow : look.text_off, label);
+            right = save_rect.Min.x - pad;
+            if (!chat_win) {  // (the chat window: Save and Close alone, its header the more room to move it by)
+                // (the project's page, a little apart from Save: GitHub's mark, as in the MH4U port)
+                ImRect site(save_rect.Min.x - pad * 1.6f - side, by, save_rect.Min.x - pad * 1.6f, by + side);
+                if (touch_button("###site", site, true, &held))  // (asks first: the browser can make Android close the game)
+                    later = []() { push(View::OpenSite, "dialog.cancel"); };
+                plate(dl, site, line, held, true);
+                github_mark(dl, site.GetCenter(), side * .27f, held ? k.glow : k.ink);
+                // (the community's Discord beside it, the same size: the title fits in what is left)
+                ImRect chat(site.Min.x - pad - side, by, site.Min.x - pad, by + side);
+                if (touch_button("###discord", chat, true, &held))  // (asks first, as the page)
+                    later = []() { push(View::OpenDiscord, "dialog.cancel"); };
+                plate(dl, chat, line, held, true);
+                discord_mark(dl, chat.GetCenter(), side * .27f, held ? k.glow : k.ink);
+                right = chat.Min.x - pad;
+            }
+        }
+        {  // (the title; the tab's name or the submenu's after it. Where the header's buttons leave less room (a large Menu
+           // size on a 4:3 screen), both smaller to fit, down to .6 of their size; narrower still, the name alone, its last
+           // words left out if need be: never a word cut in two. The same in the MH4U port)
+            const char *title = tr("SETTINGS");
+            ImFont *tf = title_font();
+            float size = std::floor(f * 1.1f), cy = by + side * .5f, room = right - title_x;
+            std::string sub = s.view == View::Main ? tr(page_names[s.page]) : dialog ? "" : view_title();  // (a page: Section › Page)
+            auto sized = [](float full, float q) { return q < 1 ? std::floor(full * q) : full; };
+            auto name_w = [&](float q) { return font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str()).x; };
+            auto both_w = [&](float q) {
+                return tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title).x + (sub.empty() ? 0 : f * q * 1.4f + name_w(q));
+            };
+            float q = std::clamp(room / both_w(1), .6f, 1.f);
+            while (q > .6f && both_w(q) > room)
+                q = std::max(.6f, q - .02f);
+            bool alone = !sub.empty() && both_w(q) > room;  // (the name without the title before it)
+            if (alone) {
+                q = std::clamp(room / name_w(1), .6f, 1.f);
+                while (q > .6f && name_w(q) > room)
+                    q = std::max(.6f, q - .02f);
+                std::string cut = whole_words(font, sized(f, q), sub, room);
+                if (cut.empty())  // (not even its first word: the title as it was, at its size, clipped at the buttons)
+                    alone = false, q = 1;
+                else
+                    sub = cut;
+            }
+            dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
+            float x = title_x;
+            if (!alone) {
+                ImVec2 ts = tf->CalcTextSizeA(sized(size, q), FLT_MAX, 0, title);
+                shadow_text(dl, tf, sized(size, q), ImVec2(x, cy - ts.y * .5f), k.glow, title);
+                x += ts.x + f * q * .7f;
+                if (!sub.empty())
+                    diamond(dl, ImVec2(x, cy), f * q * .18f, k.rule);
+                x += f * q * .7f;
+            }
+            if (!sub.empty()) {
+                ImVec2 ss = font->CalcTextSizeA(sized(f, q), FLT_MAX, 0, sub.c_str());
+                shadow_text(dl, sized(f, q), ImVec2(x, cy - ss.y * .5f), k.ink, sub.c_str());
+            }
+            dl->PopClipRect();
+        }
     }
     // (1.0.2, the owner's) The chat window's first row: the text (the chat page: "Say something", a tap types) and Send
     // beside it, and Keys (the keys on the screen instead of the phone's keyboard, or the phone's again) where they fit.
@@ -6605,7 +6656,7 @@ void touch_panel(bool *open, const Config &before) {
         float lx = left + tw + pad * 1.4f;
         float y = top + error_text(top, lx, end - lx);
         list_rect = ImRect(lx, y, end, bottom);
-    } else if (s.view == View::Chat && chat_strip()) {  // (1.0.2: the text and Send in the window's first row, the lines under)
+    } else if (s.view == View::Chat && chat_strip() && !chat_options()) {  // (1.0.2: the text and Send in the window's first row, the lines under)
         float y = top + chat_first_row(chat_can_say(), false) + pad;
         y += error_text(y, left, end - left);
         list_rect = ImRect(left, y, end, bottom);

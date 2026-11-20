@@ -38,7 +38,15 @@ void load() {
     float x, y, s;
     if (bubble(&x, &y, &s)) g_bx = std::clamp(x, 0.f, 1.f), g_by = std::clamp(y, 0.f, 1.f), g_bs = std::clamp(s, .6f, 2.f);
 }
-float radius() { return g_h * .048f * g_bs; }
+bool g_placed;  // (1.0.2: the port placed it, the editor's place and size: placed())
+float g_pr;      // (and its radius, a fraction of the screen's height)
+bool placed() {
+    float x, y, r;
+    g_placed = g_port.place && g_port.place(&x, &y, &r);
+    if (g_placed) g_bx = std::clamp(x, 0.f, 1.f), g_by = std::clamp(y, 0.f, 1.f), g_pr = r;
+    return g_placed;
+}
+float radius() { return g_placed ? g_h * g_pr : g_h * .048f * g_bs; }
 bool menu_open() { return g_port.menu_open && g_port.menu_open(); }
 bool wanted() {  // (the online chat on, or the hub's chat on and a hub up)
 #ifdef __ANDROID__
@@ -90,6 +98,7 @@ bool overlay_frame() {
 void overlay_draw(float w, float h) {
     g_w = w, g_h = h;
     load();
+    placed();
     ImDrawList *dl = ImGui::GetForegroundDrawList();
     ImFont *font = ImGui::GetFont();
     const float scale = std::max(1.f, h / 720.f), line = 2 * scale;
@@ -153,7 +162,7 @@ void overlay_draw(float w, float h) {
 }
 
 bool bubble_down(float fx, float fy) {
-    if (!g_on_screen) return false;
+    if (!g_on_screen) return false;  // (its place: the last drawn's - the port's place is asked as it draws, placed())
     const float x = fx * g_w, y = fy * g_h;
     if (std::hypot(x - g_bx * g_w, y - g_by * g_h) > radius() * 1.15f) return false;
     g_drag = true, g_dragged = false;
@@ -164,7 +173,7 @@ void bubble_finger(bool up, float fx, float fy) {
     if (!g_drag) return;
     const float x = fx * g_w, y = fy * g_h;
     if (std::hypot(x - g_down_x, y - g_down_y) > g_h * .02f) g_dragged = true;
-    if (g_dragged) {
+    if (g_dragged && !g_placed) {
         const float r = radius();
         g_bx = std::clamp((x + g_drag_dx) / g_w, r / g_w, 1 - r / g_w);
         g_by = std::clamp((y + g_drag_dy) / g_h, r / g_h, 1 - r / g_h);
@@ -172,7 +181,7 @@ void bubble_finger(bool up, float fx, float fy) {
     if (!up) return;
     g_drag = false;
     if (g_dragged) {
-        set_bubble(g_bx, g_by, g_bs);
+        if (!g_placed) set_bubble(g_bx, g_by, g_bs);
         return;
     }
     if (g_port.log) g_port.log("[chat] the chat button: the menu's chat");

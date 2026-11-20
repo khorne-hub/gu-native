@@ -11,6 +11,10 @@ struct OverlayPort {
     std::function<bool()> controls_shown;  // the touch controls are on the screen (the button shows with them)
     std::function<bool()> menu_open;       // the port's menu is open (nothing of this then)
     std::function<void()> open_chat;       // a tap on the button: the menu's chat page
+    // (1.0.2) the button's place and size, as the touch controls' editor has it (its centre, fractions of the screen,
+    // and its radius, a fraction of the screen's height): false when the port has none. With one, the button is placed
+    // and sized in the editor alone (a drag on it does nothing; a tap opens the chat)
+    std::function<bool(float *x, float *y, float *r)> place;
     std::function<void(const char *)> log;
 };
 void overlay_setup(const OverlayPort &port);

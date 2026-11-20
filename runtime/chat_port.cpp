@@ -130,6 +130,7 @@ extern "C" void chat_port_init(void) {
         if (!overlay_menu_open()) overlay_toggle_settings();
         settings_panel_request_view(SETTINGS_VIEW_CHAT);
     };
+    o.place = [](float *x, float *y, float *r) { return touch_chat_place(x, y, r); };  // (1.0.2: the editor places it)
     o.log = chat_log;
     chat::overlay_setup(o);
 }
@@ -207,3 +208,4 @@ extern "C" void chat_bubble_finger(bool up, float fx, float fy) { chat::bubble_f
 extern "C" void chat_bubble_size(float s) { chat::bubble_size(s); }
 extern "C" float chat_bubble_scale(void) { return chat::bubble_scale(); }
 extern "C" void chat_bubble_reset(void) { chat::bubble_reset(); }
+extern "C" bool chat_bubble_on(void) { return chat::bubble_shown(); }

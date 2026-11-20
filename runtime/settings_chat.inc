@@ -175,6 +175,41 @@ void chat_status_row(std::vector<Row> &r) {
 // touch_panel (a tap there types: chat_say_open), the chat's lines under it and the rest at the end. With a controller,
 // or in a desktop's menu, Say something stays a row
 bool chat_strip() { return touch_ui() && !host_input_real_pad(); }
+// The chat's options (the switches, Friends, the lines over the game, the button...): a page of their own, the same view
+// with s.at "chat/options", opened by the window's gear (chat_options_open); Back goes back to the chat
+bool chat_options() { return s.view == View::Chat && s.at == "chat/options"; }
+void chat_options_open() {
+    push(View::Chat, "chat.channel");
+    s.at = "chat/options";
+}
+// The chats to pick: the hub's, General, Global, each friend (names with the lines not read; to: what each is)
+int chat_channel_lists(std::vector<std::string> &names, std::vector<std::pair<int, std::string>> &to) {
+    int at = 0;
+    for (int c : {chat::HUB, chat::GENERAL, chat::GLOBAL}) {
+        int n = chat::unread(c);
+        names.push_back(chat::channel_name(c) + (n ? fmt(" (%d)", n) : std::string()));
+        to.push_back({c, ""});
+        if (g_chat == c) at = (int)to.size() - 1;
+    }
+    for (const chat::Person &p : chat::people())
+        if (p.is_friend) {
+            int n = chat::unread(chat::FRIEND, p.id);
+            names.push_back(std::string(cs("Friend: ", "Amigo: ")) + p.name + (n ? fmt(" (%d)", n) : std::string()));
+            to.push_back({chat::FRIEND, p.id});
+            if (g_chat == chat::FRIEND && g_chat_peer == p.id) at = (int)to.size() - 1;
+        }
+    return at;
+}
+void chat_channel_pick() {  // (the window's header: which chat, a picker)
+    std::vector<std::string> names;
+    std::vector<std::pair<int, std::string>> to;
+    int at = chat_channel_lists(names, to);
+    Row row;
+    row.id = "chat.channel", row.title = cs("Chat", "Chat");
+    choices(row, names, at, [to](int i) {
+        if (i >= 0 && i < (int)to.size()) g_chat = to[i].first, g_chat_peer = to[i].second;
+    });
+}
 bool chat_can_say() {
     if (g_chat == chat::HUB) return chat::hub_chat() && chat::hub_up();
     return chat::enabled();
@@ -215,24 +250,11 @@ void chat_page_rows(std::vector<Row> &r) {
     // (1.0.2, the owner's: the chat as a chat window - the text and Send at its top, the lines under them, so the phone's
     // keyboard leaves them in sight; the chat picked, the switches, Friends and the options at the end. With a controller
     // the chat picked and Say something stay first, as rows)
-    const bool strip = chat_strip();
+    const bool strip = chat_strip(), options = chat_options(), chat_alone = strip && !options;
     auto channel_row = [&]() {  // the chat shown: Global, General, the hub, each friend
         std::vector<std::string> names;
         std::vector<std::pair<int, std::string>> to;
-        int at = 0;
-        for (int c : {chat::HUB, chat::GENERAL, chat::GLOBAL}) {
-            int n = chat::unread(c);
-            names.push_back(chat::channel_name(c) + (n ? fmt(" (%d)", n) : std::string()));
-            to.push_back({c, ""});
-            if (g_chat == c) at = (int)to.size() - 1;
-        }
-        for (const chat::Person &p : people)
-            if (p.is_friend) {
-                int n = chat::unread(chat::FRIEND, p.id);
-                names.push_back(std::string(cs("Friend: ", "Amigo: ")) + p.name + (n ? fmt(" (%d)", n) : std::string()));
-                to.push_back({chat::FRIEND, p.id});
-                if (g_chat == chat::FRIEND && g_chat_peer == p.id) at = (int)to.size() - 1;
-            }
+        int at = chat_channel_lists(names, to);
         add_choice(r, "chat.channel", cs("Chat", "Chat"), at, names, [to](int i) {
             if (i >= 0 && i < (int)to.size()) g_chat = to[i].first, g_chat_peer = to[i].second;
         });
@@ -244,16 +266,23 @@ void chat_page_rows(std::vector<Row> &r) {
         action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
         r.back().help = fmt("%s %d %s", cs("Up to", "Hasta"), (int)chat::max_text(), cs("characters. The keyboard's Enter sends it.", "caracteres. El Enter del teclado lo manda."));
     }
-    if (!can)
-        note(r, "chat.why", g_chat != chat::HUB ? cs("Turn on the online chat below to read and write here.",
-                                                     "Activa el chat en línea abajo para leer y escribir acá.")
-                            : !hub_on       ? cs("Turn on the hub chat below to read and write here.",
-                                                 "Activa el chat de la sala abajo para leer y escribir acá.")
+    if (options)
+        channel_row();
+    if (!can && !options)
+        note(r, "chat.why", g_chat != chat::HUB ? (strip ? cs("Turn on the online chat in the chat's options (the gear above) to read and write here.",
+                                                              "Activa el chat en línea en las opciones del chat (el engranaje de arriba) para leer y escribir acá.")
+                                                        : cs("Turn on the online chat below to read and write here.",
+                                                             "Activa el chat en línea abajo para leer y escribir acá."))
+                            : !hub_on       ? (strip ? cs("Turn on the hub chat in the chat's options (the gear above) to read and write here.",
+                                                          "Activa el chat de la sala en las opciones del chat (el engranaje de arriba) para leer y escribir acá.")
+                                                     : cs("Turn on the hub chat below to read and write here.",
+                                                          "Activa el chat de la sala abajo para leer y escribir acá."))
                                             : cs("Not in a hub: in the game, go to the Gathering Hall and create or join one.",
                                                  "No estás en una sala: en el juego, ve al Salón de reuniones y crea o únete a una."));
-    std::vector<chat::Line> lines = chat::lines(g_chat, g_chat_peer, 30);
-    chat::mark_read(g_chat, g_chat_peer);
-    if (lines.empty() && can) note(r, "chat.none", cs("Nothing has been said yet.", "Todavía no se dijo nada."));
+    std::vector<chat::Line> lines = options ? std::vector<chat::Line>() : chat::lines(g_chat, g_chat_peer, 30);
+    if (!options)
+        chat::mark_read(g_chat, g_chat_peer);
+    if (lines.empty() && can && !options) note(r, "chat.none", cs("Nothing has been said yet.", "Todavía no se dijo nada."));
     std::vector<std::pair<std::string, std::string>> senders;  // (the people in the lines: id, name)
     for (auto it = lines.rbegin(); it != lines.rend(); ++it) {  // (the newest first: under Say something, in sight)
         const chat::Line &l = *it;
@@ -274,6 +303,13 @@ void chat_page_rows(std::vector<Row> &r) {
             if (!seen) senders.push_back({l.from, l.name});
         }
     }
+    if (chat_alone)  // (the chat window: the lines alone; the rest in its options, the gear)
+        return;
+    if (options)  // (the people in the chat's lines: someone to add, mute or block)
+        for (const chat::Line &l : chat::lines(g_chat, g_chat_peer, 30))
+            if (!l.mine && !l.system && l.from != chat::my_key() &&
+                std::none_of(senders.begin(), senders.end(), [&](const std::pair<std::string, std::string> &x) { return x.first == l.from; }))
+                senders.push_back({l.from, l.name});
     if (!senders.empty() && g_chat != chat::FRIEND) {
         std::vector<std::string> names;
         for (auto &x : senders) names.push_back(x.second);
@@ -307,8 +343,6 @@ void chat_page_rows(std::vector<Row> &r) {
         };
         r.push_back(std::move(row));
     }
-    if (strip)
-        channel_row();
     chat_hub_row(r);  // (the two switches, both off as they come)
     chat_status_row(r);
     action(r, "chat.friends", cs("Friends", "Amigos"), []() { push(View::Friends, "friends.code"); });
@@ -336,11 +370,15 @@ void chat_page_rows(std::vector<Row> &r) {
         row.activate = []() { chat::set_bubble_shown(!chat::bubble_shown()); };
         row.adjust = [](int d) { chat::set_bubble_shown(d > 0); };
         r.push_back(std::move(row));
-        add_number(r, "chat.bubble.size", cs("Chat button size", "Tamaño del botón del chat"),
-                   []() { return std::round(chat_bubble_scale() * 100.0); }, [](double v) { chat_bubble_size((float)(v / 100)); },
-                   60, 200, 10, true);
-        r.back().value += " %";
-        action(r, "chat.bubble.reset", cs("Chat button back in its place", "Botón del chat a su lugar"), []() { chat_bubble_reset(); });
+        // (1.0.2, the owner's: placed and sized in the editor, as every button, and kept with the control profile)
+        action(r, "chat.bubble.place", cs("Move the chat button", "Mover el botón del chat"), []() {
+            touch_edit_begin();  // (the editor starts once the menu is closed, as Customize controls and HUD)
+            request_back.store(true);
+        });
+        r.back().help = cs("Customize controls and HUD: drag the chat button where you want it, pinch or use - / + for its size, "
+                           "then Save. It is kept with the control profile.",
+                           "Personalizar controles y HUD: arrastra el botón del chat adonde quieras, pellizca o usa - / + para su "
+                           "tamaño, y Guardar. Queda guardado con el perfil de controles.");
         // (1.0.2: the chat window, moved by its header and sized by its corner: the menu's place and size again)
         action(r, "chat.window.reset", cs("Chat window back in its place", "Ventana del chat a su lugar"), []() { chat::reset_window(); });
         r.back().help = cs("The chat opens in a window of its own: drag its top to move it and its bottom right corner to make "
