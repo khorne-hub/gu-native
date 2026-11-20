@@ -42,6 +42,9 @@ bool touch_editor_open(void);
 void touch_game_held(bool on);
 // the game held for the layout editor: a part of the HUD dragged since its last step, it takes another (overlay.cpp)
 bool touch_editor_step(void);
+// (1.0.2) the HUD's size changed in the settings menu (Screen and HUD > HUD size): the game it holds takes a step, as for a
+// part dragged in the editor, so the HUD shows at the new size at once
+void touch_hud_step(void);
 void touch_editor_cancel(void);
 #ifndef __ANDROID__
 // The HUD editor (a desktop's, worked with the mouse): every part of the HUD (runtime/hud_parts.h) moved, sized and

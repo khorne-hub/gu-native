@@ -435,6 +435,12 @@ int config_live_ps1_filter(void);       // [Graphics] PS1Filter (nvn/vulkan/exec
 int config_live_text_outline(void);     // [Graphics] TextOutline (nvn/vulkan/exec.c)
 void config_ps1_test(int on);           // (tests: MHGU_CONTROL "ps1 0|1") as if saved, until the next save
 void config_text_outline_test(int on);  // (tests: MHGU_CONTROL "textoutline 0|1") as if saved, until the next save
+// [Display] HUDSize as runtime/hud_parts.h reads it (hud_shrink: 100 minus the size): the saved one, or while the settings
+// menu is open the row's (config_hud_preview, from the draft every frame the menu is open; NULL as it closes). True when
+// the HUD's size changed with it (the menu then lets the game it holds draw a frame: touch_hud_step)
+int config_live_hud_shrink(void);
+bool config_hud_preview(const Config *draft);
+void config_hud_test(int shrink);       // (tests: MHGU_CONTROL "hudsize <percent>") as if saved, until the next save
 // [Colour] (runtime/colour_filter.h ColourAdjust; the window image's pass, nvn/vulkan/exec.c): the saved values, or while
 // the settings menu is open the ones being adjusted there (config_colour_preview), so the picture shows them at once
 struct ColourAdjust;

@@ -491,9 +491,14 @@ chats, y mensajes privados con tus amigos:
 - **General:** todos los del chat en línea que juegan MHGU, en Android y PC.
 - **Global:** todos los del chat en línea de los dos ports, MHGU y MH4U.
 
-En la página **Chat** la línea más nueva va primero, justo debajo de **Decir algo**, así no hace falta bajar para leerla.
+La página **Chat** se abre como una ventana de chat sobre el juego, que deja ver lo de atrás: el chat elegido y **Decir
+algo** arriba, la línea más nueva justo debajo (no hace falta bajar para leerla), y los interruptores, **Amigos** y las
+opciones debajo de las líneas. Arrastra su parte de arriba para moverla y su esquina de abajo a la derecha para
+agrandarla o achicarla; queda donde la dejes, y **Opciones**, **Ventana del chat a su lugar** la deja como venía.
+Mientras el teclado del teléfono está abierto para **Decir algo**, lo que escribes se ve arriba de la ventana con las
+líneas del chat debajo, sobre el teclado.
 
-**Los dos chats empiezan apagados.** Hasta que actives uno, arriba en la página **Chat**, no se ve nada del chat sobre el
+**Los dos chats empiezan apagados.** Hasta que actives uno, en la página **Chat** (debajo de las líneas), no se ve nada del chat sobre el
 juego: **Chat de la sala** activa el de la sala (sin relés, nada sale de la sala) y **Chat en línea** Global, General y
 amigos.
 
@@ -502,7 +507,7 @@ estás en una sala. Un toque abre el chat, arrastrarlo lo mueve, y el número qu
 chat** lo apaga y **Tamaño del botón del chat** cambia su tamaño. Las líneas nuevas se ven unos segundos a su lado:
 **Líneas sobre el juego** elige **Apagado**, **Sala y amigos** (lo predeterminado) o **Todos**.
 
-**El chat en línea** (Global, General y amigos) está apagado hasta que lo activas con **Chat en línea**, arriba en la página
+**El chat en línea** (Global, General y amigos) está apagado hasta que lo activas con **Chat en línea**, en la página
 **Chat**. La primera vez, una pregunta lo explica:
 
 - Se conecta a relés públicos de Nostr: `relay.damus.io`, `nos.lol` y `relay.primal.net`, u otros que elijas en **Relés**.

@@ -186,8 +186,8 @@ void chat_page_rows(std::vector<Row> &r) {
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
     if (!found) g_chat = chat::GLOBAL, g_chat_peer.clear();
-    chat_hub_row(r);  // (the two switches, both off as they come)
-    chat_status_row(r);
+    // (1.0.2, the owner's: the chat as a chat window - the chat picked and Say something at its top, the lines under them,
+    // so the phone's keyboard leaves them in sight; the switches, Friends and the options under the lines)
     {  // the chat shown: Global, General, the hub, each friend
         std::vector<std::string> names;
         std::vector<std::pair<int, std::string>> to;
@@ -222,13 +222,14 @@ void chat_page_rows(std::vector<Row> &r) {
             error = chat::explain(why);
             return false;
         });
+        s.keyboard.chat = true;  // (the chat window's: the lines under the text while the phone's keyboard is up)
     }, can);
     r.back().help = fmt("%s %d %s", cs("Up to", "Hasta"), (int)chat::max_text(), cs("characters. The keyboard's Enter sends it.", "caracteres. El Enter del teclado lo manda."));
     if (!can)
-        note(r, "chat.why", g_chat != chat::HUB ? cs("Turn on the online chat above to read and write here.",
-                                                     "Activa el chat en línea arriba para leer y escribir acá.")
-                            : !hub_on       ? cs("Turn on the hub chat above to read and write here.",
-                                                 "Activa el chat de la sala arriba para leer y escribir acá.")
+        note(r, "chat.why", g_chat != chat::HUB ? cs("Turn on the online chat below to read and write here.",
+                                                     "Activa el chat en línea abajo para leer y escribir acá.")
+                            : !hub_on       ? cs("Turn on the hub chat below to read and write here.",
+                                                 "Activa el chat de la sala abajo para leer y escribir acá.")
                                             : cs("Not in a hub: in the game, go to the Gathering Hall and create or join one.",
                                                  "No estás en una sala: en el juego, ve al Salón de reuniones y crea o únete a una."));
     std::vector<chat::Line> lines = chat::lines(g_chat, g_chat_peer, 30);
@@ -287,6 +288,8 @@ void chat_page_rows(std::vector<Row> &r) {
         };
         r.push_back(std::move(row));
     }
+    chat_hub_row(r);  // (the two switches, both off as they come)
+    chat_status_row(r);
     action(r, "chat.friends", cs("Friends", "Amigos"), []() { push(View::Friends, "friends.code"); });
     {
         int on = 0;
@@ -317,6 +320,12 @@ void chat_page_rows(std::vector<Row> &r) {
                    60, 200, 10, true);
         r.back().value += " %";
         action(r, "chat.bubble.reset", cs("Chat button back in its place", "Botón del chat a su lugar"), []() { chat_bubble_reset(); });
+        // (1.0.2: the chat window, moved by its header and sized by its corner: the menu's place and size again)
+        action(r, "chat.window.reset", cs("Chat window back in its place", "Ventana del chat a su lugar"), []() { chat::reset_window(); });
+        r.back().help = cs("The chat opens in a window of its own: drag its top to move it and its bottom right corner to make "
+                           "it larger or smaller. It stays where you leave it. This puts it back as it came.",
+                           "El chat se abre en una ventana propia: arrastra su parte de arriba para moverla y su esquina de "
+                           "abajo a la derecha para agrandarla o achicarla. Queda donde la dejes. Esto la deja como venía.");
     }
 #endif
     {
@@ -369,6 +378,24 @@ void chat_page_rows(std::vector<Row> &r) {
                            "Todos con los que quieras hablar necesitan al menos un relé en común contigo.");
     }
     note(r, "chat.credit", cs("Chat and room keys after the designs of tabarong.", "Chat y claves de sala según los diseños de tabarong."));
+}
+// (1.0.2) Say something in the chat window with the phone's keyboard up (chat_typing): Send, the keys on the screen
+// instead of the phone's keyboard, and the chat's lines under the text, the newest first, as on the chat page
+void chat_typing_rows(std::vector<Row> &r) {
+    action(r, "key.accept", cs("Send", "Enviar"), []() { accept_keyboard(); });
+    action(r, "key.keys", cs("Keys on the screen", "Teclas en la pantalla"), []() { s.keyboard.phone = false; });
+    std::vector<chat::Line> lines = chat::lines(g_chat, g_chat_peer, 30);
+    chat::mark_read(g_chat, g_chat_peer);
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {
+        const chat::Line &l = *it;
+        note(r, "chat.line." + std::to_string(l.serial), chat::line_text(l));
+        Row &n = r.back();
+        if (!l.system) {
+            n.who = l.mine ? std::string(cs("You", "Tú")) : l.name;
+            if (g_chat == chat::GLOBAL && !l.game.empty()) n.who += l.game == "mh4u" ? "  (MH4U)" : "  (MHGU)";
+            n.who_mine = l.mine;
+        }
+    }
 }
 // The friends page: your code (a tap copies it), add one by code, the requests, the friends (a tap: talk, share the key,
 // mute, block, remove), the muted and blocked

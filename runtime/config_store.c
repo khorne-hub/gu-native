@@ -44,6 +44,20 @@ static SDL_AtomicInt live_fsr1_sharp;   // [Display] FSR1Sharpness (a float's bi
 float config_live_fsr1_sharpness(void) { return get_float(&live_fsr1_sharp); }
 int config_live_flex_cancel(void) { return SDL_GetAtomicInt(&live_flex_cancel); }
 static SDL_AtomicInt live_gen;  // (each publish: config_live_generation)
+// [Display] HUDSize (hud_shrink): the saved one, or while the settings menu is open the one being adjusted there
+// (config_hud_preview), so the HUD follows the row at once. Up to the first 1.0.2 builds runtime/hud_parts.h read the
+// start's config alone: a size saved took a restart
+static SDL_AtomicInt live_hud_shrink, live_hud_draft, live_hud_previewing;
+int config_live_hud_shrink(void) {
+    return SDL_GetAtomicInt(&live_hud_previewing) ? SDL_GetAtomicInt(&live_hud_draft) : SDL_GetAtomicInt(&live_hud_shrink);
+}
+bool config_hud_preview(const Config *draft) {
+    int before = config_live_hud_shrink();
+    if (draft) SDL_SetAtomicInt(&live_hud_draft, draft->hud_shrink);
+    SDL_SetAtomicInt(&live_hud_previewing, draft != NULL);
+    return config_live_hud_shrink() != before;
+}
+void config_hud_test(int shrink) { SDL_SetAtomicInt(&live_hud_shrink, shrink); }
 // [Colour] as the window image's pass reads it each frame (config_live_colour): the saved values, or the settings menu's
 // draft while it is open (config_colour_preview)
 static SDL_SpinLock colour_lock;
@@ -152,6 +166,7 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->monster_bars != saved.monster_bars) SDL_SetAtomicInt(&live_monster_bars, c->monster_bars);
     if (all || c->ps1_filter != saved.ps1_filter) SDL_SetAtomicInt(&live_ps1_filter, c->ps1_filter);
     if (all || c->text_outline != saved.text_outline) SDL_SetAtomicInt(&live_text_outline, c->text_outline);
+    if (all || c->hud_shrink != saved.hud_shrink) SDL_SetAtomicInt(&live_hud_shrink, c->hud_shrink);
     for (int i = 0; i < BINDS; i++)
         for (int k = 0; k < BIND_KEYS; k++)
             if (all || c->binds[i][k] != saved.binds[i][k]) SDL_SetAtomicInt(&live_binds[i][k], c->binds[i][k]);
