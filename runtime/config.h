@@ -53,11 +53,12 @@ enum {
 enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, TB_L, TB_ZL, TB_ZR, TB_L3, TB_R3, TB_STICK,
        TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_ZL, TB_MENU_ZR, TB_MENU_PAD,
        TB_STICK_RUN, TB_GUARD_SLIDE, TB_LOCKON, TB_FLOAT_STICK, TB_MENU_LR, TB_DPAD_MENUS, TB_ARTS_PAD, TB_HOLD_HIDE,
-       TB_SLIDE_BOTH, TB_CAM_RIGHT, TB_COUNT };
+       TB_SLIDE_BOTH, TB_CAM_RIGHT, TB_MAP_BUTTON, TB_COUNT };
+// (1.0.2) ShowMapButton: the port's button that shows and hides the minimap (runtime/touch.cpp C_MAPTOG), on by default
 // (the item bar's arrows on by default, as in the MH4U port; the Lock-on button too; the floating stick off; the menu
 // pad's L and R and the Hunter Arts' taps with a controller as up to 0.1.9.3, the D-pad in menus off: the menu pad takes
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
-#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0}
+#define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1}
 #define COLOUR_PRESETS 3  // [Colour] Preset1..3 (1.0.2)
 // The combined buttons: 15 from 1.0.2 (S2), each layout profile with its own (runtime/touch.cpp: combo <n> <buttons> in
 // its file). [Touch] Combo1..6, 1.0.1.1's six for every layout, are what a profile from before (no such lines) takes; each
@@ -246,6 +247,9 @@ typedef struct {
     int rec_audio;            // [Audio] ScreenRecording (1.0.2, Android; off by default, 0: nothing in CONFIG_DEFAULT_VALUES;
                               // from the next start): the sound without SDL's low-latency mode, whose MMAP path a phone's
                               // screen recorder doesn't hear (services/audio.c rec_audio_hint)
+    int hud_shrink;           // [Display] HUDSize (1.0.2, the owner's): the HUD's size, 100 - this percent (0: 100 %, the
+                              // default, nothing in CONFIG_DEFAULT_VALUES; 40 at most: 60 %; live): every part of the hunt's
+                              // HUD toward its corner, times its own size (runtime/hud_parts.h hud_global)
 } Config;
 // The crossplay settings as the network threads read them (config_live_crossplay)
 typedef struct {

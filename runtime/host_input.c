@@ -249,6 +249,7 @@ static void script_parse(void) {
 //   finger <n> down|move|up|cancel <x> <y> [ms]: a finger on the screen (n: which one, 0..15; x, y: parts of the
 //                          window's width and height), now or that many ms from now (tests: the touch controls)
 //   touchedit              the touch layout editor opens, as Customize controls and HUD does (runtime/touch.cpp)
+//   hudsize <percent>      the HUD's size, 60 to 100, from the next frame ([Display] HUDSize; 1.0.2)
 //   fakewindow <ms>        the touch controls see a window of the game's menus drawn for that long (a chat bubble: a
 //                          window that comes by itself; runtime/touch.cpp)
 char g_shot_request[256];  // (runtime/nvn/vulkan/device.c saves it)
@@ -341,6 +342,11 @@ static void control_poll(void) {
             }
             if (!strcmp(cmd, "upscale")) {  // upscale 0|1|2: [Display] UpscaleFilter Smooth / Sharp / FSR1 from the next frame, as
                 config_upscale_test(atoi(arg));  // if saved in the menu (tests: the same scene both ways)
+                continue;
+            }
+            if (!strcmp(cmd, "hudsize")) {  // hudsize <percent>: [Display] HUDSize from the next frame, as if saved in the
+                int v = atoi(arg);          // menu (tests, 1.0.2: the same hunt at several sizes)
+                g_config.hud_shrink = v >= 60 && v <= 100 ? (100 - v) / 5 * 5 : 0;
                 continue;
             }
             if (!strcmp(cmd, "ps1")) {  // ps1 0|1: [Graphics] PS1Filter from the next frame, as if saved in the menu (tests:

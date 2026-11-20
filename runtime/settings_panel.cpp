@@ -981,6 +981,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(aspect_ratio);
     SAME(fov);
     SAME(ui_anchor);
+    SAME(hud_shrink);
     SAME(fill_screen);
     SAME(background_input);
     SAME(combo_window);
@@ -3565,6 +3566,20 @@ void rows_graphics_screen_70(std::vector<Row> &r) {
 }
 void reset_graphics_screen_70() { s.draft.ui_anchor = config_defaults().ui_anchor; }
 MENU_ENTRY("graphics/screen", 70, rows_graphics_screen_70, reset_graphics_screen_70);
+// (1.0.2, the owner's) the HUD's size: every part of the hunt's HUD toward its corner, times its own size (runtime/hud_parts.h
+// hud_global), at once. [Display] HUDSize, 100 to 60 %; Config keeps 100 minus it (hud_shrink: 0 the default)
+void rows_graphics_screen_75(std::vector<Row> &r) {
+    const int shrink = std::clamp(s.draft.hud_shrink, 0, 40) / 5 * 5;
+    char text[16];
+    snprintf(text, sizeof text, "%d%%", 100 - shrink);
+    Row row;
+    row.id = "hud_size", row.title = tr("HUD size"), row.value = text, row.key = ini("HUDSize");
+    row.number = true;
+    row.adjust = [shrink](int d) { s.draft.hud_shrink = std::clamp(shrink - d * 5, 0, 40); };
+    r.push_back(std::move(row));
+}
+void reset_graphics_screen_75() { s.draft.hud_shrink = config_defaults().hud_shrink; }
+MENU_ENTRY("graphics/screen", 75, rows_graphics_screen_75, reset_graphics_screen_75);
 #ifndef __ANDROID__  // (a desktop's, with the mouse: on a phone the touch layout editor moves them)
 void rows_graphics_screen_80(std::vector<Row> &r) {
     action(r, "hud.edit", tr("Move the HUD"), []() {
@@ -4283,21 +4298,22 @@ const char *const TB_TITLES[TB_COUNT] = {"Attacks (A / X)", "Evade (B)", "Guard 
                                          "Menu pad", "Run with the stick", "Keep guarding while sliding", "Lock-on button", "Floating stick",
                                          "L and R in menus", "D-pad in menus", "Hunter Arts with a controller",
                                          "Long press hides the controls", "Slide between buttons: both pressed",
-                                         "Camera on the right half only"};
+                                         "Camera on the right half only", "Map button"};
 const char *const TB_KEYS[TB_COUNT] = {"ShowAttacks", "ShowDodge", "ShowGuard", "ShowSheathe", "ShowPlus", "ShowMinus", "ShowDpad",
                                        "ShowL", "ShowZL", "ShowZR", "ShowL3", "ShowR3", "ShowStick", "ShowRanged", "ShowFire",
                                        "ShowSecond", "ShowAim", "ShowRangedSpecial", "ShowAmmo", "ShowItemArrows", "ShowMenuZL",
                                        "ShowMenuZR", "ShowMenuPad", "StickRun", "GuardSlide", "ShowLockOn", "FloatingStick",
                                        "ShowMenuLR", "DpadInMenus", "ArtsWithController", "HoldToHide", "SlideBoth",
-                                       "CameraRightHalf"};
+                                       "CameraRightHalf", "ShowMapButton"};
 // (their rows' order: each way of a button by it - keeping the guard by Guard, the run and the floating stick by the stick,
 // the D-pad in menus by the D-pad -, the menu pad before the tabs that go with it; the Hunter Arts' taps with a controller
 // last, a controller's way. The floating stick and the Arts' taps have rows of their own elsewhere: tb_elsewhere)
 const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, TB_SLIDE_BOTH, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD,
-                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK, TB_STICK_RUN,
+                                TB_DPAD_MENUS, TB_L, TB_ZL, TB_LOCKON, TB_MAP_BUTTON, TB_ZR, TB_L3, TB_R3, TB_STICK, TB_FLOAT_STICK,
+                                TB_STICK_RUN,
                                 TB_RANGED, TB_FIRE, TB_SECOND, TB_AIM, TB_RSPECIAL, TB_AMMO, TB_ITEM_ARROWS, TB_MENU_PAD, TB_MENU_LR,
                                 TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE, TB_CAM_RIGHT};
-static_assert(TB_COUNT == 33, "TB_ORDER: a place for each of the touch settings");
+static_assert(TB_COUNT == 34, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
 // (S2) Combined button k in the lists: the first six always, then each one used (its buttons, its controller button or
 // key) and the one after the last used, up to TOUCH_COMBOS: the rest start empty and out of the way
@@ -4911,6 +4927,10 @@ const PhoneHelp PHONE_HELP[] = {
     {"GuardSlide", "On: with the weapon out, a thumb that lands on Guard and slides onto the attacks keeps guarding (R held), for the moves that need R and an attack together, like a lance's counter or a shield's thrust; slid onto the item bar, it presses R and Y together. Off: the slide lets go of R.",
      "Activado: con el arma desenvainada, un pulgar que se apoya en Guardia (R) y se desliza a los ataques sigue en guardia (R mantenido), para los movimientos que piden R junto con un ataque, como el contraataque de la lanza o el empujón del escudo; deslizado a la barra de ítems, aprieta R e Y juntos. Desactivado: al deslizar se suelta R."},
     {"UIAnchor", "On a screen wider than 16:9, where the HUD goes.", "En una pantalla más ancha que 16:9, dónde va el HUD."},
+    {"HUDSize", "The size of the hunt's HUD, 60 to 100 %: every part goes smaller toward its corner (the clock, health, stamina, sharpness, gauges and party at the top left, the minimap and the target camera at the top right, the item bar and the Hunter Arts at the bottom), on top of each part's own size. It applies at once. Each part can also be moved, sized or hidden in Customize controls and HUD.",
+     "El tamaño del HUD de caza, de 60 a 100 %: cada parte se achica hacia su esquina (el reloj, la vida, el aguante, el filo, los indicadores y el grupo arriba a la izquierda, el minimapa y la cámara de objetivo arriba a la derecha, la barra de objetos y las Artes de caza abajo), además del tamaño propio de cada parte. Se aplica al momento. Cada parte también se puede mover, cambiar de tamaño u ocultar en Personalizar controles y HUD."},
+    {"ShowMapButton", "A button of the port's that hides the minimap, and shows it again, in quests: the HUD's Map, as Hide in Customize controls and HUD. Customize controls and HUD places it.",
+     "Un botón del port que oculta el minimapa, y lo vuelve a mostrar, en las misiones: el Mapa del HUD, como Ocultar en Personalizar controles y HUD. Personalizar controles y HUD lo ubica."},
     {"FillScreen", "Movies and menu backdrops fill the screen, with a little cut above and below, instead of bars at the sides.",
      "Los videos y los fondos de los menús llenan la pantalla, con un pequeño recorte arriba y abajo, en lugar de barras a los costados."},
     {"FPS", "The most frames a second. A lower limit heats the phone less and saves battery. 15 and 20 are for the weakest phones: the game moves less smoothly, at the same speed.",

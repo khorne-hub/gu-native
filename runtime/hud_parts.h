@@ -88,7 +88,32 @@ typedef struct {
     float dx, dy, k;
     bool hidden, custom;       // (custom: anything not the arrangement's default)
     float shift_x, shift_y;    // (what the last piece's middle was moved by, in the offset's units)
+    float g, ax, ay;           // (1.0.2: the HUD's size, hud_global, and the canvas point the part shrinks toward with it)
 } HudPlace;
+// (1.0.2) The HUD's size of the settings ([Display] HUDSize, 60 to 100 %): every part, after its own size about its middle,
+// toward its corner (hud_anchor_game), so the parts of a corner shrink together and keep their places to one another; the
+// size of each piece's art with it (exec.c part_k). After Heavenfall's smaller HUD for MH4U, the MH4U port's the same
+static inline float hud_global(void) {
+    int shrink = g_config.hud_shrink;
+    return shrink > 0 && shrink <= 40 ? (float)(100 - shrink) / 100.0f : 1.0f;
+}
+// A part's corner, in the game's canvas (the point hud_place_base takes to the corner of the part where it is): the status's
+// top left, the minimap's and the target camera's top right, the item bar's and the Hunter Arts' bottom right; with the
+// touch controls' arrangement the item bar's bottom middle (its middle's x, which that arrangement takes to 640) and the
+// Hunter Arts' and the target camera's top right (the screen's right edge, where it takes them)
+static inline void hud_anchor_game(int part, int prof, float arts_top, float *gx, float *gy) {
+    bool touch = prof == HUD_TOUCH;
+    switch (part) {
+    case HP_ITEMS: *gx = touch ? 1115.0f : 1280.0f, *gy = 720.0f; break;
+    case HP_ARTS:
+        if (touch) *gx = 1280.0f - HUD_ARTS_DX, *gy = arts_top - HUD_ARTS_TOP;
+        else *gx = 1280.0f, *gy = 720.0f;
+        break;
+    case HP_TARGET: *gx = touch ? 1280.0f - HUD_TARGET_DX : 1280.0f, *gy = 0.0f; break;
+    case HP_MAP: *gx = 1280.0f, *gy = 0.0f; break;
+    default: *gx = 0.0f, *gy = 0.0f; break;
+    }
+}
 // (with the values given: hud_place_begin's are the layout's, as published)
 static inline void hud_place_begin_with(HudPlace *p, int part, int prof, float arts_top, float dx, float dy, float k, bool hidden) {
     float ra = g_render_aspect > 0 ? g_render_aspect : 16.0f / 9.0f;
@@ -99,15 +124,18 @@ static inline void hud_place_begin_with(HudPlace *p, int part, int prof, float a
     p->left = 640.0f * (1.0f - aa / ra), p->right = 1280.0f - p->left;
     p->arts_top = arts_top;
     p->dx = dx, p->dy = dy, p->k = k, p->hidden = hidden;
-    p->custom = p->dx != 0.0f || p->dy != 0.0f || p->k != 1.0f || p->hidden;
+    p->g = hud_global();
+    p->custom = p->dx != 0.0f || p->dy != 0.0f || p->k != 1.0f || p->hidden || p->g != 1.0f;
     p->shift_x = p->shift_y = 0.0f;
+    p->ax = p->ay = 0.0f;
 }
 static inline void hud_place_begin(HudPlace *p, int part, int prof, float arts_top) {
     hud_place_begin_with(p, part, prof, arts_top, g_hud_dx[prof][part], g_hud_dy[prof][part], g_hud_k[prof][part],
                          g_hud_hidden[prof][part] != 0);
 }
-static inline bool hud_custom(int part, int prof) {  // (anything not the arrangement's default)
-    return g_hud_dx[prof][part] != 0.0f || g_hud_dy[prof][part] != 0.0f || g_hud_k[prof][part] != 1.0f || g_hud_hidden[prof][part];
+static inline bool hud_custom(int part, int prof) {  // (anything not the arrangement's default; the HUD's size too)
+    return g_hud_dx[prof][part] != 0.0f || g_hud_dy[prof][part] != 0.0f || g_hud_k[prof][part] != 1.0f || g_hud_hidden[prof][part] ||
+           hud_global() != 1.0f;
 }
 // (its default place and offset, before the middle and the size; the same sums as the render thread's before parts
 // were sized, so a part left alone lands where it always did)
@@ -150,6 +178,14 @@ static inline void hud_place_piece(HudPlace *p, float gx, float gy, float *x, fl
     *x += shift_x, *y += shift_y, cx += shift_x, cy += shift_y;
     p->shift_x = p->s > 0.0f ? shift_x / p->s : 0.0f, p->shift_y = p->sy > 0.0f ? shift_y / p->sy : 0.0f;
     if (p->k != 1.0f) *x = cx + (*x - cx) * p->k, *y = cy + (*y - cy) * p->k;
+    if (p->g != 1.0f) {  // (1.0.2: the HUD's size, toward the part's corner where the part is, its shift with it)
+        float gx, gy, ax, ay;
+        hud_anchor_game(p->part, p->prof, p->arts_top, &gx, &gy);
+        hud_place_base(p, gx, gy, &ax, &ay);
+        ax += shift_x, ay += shift_y;
+        p->ax = ax, p->ay = ay;
+        *x = ax + (*x - ax) * p->g, *y = ay + (*y - ay) * p->g;
+    }
 }
 
 // A part's default box (HUD_BOX) where hud_place puts it now, on the canvas: x0, y0, x1, y1 (hud_box_with: as it would
