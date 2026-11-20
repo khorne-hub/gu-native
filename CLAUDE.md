@@ -88,6 +88,17 @@ What a log carries (1.0.1, "ask for more than we think we need": one log should 
   on the same point while it has gathers left, with the game's counting, skills, rolls, tool breaks and messages. It
   stops on a full pouch (the game's swap window), an item at its max (the point gets that gather back) or no tool left.
   Its header comment has the game's whole path; `[gather]` in the log, `MHGU_GATHER_LOG=1` for each give.
+- The Smithy's weapon tree (1.0.2, the owner's, MH4U for Android has the same; `runtime/weapon_tree.h`): while the
+  Smithy shows a weapon (Forge's list, Upgrade's grid and its upgrades), a touch button of its own (a trunk and three
+  branches, left column, under the settings') or R3 opens the tree of that weapon over the game: the ones in the box
+  (with their level) and worn, the ones before them in their line, the next step from each as "?", and "Upgraded from X
+  Lv N". Read-only. `runtime/hle/weapontree.c` notes the Smithy's object as its update runs (uUIBlackSmith 0x8f1ae8,
+  fnhook_set) and reads after the game's update what it shows (+0x2108, a cFestaEquip: kind and level - 1 in a u16,
+  the base), the box (sEquipBox *0x1a56fe8, 1000 cFestaEquip from +0x1c) and the weapon worn (sPlayer +0x94);
+  `runtime/weapon_tree_ui.cpp` reads the tables and names from the RomFS (`nativeNX/table/weaponNN*`, its header has
+  the formats) and draws `runtime/weapon_tree_panel.cpp` (with `weapon_tree_view.h`, MH4U's very files) on the
+  overlay. `MHGU_WT_LOG=1` logs what the Smithy shows, `=2` its state too; `[weapon tree]` lines (the tree as text as
+  it opens).
 - Hunting aids (1.0.1, the owner's, all off: Graphics & Audio > Screen and HUD, `[Hunting Aids]`; `runtime/hunt_aids.h`):
   `runtime/hle/huntaids.c` runs once a frame on the game's update thread after its update (`overlay_frame`), from the
   game's memory alone, no hook: Monsters always on the map keeps each large monster's mark timer (status block +0x1c4,

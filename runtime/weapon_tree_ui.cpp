@@ -1,0 +1,432 @@
+// The Smithy's weapon tree over the game (weapon_tree.h): the app's side. The game's weapon tables and names come from
+// the RomFS (the files the game reads, a mod's copy if one replaces them), the player's box and the Smithy's weapon
+// from runtime/hle/weapontree.c, and the panel is runtime/weapon_tree_panel.cpp (the same as MH4U's).
+//
+// The tables (nativeNX/table, one set a class NN: 00 the great sword .. 14 the charge blade, no 05), each a float
+// version, a u32 count, then its records:
+// - weaponNNBaseData.wNNd, one a base (a weapon's line of levels, its id the record's index): +0 u16 id, +17 the
+//   element (0 none, 1 fire, 2 water, 3 thunder, 4 dragon, 5 ice, 6 poison, 7 paralysis, 8 sleep, 9 blast: Alatreon's
+//   and Fatalis' 4, Snowclad's 5; not the bowguns'), +18 the dual blades' second one; the last 10 bytes five (level, base) pairs: at that level it upgrades
+//   into that base's level 1. Records of 32 bytes (the bowguns), 33 or 34 (the classes with a phial, shells, a kinsect)
+//   - always the same at the start and at the end.
+// - weaponNNLevelData.wNNd, one a (base, level): +4 base, +5 level; a melee weapon's attack u16 +8, affinity s8 +11,
+//   element value +12 (the dual blades' second +14), slots in its last byte; a bow's attack +6, affinity +9, element
+//   +10, slots +12; a bowgun's attack +6, affinity +9, slots +10. As the game shows them (MHGU shows the true values).
+// - weaponCreateWNN.wcd, the recipes that forge a base from scratch: +2 u16 the base.
+// - <lang>/table/weaponNNMsgData.wNNm: a u32 a base, its first string / 6 in weaponNNMsgData_<lang>.gmd, whose six
+//   strings a base are its name and text, its final level's name and text, and two more.
+// Checked against the trees players know (Iron Sword: Buster Sword at level 3, Ravager Blade at 4, Lagiacrus Blade
+// and Clero Blade at 5; Nargacuga's weapons with their affinity, Plesioth's water, Diablos' negative affinity).
+#include "weapon_tree.h"
+
+#include <SDL3/SDL.h>
+
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <vector>
+
+#include "config.h"
+#include "hle/input.h"
+#include "imgui.h"
+#include "logwriter.h"
+#include "overlay.h"
+#include "platform.h"
+#include "weapon_tree_panel.h"
+
+extern "C" const char *romfs_host_path(const char *rpath);  // (runtime/romfs.h, a C header)
+#define LOG(...) rt_logf(__VA_ARGS__)
+
+namespace {
+
+const uint64_t MS = 1000000ull;
+const float ANIM_MS = 130.f;
+// the classes by table number (no 05), in the app's words (weapon_tree_panel::Words has their Spanish)
+const char *const CLASS_NAMES[15] = {"Great Sword", "Sword and Shield", "Hammer", "Lance", "Heavy Bowgun", "",
+                                     "Light Bowgun", "Long Sword", "Switch Axe", "Gunlance", "Bow", "Dual Blades",
+                                     "Hunting Horn", "Insect Glaive", "Charge Blade"};
+const char *const LANG_FOLDER[6] = {"eng", "eng", "fre", "spa", "ger", "ita"};  // (the font has Latin letters only)
+
+// ---- the tables
+std::string read_file(const char *rpath) {
+    const char *path = romfs_host_path(rpath);
+    FILE *f = path ? fopen(path, "rb") : nullptr;
+    if (!f) return std::string();
+    std::string d;
+    char buf[65536];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof buf, f)) > 0 && d.size() < (16u << 20)) d.append(buf, n);
+    fclose(f);
+    return d;
+}
+uint32_t u32(const std::string &d, size_t o) {
+    uint32_t v = 0;
+    if (o + 4 <= d.size()) memcpy(&v, d.data() + o, 4);
+    return v;
+}
+// A table's records: count and size (the file's length over the count); false when it isn't one
+bool records(const std::string &d, size_t *count, size_t *size) {
+    if (d.size() < 8) return false;
+    size_t n = u32(d, 4);
+    if (!n || (d.size() - 8) % n) return false;
+    *count = n, *size = (d.size() - 8) / n;
+    return true;
+}
+std::vector<std::string> gmd(const std::string &d) {  // (huntaids.c's reader: the strings in order)
+    std::vector<std::string> out;
+    if (d.size() < 0x30 || memcmp(d.data(), "GMD", 3)) return out;
+    uint32_t n = u32(d, 0x18), bytes = u32(d, 0x20);
+    if (bytes > d.size() || n > 0x10000) return out;
+    for (size_t p = d.size() - bytes; p < d.size() && out.size() < n;) {
+        size_t e = d.find('\0', p);
+        if (e == std::string::npos) e = d.size();
+        out.emplace_back(d, p, e - p);
+        p = e + 1;
+    }
+    return out;
+}
+
+// the game's element numbers in weapon_tree::Element's (its 4 is dragon, its 5 ice)
+int element(int e) {
+    if (e == 4) return weapon_tree::kDragon;
+    if (e == 5) return weapon_tree::kIce;
+    return e >= 1 && e <= 9 ? e : weapon_tree::kElementNone;
+}
+
+struct Level {
+    int attack = 0, affinity = 0, element_value = 0, element2_value = 0, slots = 0;
+};
+struct Base {
+    bool real = false, forge = false;
+    std::string name, final_name;
+    int element = 0, element2 = 0;
+    std::vector<std::pair<int, int>> kids;  // (level, base)
+    std::vector<Level> levels;              // [level - 1]
+};
+struct Tables {
+    int cls = -1, lang = -1;
+    bool ok = false;
+    std::vector<Base> bases;
+};
+
+Tables load_tables(int cls, int lang) {
+    Tables t;
+    t.cls = cls, t.lang = lang;
+    char p[128];
+    snprintf(p, sizeof p, "nativeNX/table/weapon%02dBaseData.w%02dd", cls, cls);
+    std::string bd = read_file(p);
+    snprintf(p, sizeof p, "nativeNX/table/weapon%02dLevelData.w%02dd", cls, cls);
+    std::string ld = read_file(p);
+    snprintf(p, sizeof p, "nativeNX/table/weaponCreateW%02d.wcd", cls);
+    std::string cd = read_file(p);
+    const char *lf = LANG_FOLDER[lang >= 1 && lang <= 5 ? lang : 1];
+    snprintf(p, sizeof p, "nativeNX/%s/table/weapon%02dMsgData.w%02dm", lf, cls, cls);
+    std::string md = read_file(p);
+    snprintf(p, sizeof p, "nativeNX/%s/table/weapon%02dMsgData_%s.gmd", lf, cls, lf);
+    std::vector<std::string> names = gmd(read_file(p));
+    size_t nb, bs, nl, ls, nc = 0, cs = 0, nm, ms;
+    if (!records(bd, &nb, &bs) || bs < 32 || nb > 256 || !records(ld, &nl, &ls) || ls < 15) {
+        LOG("[weapon tree] class %02d: its tables can't be read (%s)\n", cls, bd.empty() ? "missing" : "unknown sizes");
+        return t;
+    }
+    records(cd, &nc, &cs);
+    const bool ranged = cls == 4 || cls == 6, bow = cls == 10;
+    t.bases.resize(nb);
+    for (size_t i = 0; i < nb; i++) {
+        const uint8_t *r = (const uint8_t *)bd.data() + 8 + i * bs;
+        Base &b = t.bases[i];
+        b.element = ranged ? 0 : r[17];
+        b.element2 = cls == 11 ? r[18] : 0;
+        for (int k = 0; k < 5; k++) {
+            int lv = r[bs - 10 + 2 * k], kid = r[bs - 9 + 2 * k];
+            if (kid > 0 && (size_t)kid < nb && lv > 0) b.kids.push_back({lv, kid});
+        }
+        uint32_t m = records(md, &nm, &ms) && ms == 4 && i < nm ? u32(md, 8 + 4 * i) : ~0u;
+        if (m < 0x4000 && 6 * m + 2 < names.size()) b.name = names[6 * m], b.final_name = names[6 * m + 2];
+    }
+    for (size_t i = 0; i < nl; i++) {
+        const uint8_t *r = (const uint8_t *)ld.data() + 8 + i * ls;
+        int base = r[4], lv = r[5];
+        if ((size_t)base >= nb || lv < 1 || lv > 64) continue;
+        Base &b = t.bases[base];
+        if ((int)b.levels.size() < lv) b.levels.resize(lv);
+        Level &l = b.levels[lv - 1];
+        if (ranged || bow) {
+            l.attack = r[6] | r[7] << 8, l.affinity = (int8_t)r[9], l.slots = r[bow ? 12 : 10];
+            l.element_value = bow ? r[10] : 0;
+        } else {
+            l.attack = r[8] | r[9] << 8, l.affinity = (int8_t)r[11], l.element_value = r[12], l.slots = r[ls - 1];
+            l.element2_value = cls == 11 && ls > 14 ? r[14] : 0;
+        }
+        if (l.slots > 3) l.slots = 3;
+    }
+    for (size_t i = 0; cs >= 4 && i < nc; i++) {
+        size_t base = (uint8_t)cd[8 + i * cs + 2] | (uint8_t)cd[8 + i * cs + 3] << 8;
+        if (base < nb) t.bases[base].forge = true;
+    }
+    for (size_t i = 1; i < nb; i++) {
+        Base &b = t.bases[i];
+        b.real = !b.levels.empty() && !b.name.empty() && b.name != "(None)";
+    }
+    t.ok = true;
+    return t;
+}
+
+// ---- the state: the input thread asks (g_req), the game thread draws and loads (draw_frame)
+std::mutex g_lock;
+std::atomic<bool> g_open{false};       // open, or asked to open (the input thread's view)
+std::atomic<bool> g_drawing{false};    // drawn now (open or fading out)
+struct Req {
+    int kind;  // 0..2 a finger (down, move, up), 3 a step of the cursor
+    float x, y;
+    int dx, dy;
+};
+std::vector<Req> g_req;     // (g_lock)
+bool g_opened_by_pad;       // (g_lock)
+bool g_want_open;           // (g_lock) the input thread asked for it to open
+// (the game thread's own, inside the overlay's frame)
+Tables g_tables;
+weapon_tree_panel::Content g_content;
+weapon_tree_panel::State g_state;
+bool g_shown;               // the panel is up (the game thread's view)
+uint64_t g_in, g_out;       // when it opened, when it closed (the animation)
+uint32_t g_serial;          // the Smithy's weapon it shows
+bool g_finger_on;           // (input thread) a finger went down on the panel and is held
+SDL_FingerID g_finger;
+uint64_t g_held_back;       // (input thread) buttons held as it opened or closed: the game gets none until let go
+int g_rep_dx, g_rep_dy;
+uint64_t g_rep_at;
+
+// The tree of the Smithy's weapon now, into g_content (the game thread); false when it shows none
+bool load(const WtSmithy &s) {
+    if (!s.shown || s.cls < 0 || s.cls > 14 || s.cls == 5) return false;
+    int lang = s.language >= 1 && s.language <= 5 ? s.language : 1;
+    if (!g_tables.ok || g_tables.cls != s.cls || g_tables.lang != lang) g_tables = load_tables(s.cls, lang);
+    if (!g_tables.ok || s.base <= 0 || (size_t)s.base >= g_tables.bases.size() || !g_tables.bases[s.base].real) return false;
+    const int n = (int)g_tables.bases.size();
+    std::vector<uint8_t> have(n, 0);
+    int worn = -1, worn_level = 0;
+    weapontree_box(s.cls, have.data(), n, &worn, &worn_level);
+    weapon_tree::Class cls;
+    cls.weapons.resize(n);
+    std::vector<uint8_t> owned(n, 0);
+    for (int i = 0; i < n; i++) {
+        const Base &b = g_tables.bases[i];
+        weapon_tree::Weapon &w = cls.weapons[i];
+        w.real = b.real;
+        if (!b.real) continue;
+        owned[i] = have[i] != 0;
+        // (the level it shows: the Smithy's, the one worn, the highest in the box; none for the others)
+        int level = i == s.base ? s.level : 0;
+        if (i == worn) level = std::max(level, worn_level);
+        level = std::max(level, (int)have[i]);
+        level = std::clamp(level, 0, (int)b.levels.size());
+        w.level = level, w.levels = (int)b.levels.size();
+        w.name = level == w.levels && !b.final_name.empty() && b.final_name != "(None)" ? b.final_name : b.name;
+        const Level &l = b.levels[std::max(level, 1) - 1];
+        w.attack = l.attack, w.affinity = l.affinity, w.slots = l.slots;
+        w.element = element(b.element), w.element_value = w.element ? l.element_value : 0;
+        w.element2 = element(b.element2), w.element2_value = w.element2 ? l.element2_value : 0;
+        w.forge = b.forge;
+        for (const auto &k : b.kids) w.children.push_back(k.second);
+    }
+    for (int i = 0; i < n; i++)  // (the level of its parent that upgrades into it)
+        for (const auto &k : g_tables.bases[i].kids)
+            if (k.second < n && !cls.weapons[k.second].from_level) cls.weapons[k.second].from_level = k.first;
+    weapon_tree::View view = weapon_tree::Build(cls, s.base, owned, worn);
+    if (view.nodes.empty()) return false;
+    const bool same = g_shown && s.serial == g_serial;
+    const int focus = g_state.focus;
+    g_content.cls = std::move(cls);
+    g_content.view = std::move(view);
+    g_content.spanish = config_language() == 1;
+    g_content.class_name = weapon_tree_panel::Words(CLASS_NAMES[s.cls], g_content.spanish);
+    if (!same) {
+        g_state = weapon_tree_panel::State{};
+        LOG("[weapon tree] class %02d base %d level %d (worn %d level %d): %d weapons shown\n%s", s.cls, s.base, s.level, worn,
+            worn_level, (int)g_content.view.nodes.size(), weapon_tree::Text(g_content.cls, g_content.view).c_str());
+    } else {
+        g_state.focus = focus;
+    }
+    g_serial = s.serial;
+    return true;
+}
+
+float ease(float t) {
+    t = std::clamp(t, 0.f, 1.f);
+    return 1 - (1 - t) * (1 - t);
+}
+
+}  // namespace
+
+extern "C" {
+
+bool weapon_tree_available(void) { return !g_open.load() && weapontree_smithy().shown; }
+bool weapon_tree_is_open(void) { return g_open.load(); }
+bool weapon_tree_drawing(void) { return g_drawing.load() || g_open.load(); }
+
+void weapon_tree_open(bool by_pad) {
+    if (g_open.load() || !weapontree_smithy().shown) return;
+    std::lock_guard<std::mutex> l(g_lock);
+    g_open = true, g_want_open = true, g_opened_by_pad = by_pad, g_req.clear();
+    g_finger_on = false;
+    LOG("[weapon tree] opened (%s)\n", by_pad ? "the controller" : "the button");
+}
+
+void weapon_tree_close(void) {
+    if (!g_open.exchange(false)) return;
+    std::lock_guard<std::mutex> l(g_lock);
+    g_want_open = false, g_req.clear(), g_finger_on = false;
+    LOG("[weapon tree] closed\n");
+}
+
+bool weapon_tree_back(void) {
+    if (!g_open.load()) return false;
+    weapon_tree_close();
+    return true;
+}
+
+uint64_t weapon_tree_buttons(uint64_t b, int lx, int ly) {
+    static uint64_t was;
+    const uint64_t down = b & ~was;
+    was = b;
+    const uint64_t R3 = 1ull << BTN_RSTICK, BB = 1ull << BTN_B;
+    g_held_back &= b;  // (let go: the game gets it again)
+    if (g_open.load()) {
+        if (down & (R3 | BB)) {
+            weapon_tree_close();
+            g_held_back |= b;
+            return 0;
+        }
+        // (the d-pad, the stick or the move keys: a step, held a repeat)
+        const int dx = (b & (1ull << BTN_LEFT)) || lx < -18000 ? -1 : (b & (1ull << BTN_RIGHT)) || lx > 18000 ? 1 : 0;
+        const int dy = (b & (1ull << BTN_UP)) || ly > 18000 ? -1 : (b & (1ull << BTN_DOWN)) || ly < -18000 ? 1 : 0;
+        const uint64_t now = plat_now_ns();
+        if ((dx || dy) && (dx != g_rep_dx || dy != g_rep_dy || now >= g_rep_at)) {
+            g_rep_at = now + (dx != g_rep_dx || dy != g_rep_dy ? 380 : 140) * MS;
+            std::lock_guard<std::mutex> l(g_lock);
+            g_req.push_back({3, 0, 0, dx, dy != 0 && dx == 0 ? dy : 0});
+        }
+        g_rep_dx = dx, g_rep_dy = dy;
+        g_held_back |= b;
+        return 0;
+    }
+    if ((down & R3) && weapon_tree_available()) {
+        weapon_tree_open(true);
+        g_held_back |= b;
+        return 0;
+    }
+    if (weapontree_smithy().shown) b &= ~R3;  // (in the Smithy the click is the tree's)
+    return b & ~g_held_back;
+}
+
+static bool finger(int kind, float x, float y, SDL_FingerID id) {
+    if (!g_open.load()) return false;
+    std::lock_guard<std::mutex> l(g_lock);
+    if (kind == 0) {
+        if (g_finger_on) return true;
+        g_finger_on = true, g_finger = id;
+    } else if (!g_finger_on || id != g_finger) {
+        return true;  // (a finger that was down before it opened, or another one: nothing)
+    }
+    if (kind == 2) g_finger_on = false;
+    g_req.push_back({kind, x, y, 0, 0});
+    return true;
+}
+
+bool weapon_tree_event(const SDL_Event *e) {
+    if (!g_open.load()) return false;
+    switch (e->type) {
+    case SDL_EVENT_KEY_DOWN:
+        if (!e->key.repeat && (e->key.scancode == SDL_SCANCODE_AC_BACK || e->key.scancode == SDL_SCANCODE_ESCAPE)) {
+            weapon_tree_close();
+            return true;
+        }
+        return false;  // (the other keys: the game's buttons, which weapon_tree_buttons takes while it is open)
+    case SDL_EVENT_FINGER_DOWN: return finger(0, e->tfinger.x, e->tfinger.y, e->tfinger.fingerID);
+    case SDL_EVENT_FINGER_MOTION: return finger(1, e->tfinger.x, e->tfinger.y, e->tfinger.fingerID);
+    case SDL_EVENT_FINGER_UP: case SDL_EVENT_FINGER_CANCELED: return finger(2, e->tfinger.x, e->tfinger.y, e->tfinger.fingerID);
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: case SDL_EVENT_MOUSE_MOTION: {
+        // (a desktop's mouse, as a finger: the left button; a finger's own copy as the mouse is left out)
+        SDL_MouseID which = e->type == SDL_EVENT_MOUSE_MOTION ? e->motion.which : e->button.which;
+        if (which == SDL_TOUCH_MOUSEID) return true;
+        SDL_Window *win = SDL_GetWindowFromID(e->type == SDL_EVENT_MOUSE_MOTION ? e->motion.windowID : e->button.windowID);
+        int ww = 0, wh = 0;
+        if (win) SDL_GetWindowSize(win, &ww, &wh);
+        if (ww <= 0 || wh <= 0) return true;
+        if (e->type == SDL_EVENT_MOUSE_MOTION) {
+            if (e->motion.state & SDL_BUTTON_LMASK) finger(1, e->motion.x / ww, e->motion.y / wh, (SDL_FingerID)-7);
+        } else if (e->button.button == SDL_BUTTON_LEFT) {
+            finger(e->type == SDL_EVENT_MOUSE_BUTTON_DOWN ? 0 : 2, e->button.x / ww, e->button.y / wh, (SDL_FingerID)-7);
+        } else if (e->type == SDL_EVENT_MOUSE_BUTTON_DOWN && e->button.button == SDL_BUTTON_RIGHT) {
+            weapon_tree_close();  // (a right click: B)
+        }
+        return true;
+    }
+    case SDL_EVENT_MOUSE_WHEEL: return true;
+    default: return false;
+    }
+}
+
+void weapon_tree_draw(float w, float h) {
+    if (w <= 0 || h <= 0) return;
+    const uint64_t now = plat_now_ns();
+    bool want, by_pad;
+    std::vector<Req> req;
+    {
+        std::lock_guard<std::mutex> l(g_lock);
+        want = g_want_open, by_pad = g_opened_by_pad;
+        req.swap(g_req);
+    }
+    const WtSmithy s = weapontree_smithy();
+    if (want && !g_shown) {  // (it opens: the tree of the Smithy's weapon now)
+        if (load(s)) {
+            g_shown = true, g_in = now, g_out = 0;
+        } else {
+            LOG("[weapon tree] the Smithy's weapon has no tree (class %d base %d level %d)\n", s.cls, s.base, s.level);
+            weapon_tree_close();
+            want = false;
+        }
+    } else if (!want && g_shown) {
+        g_shown = false, g_out = now;
+    }
+    if (g_shown) {
+        if (!s.shown && now - g_in > 300 * MS) {  // (the Smithy closed under it, or its list went)
+            weapon_tree_close();
+            g_shown = false, g_out = now;
+        } else if (s.shown && s.serial != g_serial) {
+            load(s);  // (the Smithy's cursor moved: its weapon's tree)
+        }
+    }
+    if (g_shown) {
+        for (const Req &r : req) {
+            if (r.kind == 3) {
+                weapon_tree_panel::Move(r.dx, r.dy, g_content, g_state);
+                continue;
+            }
+            bool close = false;
+            weapon_tree_panel::Finger(r.kind == 0 ? weapon_tree_panel::kDown : r.kind == 1 ? weapon_tree_panel::kMove
+                                                                                            : weapon_tree_panel::kUp,
+                                      r.x * w, r.y * h, g_content, g_state, &close);
+            if (close) {
+                weapon_tree_close();
+                g_shown = false, g_out = now;
+                break;
+            }
+        }
+    }
+    float a;
+    if (g_shown) a = ease((now - g_in) / (ANIM_MS * MS));
+    else if (g_out && now - g_out < (uint64_t)(ANIM_MS * MS)) a = 1 - ease((now - g_out) / (ANIM_MS * MS));
+    else a = 0;
+    g_drawing = a > 0;
+    if (a <= 0) return;
+    (void)by_pad;
+    weapon_tree_panel::Draw(ImGui::GetForegroundDrawList(), w, h, a, overlay_last_input() == USED_PAD || by_pad, g_content,
+                            g_state);
+}
+
+}  // extern "C"
