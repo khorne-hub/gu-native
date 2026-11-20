@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 #include <string>
@@ -38,6 +39,7 @@
 #include "weapon_tree_panel.h"
 
 extern "C" const char *romfs_host_path(const char *rpath);  // (runtime/romfs.h, a C header)
+extern "C" SDL_Window *ui_window(void);                    // (runtime/rt.h)
 #define LOG(...) rt_logf(__VA_ARGS__)
 
 namespace {
@@ -295,6 +297,9 @@ uint64_t weapon_tree_buttons(uint64_t b, int lx, int ly) {
     was = b;
     const uint64_t R3 = 1ull << BTN_RSTICK, BB = 1ull << BTN_B;
     g_held_back &= b;  // (let go: the game gets it again)
+    static int trace = -1;  // (MHGU_WT_LOG=2: each press while it is open)
+    if (trace < 0) trace = getenv("MHGU_WT_LOG") && atoi(getenv("MHGU_WT_LOG")) > 1;
+    if (trace && down && g_open.load()) LOG("[weapon tree] pressed %llx while open\n", (unsigned long long)down);
     if (g_open.load()) {
         if (down & (R3 | BB)) {
             weapon_tree_close();
@@ -353,7 +358,7 @@ bool weapon_tree_event(const SDL_Event *e) {
         // (a desktop's mouse, as a finger: the left button; a finger's own copy as the mouse is left out)
         SDL_MouseID which = e->type == SDL_EVENT_MOUSE_MOTION ? e->motion.which : e->button.which;
         if (which == SDL_TOUCH_MOUSEID) return true;
-        SDL_Window *win = SDL_GetWindowFromID(e->type == SDL_EVENT_MOUSE_MOTION ? e->motion.windowID : e->button.windowID);
+        SDL_Window *win = ui_window();  // (the game's window: a test's events name none)
         int ww = 0, wh = 0;
         if (win) SDL_GetWindowSize(win, &ww, &wh);
         if (ww <= 0 || wh <= 0) return true;
