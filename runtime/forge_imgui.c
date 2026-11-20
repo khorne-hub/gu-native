@@ -133,13 +133,15 @@ typedef struct { const char *name; uint32_t gsize, hsize; const MField *f; uint3
 #undef FORGE_IMGUI_TABLES
 
 enum { M_OWN_GUEST = 1, M_OWN_HOST = 2 };  // the guest block is ours / the host object is ours (plugin's object)
-typedef struct { void *host; uint32_t guest; uint16_t type; uint8_t flags; uint8_t *shadow; } Mirror;
+// used: when it was last looked up (mtick), for reusing the slot of a plain value nobody has asked for in a while
+typedef struct { void *host; uint32_t guest; uint16_t type; uint8_t flags; uint8_t *shadow; uint64_t used; } Mirror;
 
 #define MAXM 8192   // mirrors (slots of the two hash tables: twice that)
 static Mirror mir[MAXM];
 static int nmir, mfree_list[MAXM], nmfree;
 static int hidx[2 * MAXM], gidx[2 * MAXM];  // open addressing: index + 1, 0 empty, -1 deleted
 static int hot[64], nhot;
+static uint64_t mtick;
 
 static uint32_t hash_ptr(uintptr_t p) { return (uint32_t)((p >> 3) * 0x9E3779B1u ^ (p >> 35)); }
 
@@ -147,7 +149,7 @@ static Mirror *find_host(const void *h, int type) {
     for (uint32_t k = hash_ptr((uintptr_t)h + (uintptr_t)type * 0x10001), n = 0; n < 2 * MAXM; n++, k++) {
         int i = hidx[k % (2 * MAXM)];
         if (!i) return NULL;
-        if (i > 0 && mir[i - 1].host == h && mir[i - 1].type == type) return &mir[i - 1];
+        if (i > 0 && mir[i - 1].host == h && mir[i - 1].type == type) return mir[i - 1].used = ++mtick, &mir[i - 1];
     }
     return NULL;
 }
@@ -156,7 +158,7 @@ static Mirror *find_guest(uint32_t g) {
     for (uint32_t k = hash_ptr(g), n = 0; n < 2 * MAXM; n++, k++) {
         int i = gidx[k % (2 * MAXM)];
         if (!i) return NULL;
-        if (i > 0 && mir[i - 1].guest == g) return &mir[i - 1];
+        if (i > 0 && mir[i - 1].guest == g) return mir[i - 1].used = ++mtick, &mir[i - 1];
     }
     return NULL;
 }
@@ -176,16 +178,65 @@ static void table_del(int *t, uint32_t k, int v) {
 
 static uint32_t mtype_gsize(int type) { return mtypes[type].f ? mtypes[type].gsize : 16; }
 
+// A plain value (ImVec2, ImDrawVert, ImFontGlyph...: bytes only, no pointers): if the plugin hands its old address back
+// after its mirror went, m_in makes a host object from those bytes, which is all the value was.
+static bool plain_value(int type) {
+    const MType *t = &mtypes[type];
+    if (!t->f || t->hot) return false;
+    for (uint32_t i = 0; i < t->nf; i++)
+        if (t->f[i].kind != MF_RAW) return false;
+    return true;
+}
+
+// The table full: the slot of the plain value looked up longest ago. Its guest block is left as it is and not reused
+// (the plugin may still read it), and a host object of the plugin's is not freed (ImGui may still have it).
+static int mirror_reuse(void) {
+    int best = -1;
+    for (int i = 0; i < nmir; i++)
+        if (mir[i].shadow && plain_value(mir[i].type) && (best < 0 || mir[i].used < mir[best].used)) best = i;
+    if (best < 0) return -1;
+    Mirror *m = &mir[best];
+    table_del(hidx, hash_ptr((uintptr_t)m->host + (uintptr_t)m->type * 0x10001), best + 1);
+    table_del(gidx, hash_ptr(m->guest), best + 1);
+    free(m->shadow);
+    memset(m, 0, sizeof *m);
+    return best;
+}
+
+static void mirror_full_log(bool reusing) {
+    int n[MTYPES] = {0};
+    for (int i = 0; i < nmir; i++)
+        if (mir[i].shadow || mir[i].host) n[mir[i].type]++;
+    char s[512] = "";
+    int o = 0;
+    for (int k = 0; k < 6; k++) {  // (the six types with the most)
+        int best = -1;
+        for (int t = 0; t < MTYPES; t++)
+            if (n[t] && (best < 0 || n[t] > n[best])) best = t;
+        if (best < 0) break;
+        o += snprintf(s + o, sizeof s - (size_t)o, "%s%s %d", k ? ", " : "", mtypes[best].name, n[best]);
+        n[best] = 0;
+        if (o >= (int)sizeof s) break;
+    }
+    LOG("[forge] too many ImGui objects for plugins (%d: %s): %s\n", MAXM, s,
+        reusing ? "the oldest plain values' places are reused" : "a plugin gets NULL for a new one");
+}
+
 static Mirror *mirror_new(void *h, int type, uint32_t g, int flags) {
     int i;
     if (nmfree) i = mfree_list[--nmfree];
     else if (nmir < MAXM) i = nmir++;
     else {
-        static bool told;
-        if (!told) told = true, LOG("[forge] too many ImGui objects for plugins\n");
-        return NULL;
+        static bool told_reuse, told_null;
+        i = mirror_reuse();
+        if (i >= 0 && !told_reuse) told_reuse = true, mirror_full_log(true);
+        if (i < 0) {
+            if (!told_null) told_null = true, mirror_full_log(false);
+            return NULL;
+        }
     }
     Mirror *m = &mir[i];
+    m->used = ++mtick;
     m->host = h, m->type = (uint16_t)type, m->flags = (uint8_t)flags;
     m->guest = g ? g : gmem_alloc(mtype_gsize(type));
     if (!g) m->flags |= M_OWN_GUEST;

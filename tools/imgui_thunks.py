@@ -113,6 +113,11 @@ def align(x, a):
 # named arg), data (other pointer), fn (function pointer: not carried over)
 _layouts = {}
 
+# Pointers into a buffer rather than to an object of their own: plain data. ImDrawList's _VtxWritePtr moves on with every
+# shape drawn; as an object, each place it reached got a mirror of its own, kept for good, so a plugin drawing text that
+# changes (damage numbers, menus) used up the mirrors in about 15 minutes and then got NULL for its objects (GU#270).
+CURSORS = {('ImDrawList', '_VtxWritePtr')}
+
 
 def layout(name, abi):
     key = (name, abi)
@@ -149,6 +154,8 @@ def _layout(name, abi):
             continue
         unit = None
         s, a, lv = type_layout(parse(f['type']), abi)
+        if (name, f['name']) in CURSORS:
+            lv = [(o, 'data', z, None) if k == 'obj' else (o, k, z, x) for o, k, z, x in lv]
         off = align(off, a)
         for i in range(f.get('size', 1)):
             leaves += [(off + i * s + o, k, z, x) for o, k, z, x in lv]
