@@ -2578,13 +2578,6 @@ void game_code_rows(std::vector<Row>& r) {
 #endif
 }
 // ...and its credit, among Credits & Licenses' notes (about).
-void builder_credit_rows(std::vector<Row>& r) {
-#ifdef __ANDROID__
-    note(r, "about.builder", tr("Building the game code on the phone was Klark231's idea (github.com/klark231/mh4u-builder)."));
-#else
-    (void)r;
-#endif
-}
 MENU_ENTRY("system/code", 10, game_code_rows);
 // Clear shader cache (runtime/cache_clear.c, 1.0's S30): a tap leaves the mark the next start deletes the shader cache
 // by, before anything reads it; another tap takes it back. Nothing to Save: the mark is the setting. The size is read
@@ -4214,15 +4207,14 @@ MENU_ENTRY("system/game", 10, rows_system_game_10);
 
 // ---- Credits & Licenses: who made it, where the official one is, the licences and the legal notice: shown, as in the
 // MH4U port, not in a help
-// 1.0's credits (MENU.md 3.7: one note each, under who made it): tabarong's designs (the layout and chat groups), the
-// builder's idea (builder_credit_rows, Android), Alfonso's (the qol group)
+// The credits (1.0.2, the owner's: those who contributed to the port, by name - not which idea each gave). The same names
+// in the MH4U port's
 void credits_10_rows(std::vector<Row> &r) {
-    note(r, "about.tabarong",
-         en_es("The control profiles, the chat, the friends and the room keys follow the designs of tabarong (Discord; GitHub: oliveaglien).",
-               "Los perfiles de controles, el chat, los amigos y las claves de sala siguen los diseños de tabarong (Discord; GitHub: oliveaglien)."));
-    builder_credit_rows(r);
-    note(r, "about.alfonso", en_es("Sending all the rewards to the box at once: Alfonso's idea.",
-                                   "Mandar todas las recompensas a la caja de una vez: idea de Alfonso."));
+    note(r, "about.thanks", en_es("Contributed to development:", "Aportaron al desarrollo:"));
+    for (const char *name : {"tabarong", "Klark231", "Alfonso Matador", "popzol", "BlitzWOLF"}) {
+        note(r, std::string("about.thanks.") + name, name);
+        r.back().bright = true;
+    }
 }
 void rows_about_10(std::vector<Row> &r) {
     header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);

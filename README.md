@@ -1050,19 +1050,22 @@ Rights holders: please open an issue to get in touch.
 Based on the open-source MHGURecomp project (MIT license) and the libraries listed in
 [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES). Their licenses, with the legal notice, are also in the app: gear button, **Credits & Licenses**, **Licenses**. On PC: **F1**, **Credits & Licenses**, **Licenses**, and the `licenses` folder beside `MHGU.exe`.
 
-The chat, the room keys (the matchmaking key's generator) and the control profiles follow the designs of tabarong (Discord; GitHub: [oliveaglien](https://github.com/oliveaglien)).
+Contributed to development:
 
-Ideas from the community: Alfonso, sending all the rewards to the box at once.
+- tabarong
+- Klark231
+- Alfonso Matador
+- popzol
+- BlitzWOLF
 
 The iOS port: Moka Illustra ([mokaillustra](https://github.com/mokaillustra)), [mhgu-recomp-ios](https://github.com/mokaillustra/mhgu-recomp-ios), with KHORNE's authorization.
 
 From the same author: [MH4U for Android](https://github.com/khorne-hub/4u-native), Monster Hunter 4 Ultimate recompiled for
 Android the same way.
 
-Making the game code on the phone was [Klark231](https://github.com/klark231)'s idea
-([mh4u-builder](https://github.com/klark231/mh4u-builder)); the app's builder is this project's own implementation of it. It
-downloads Python ([python.org](https://www.python.org), PSF License) and [Zig](https://ziglang.org) (MIT; with LLVM, Apache
-2.0 with LLVM exceptions) the first time it runs; their licenses are in the app's **Licenses** too.
+The app's builder, which makes the game code on the phone, downloads Python ([python.org](https://www.python.org), PSF
+License) and [Zig](https://ziglang.org) (MIT; with LLVM, Apache 2.0 with LLVM exceptions) the first time it runs; their
+licenses are in the app's **Licenses** too.
 
 ## Official downloads
 
