@@ -58,6 +58,7 @@
 #include <cstring>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include <dirent.h>
 #include <sys/stat.h>
@@ -81,6 +82,7 @@ int weapon_drawn(void);  // (hle/weapon.c: 1 the weapon out, 0 sheathed, -1 not 
 #include "hle/mousemenu.h"  // (menu_pages_zl: the pair the game turns its pages with; menu_cursor_age: a menu takes input)
 SDL_Window *ui_window(void);
 bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platform.h: the save folder's path, as fopen takes it)
+bool plat_path_to_utf8(const char *native, char *out, size_t size);    // (...and back: SDL's file functions, a profile's .zip)
 }
 #include "app_actions.h"  // (ui_request_pictures: the layout editor's Add pictures)
 #include "haptics.h"  // (a short tick on the phone when a control is pressed)
@@ -89,6 +91,12 @@ bool plat_path_from_utf8(const char *utf8, char *out, size_t size);  // (platfor
 #include "perfstats.h"  // (perfstats_rect: the FPS counter's plate, which the editor moves)
 #include "hunt_aids.h"  // (hunt_bars_rect: the monster health bars, which the editors move and size)
 #include "savefolder.h"  // (savefolder_chosen: the layout profiles' folder)
+#include "unzip.h"       // (a profile's .zip: Import, S3)
+#include "zipw.h"        // (...and Export)
+#include <ctime>
+#ifdef __ANDROID__
+#include <unistd.h>  // (getcwd: utf8_of)
+#endif
 #include "settings_locale.h"
 #include "settings_panel.h"  // (SETTINGS_VIEW_GAME_TEXT: the keyboard plate's)
 #include "textinput.h"
@@ -182,13 +190,23 @@ const Def DEFS[C_COUNT] = {
     {"minus_hunt", "Minus  -", I_MINUS, "-", B(BTN_MINUS), false, .18f, .67f, .046f},
     {"r3", "Right stick click", I_LETTER, "R3", B(BTN_RSTICK), true, .075f, .56f, .045f},
     {"dpad_hunt", "D-pad", I_DPAD, "", 0, false, .33f, .60f, .105f},
-    // the player's own ([Touch] Combo1..): what they press and their label are in the settings
+    // the player's own (the layout's combo <n> lines; 1.0.1.1's [Touch] Combo1..6): what they press and their label are in
+    // the settings. 7 to 15 (1.0.2) further in, shown once they have buttons
     {"combo1", "", I_COMBO, "", 0, true, .60f, .30f, .052f},
     {"combo2", "", I_COMBO, "", 0, true, .60f, .44f, .052f},
     {"combo3", "", I_COMBO, "", 0, true, .60f, .58f, .052f},
     {"combo4", "", I_COMBO, "", 0, true, .73f, .30f, .052f},
     {"combo5", "", I_COMBO, "", 0, true, .73f, .44f, .052f},
     {"combo6", "", I_COMBO, "", 0, true, .73f, .58f, .052f},
+    {"combo7", "", I_COMBO, "", 0, true, .86f, .30f, .052f},
+    {"combo8", "", I_COMBO, "", 0, true, .86f, .44f, .052f},
+    {"combo9", "", I_COMBO, "", 0, true, .86f, .58f, .052f},
+    {"combo10", "", I_COMBO, "", 0, true, .60f, .72f, .052f},
+    {"combo11", "", I_COMBO, "", 0, true, .73f, .72f, .052f},
+    {"combo12", "", I_COMBO, "", 0, true, .86f, .72f, .052f},
+    {"combo13", "", I_COMBO, "", 0, true, .99f, .30f, .052f},
+    {"combo14", "", I_COMBO, "", 0, true, .99f, .44f, .052f},
+    {"combo15", "", I_COMBO, "", 0, true, .99f, .58f, .052f},
     // a bow's or a bowgun's (their buttons: ranged_buttons): the shot large under the thumb, the rest in an arc round it,
     // the dodge in the corner, the ammo arrows beside the item bar
     {"fire", "Fire / shoot", I_SHOT, "", 0, true, .215f, .26f, .115f},
@@ -295,6 +313,8 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     }
 }
 bool is_combo(int i) { return i >= C_COMBO && i <= C_COMBO_END; }
+// (S2) The layout in use's combined buttons, for every thread: what each presses (config_combo_mask's bits; publish_hud)
+std::atomic<uint32_t> g_combo[TOUCH_COMBOS];
 bool is_tab(int i) { return i == C_ML || i == C_MR || i == C_MZL || i == C_MZR; }  // (the menu pad's shoulders, as tabs)
 bool is_dpad(int i) { return i == C_HDPAD || i == C_EDPAD; }
 bool dpad_in_menus(void) { return config_live_touch_show(TB_DPAD_MENUS) != 0; }  // ([Touch] DpadInMenus: hit, under_mpad)
@@ -326,7 +346,7 @@ bool hideable(int i) {
 bool emu_mode(int i, bool menu) {
     if (i != C_SETTINGS && (g_off.load() >> i & 1)) return false;
     if (emu_ctl(i) || i == C_SETTINGS || i == C_STICK) return true;
-    if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
+    if (is_combo(i)) return g_combo[i - C_COMBO].load() != 0;
     if (i == C_LOCKON) return lockon_here(menu) && config_live_touch_show(TB_LOCKON);
     return false;
 }
@@ -347,7 +367,7 @@ bool in_mode(int i, bool menu) {
     if (is_ranged(i) ? !ranged_layout() : ranged_layout() && (i == C_ATTACK || i == C_HEAVY || i == C_LIGHT || i == C_CORNER ||
                                                               i == C_R || i == C_DODGE || i == C_SHEATHE))
         return false;
-    if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
+    if (is_combo(i)) return g_combo[i - C_COMBO].load() != 0;
     // (ZL in a town, whatever the settings say: it is the way to the multiplayer menu; in a hunt it is the target button,
     // ShowZL. It stays while a menu opened in the town is open, whether the town's update runs under it or not)
     if (i == C_ZL && (plat_now_ns() - g_town_ns < 500 * 1000000ull || (menu && g_menu_town.load()))) return true;
@@ -368,7 +388,7 @@ bool in_editor(int i) {
         if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
         if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
         if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);
-        return is_combo(i) && config_live_touch_combo(i - C_COMBO) != 0;
+        return is_combo(i) && g_combo[i - C_COMBO].load() != 0;
     }
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
@@ -458,6 +478,10 @@ struct Layout {
                                              // folder (image <key> <file>); "" none. The stick's: its base. Drawn in
                                              // place of the control's whole look (pic_only)
     char knob[IMAGE_NAME];                   // the stick's knob's (image_knob <file>)
+    char combo[TOUCH_COMBOS][32];            // (1.0.2, S2) its combined buttons: the game's buttons each presses together
+                                             // ("A+X", config_combo_text; "" none: combo <n> <buttons>, - for none). A
+                                             // file with no such line (a layout or a profile from before) takes 1.0.1.1's
+                                             // [Touch] Combo1..6, the rest none; a new layout has none
 };
 // The layout editor's panel: its middle where the player dragged it (fractions of the screen's width from the left and
 // of its height from the top; below 0 its usual place, a little above the middle) and its size (EPANEL_MIN to 100 %).
@@ -499,6 +523,7 @@ std::atomic<float> g_fps_x{-1.0f}, g_fps_y{-1.0f};  // (Layout.fps_x / fps_y, fo
 std::atomic<float> g_bars_x{-1.0f}, g_bars_y{-1.0f}, g_bars_k{1.0f};  // (Layout.bars_*: touch_bars_place)
 void publish_hud(const Layout &l) {  // (to the render thread; the kind and what it hides, the FPS counter's place, to all)
     g_kind = l.kind, g_off = l.off, g_fps_x = l.fps_x, g_fps_y = l.fps_y;
+    for (int k = 0; k < TOUCH_COMBOS; k++) g_combo[k] = config_combo_mask(l.combo[k]);  // (the combined buttons: S2)
     g_bars_x = l.bars_x, g_bars_y = l.bars_y, g_bars_k = l.bars_k;
     for (int p = 0; p < HUD_PROFILES; p++)
         for (int k = 0; k < HP_COUNT; k++) {
@@ -536,6 +561,7 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
     char key[32], name[64];
     float x, y, s, alpha;
     int hidden;
+    bool combos = false;  // (a combo line: the file has its own combined buttons)
     for (size_t at = 0, end; at < text.size(); at = end + 1) {
         end = text.find('\n', at);
         if (end == std::string::npos) end = text.size();
@@ -560,6 +586,16 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
                 const char *f = strstr(line, key) + strlen(key);
                 while (*f == ' ' || *f == '\t') f++;
                 if (*f && !strchr(f, '/') && !strchr(f, '\\')) snprintf(l->knob, IMAGE_NAME, "%s", f);
+                continue;
+            }
+            // (combo <n> <buttons>: a combined button, 1.0.2. An older version skips the line: its second word is no
+            // control's, and the line has too few numbers for a control's or the HUD's)
+            if (!strcmp(key, "combo")) {
+                int k = atoi(name) - 1;
+                const char *f = strstr(line, name) + strlen(name);
+                while (*f == ' ' || *f == '\t') f++;
+                if (k >= 0 && k < TOUCH_COMBOS) config_combo_text(config_combo_mask(f), l->combo[k], sizeof l->combo[k]);
+                combos = true;
                 continue;
             }
         }
@@ -601,6 +637,8 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
             ep->x = usual ? -1.0f : x, ep->y = usual ? -1.0f : y, ep->k = s;
     }
     if (l->kind != KIND_EMU) l->off = 0;  // (the port's own layout hides by the settings' Show*)
+    if (!combos)  // (a layout from before 1.0.2: the combined buttons every layout had, [Touch] Combo1..6)
+        for (int k = 0; k < INI_COMBOS; k++) config_combo_text(config_live_touch_combo(k), l->combo[k], sizeof l->combo[k]);
 }
 bool load_layout_file(const char *path, Layout *l, EditPanel *ep) {
     std::string text;
@@ -643,6 +681,8 @@ bool save_layout_file(const char *path, const Layout &l, const EditPanel *ep) {
     }
     if (l.knob[0]) fprintf(f, "image_knob %s\n", l.knob);
     if (l.image[C_MMINUS][0]) fprintf(f, "image %s %s\n", DEFS[C_MMINUS].key, l.image[C_MMINUS]);
+    fprintf(f, "# the combined buttons: the game's buttons each presses together (- none)\n");
+    for (int k = 0; k < TOUCH_COMBOS; k++) fprintf(f, "combo %d %s\n", k + 1, l.combo[k][0] ? l.combo[k] : "-");
     if (ep) {
         char line[80];
         epanel_line(line, *ep);
@@ -1403,6 +1443,7 @@ struct State {
     bool preview;                        // a model in a menu of the game's turns with the sticks: they are the game's there
     float w, h;              // the screen, pixels
     Layout layout, saved;
+    Layout base;  // (an editor: its layout as it was last loaded, saved or made new - what differs is not saved yet)
     bool loaded, touched, auto_wait;
     float smooth_x, smooth_y;  // a drag's turn not given to the camera yet, counts ([Touch] CameraSmoothing: touch_input)
     uint64_t smooth_ns;        // ...and the pass that gave the last of it
@@ -1709,7 +1750,7 @@ uint64_t finger_buttons(const Finger &f) {
     uint64_t b = f.ctl == C_ATTACK || f.ctl == C_CORNER ? PILL_BUTTONS[f.part]
                : of_mpad(f.ctl) ? mpad_buttons(f.ctl, f.sent)
                : is_dpad(f.ctl) ? dpad_buttons(f.part)
-               : is_combo(f.ctl) ? (uint64_t)config_live_touch_combo(f.ctl - C_COMBO)
+               : is_combo(f.ctl) ? (uint64_t)g_combo[f.ctl - C_COMBO].load()
                : f.ctl == C_LIGHT && f.part ? PILL_BUTTONS[2]
                : f.btn || f.ctl == C_ZL ? f.btn  // (the target and camera buttons: what they pressed as they landed, target_buttons
                                                  // (0 nothing) and camera_buttons)
@@ -2000,19 +2041,48 @@ bool profile_store(const Layout &l) {
     if (!make_folder(dir)) return false;
     return save_layout_file(profile_path(l.profile).c_str(), l, nullptr);
 }
+// Two layouts the same, as their files would be (an editor's changes not saved yet: same_layout(s.layout, s.base) false)
+bool same_hud(const HudVals &a, const HudVals &b) {
+    return a.dx == b.dx && a.dy == b.dy && a.k == b.k && a.alpha == b.alpha && a.hidden == b.hidden;
+}
+bool same_layout(const Layout &a, const Layout &b) {
+    if (memcmp(a.x, b.x, sizeof a.x) || memcmp(a.y, b.y, sizeof a.y) || memcmp(a.scale, b.scale, sizeof a.scale)) return false;
+    if (a.style != b.style || a.kind != b.kind || a.off != b.off || a.hold != b.hold || a.fps_x != b.fps_x ||
+        a.fps_y != b.fps_y || a.bars_x != b.bars_x || a.bars_y != b.bars_y || a.bars_k != b.bars_k)
+        return false;
+    for (int p = 0; p < HUD_PROFILES; p++)
+        for (int k = 0; k < HP_COUNT; k++)
+            if (!same_hud(a.hud[p][k], b.hud[p][k])) return false;
+    for (int k = 0; k < TOUCH_COMBOS; k++)
+        if (strcmp(a.combo[k], b.combo[k])) return false;
+    return !memcmp(a.image, b.image, sizeof a.image) && !strcmp(a.knob, b.knob);
+}
+// (T39, 1.0.2) The profile in use is about to be left (another one used or made new, from the settings or the editor):
+// one whose file was never written - a new install's profile 1, a layout from before the profiles - gets it now, the
+// layout in use as it is, so that going back to it finds it and not an empty slot (that New would make the defaults)
+void keep_in_use(const Layout &in_use) {
+    if (is_file(profile_path(in_use.profile))) return;
+    Layout l = in_use;
+    l.profile_line = true;
+    if (profile_store(l))
+        rt_logf("[touch] profiles: profile %d had no file: the layout in use written into it before leaving it\n", l.profile);
+    else
+        rt_logf("[touch] profiles: profile %d had no file and it couldn't be written (%s)\n", l.profile, profiles_dir().c_str());
+}
 
 void edit_begin(State &s) {
     s.edit = true, s.edit_request = false, s.sel = -1, s.pinch = false;
     g_edit_set = g_ranged.load() != 0;  // (the layout in use; the panel's button changes it)
     s.edit_prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;  // (the HUD in use with the touch controls)
     g_hud_edit_prof = s.edit_prof;
-    s.saved = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
+    s.saved = s.base = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
     s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     drop_fingers(s);
     rt_logf("[touch] layout editor (profile %d)\n", s.layout.profile);
 }
 void edit_end(State &s, bool keep) {
     if (keep) {  // (the layout in use, and its profile's file: a save folder that can't be reached keeps only the first)
+        if (s.layout.profile != s.saved.profile) keep_in_use(s.saved);  // (another profile in use from now: T39)
         s.layout.profile_line = true;
         save_layout(s.layout, s.epanel), s.saved = s.layout;
         if (!profile_store(s.layout)) {
@@ -2078,9 +2148,12 @@ void prof_action(State &s, int a) {
         Layout l;
         if (!used) prof_say(s, "Profile %d is empty: New makes a layout in it", n);
         else if (n == s.layout.profile) prof_say(s, "You are editing profile %d already", n);
+        else if (!same_layout(s.layout, s.base) && !again)  // (T39: the editor's changes, lost without a word before)
+            s.prof_arm = a, prof_say(s, "Profile %d has changes you haven't saved: tap again to leave them", s.layout.profile);
         else if (!load_layout_file(profile_path(n).c_str(), &l, nullptr)) prof_say(s, "Profile %d can't be read. Is the save folder there?", n);
         else {
-            slot_into_editor(s, n, l), s.prof_open = false;
+            keep_in_use(s.saved);
+            slot_into_editor(s, n, l), s.prof_open = false, s.base = s.layout;
             char t[200];
             snprintf(t, sizeof t, T("Profile %d loaded: Save plays with it, Cancel goes back"), n);
             edit_note(s, t);
@@ -2095,11 +2168,13 @@ void prof_action(State &s, int a) {
         }
         Layout l = s.layout;
         l.profile = n, l.profile_line = true;
+        if (n != s.saved.profile) keep_in_use(s.saved);
         if (!make_folder(profiles_dir()) || !save_layout_file(profile_path(n).c_str(), l, nullptr)) {
             prof_say(s, "Profile %d couldn't be saved. Is the save folder there?", n);
             break;
         }
         s.layout.profile = n, s.layout.profile_line = true;
+        s.base = s.layout;
         prof_refresh(s);
         rt_logf("[touch] profiles: the editor's layout saved in profile %d\n", n);
         prof_say(s, "Saved in profile %d, which the editor edits now: its Save plays with it", n);
@@ -2112,8 +2187,14 @@ void prof_action(State &s, int a) {
             prof_say(s, "Profile %d holds a layout: tap New again to start it over", n);
             break;
         }
+        if (!same_layout(s.layout, s.base) && !again) {  // (T39)
+            s.prof_arm = a;
+            prof_say(s, "Profile %d has changes you haven't saved: tap again to leave them", s.layout.profile);
+            break;
+        }
+        keep_in_use(s.saved);
         Layout l = defaults(a == PA_NEW_EMU ? KIND_EMU : KIND_OURS);
-        slot_into_editor(s, n, l), s.prof_open = false;
+        slot_into_editor(s, n, l), s.prof_open = false, s.base = s.layout;
         char t[200];
         snprintf(t, sizeof t, T("A new layout in profile %d: Save keeps it and plays with it"), n);
         edit_note(s, t);
@@ -2397,6 +2478,7 @@ void edit_button(State &s, int i) {
     case E_DEFAULTS: {  // (the kind's own: the profile stays the one it is)
         Layout was = s.layout;
         if (touch) s.layout = defaults(was.kind), s.layout.profile = was.profile, s.layout.profile_line = was.profile_line;
+        memcpy(s.layout.combo, was.combo, sizeof was.combo);  // (the combined buttons stay: S2)
         for (int p = 0; p < HUD_PROFILES; p++)
             for (int k = 0; k < HP_COUNT; k++) s.layout.hud[p][k] = p == s.edit_prof ? hud_default() : was.hud[p][k];
         publish_hud(s.layout);
@@ -2593,7 +2675,7 @@ void hud_edit_begin(State &s) {
     s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     // (the HUD without the touch controls, shown live as it is edited: part_size and part_pickup go by edit_prof)
     s.edit_prof = HUD_PLAIN, g_hud_edit_prof = HUD_PLAIN;
-    s.saved = s.layout;
+    s.saved = s.base = s.layout;
     drop_fingers(s);
     s.hud_px = s.hud_py = -1e9f;  // (where the pointer is: the button under it lights at once)
     SDL_Window *win = ui_window();
@@ -2609,6 +2691,7 @@ void hud_edit_begin(State &s) {
 }
 void hud_edit_end(State &s, bool keep) {
     if (keep) {  // (the layout in use and its profile, as the touch layout editor's Save)
+        if (s.layout.profile != s.saved.profile) keep_in_use(s.saved);  // (another profile in use from now: T39)
         s.layout.profile_line = true;
         save_layout(s.layout, s.epanel), s.saved = s.layout;
         if (!profile_store(s.layout)) {
@@ -4650,7 +4733,7 @@ void menu_pad(ImDrawList *dl, Geo g, ImVec2 knob, int part, float a, bool on) {
     dl->AddConvexPolyFilled(q, 4, fade(GOLD, a));
 }
 
-void combo_label(int i, char *out, size_t size) { config_combo_text(config_live_touch_combo(i - C_COMBO), out, size); }
+void combo_label(int i, char *out, size_t size) { config_combo_text(g_combo[i - C_COMBO].load(), out, size); }
 
 // What a control of the ranged layout shows now: the weapon in hand, the game's Bow Controls, out or sheathed (the editor,
 // with no such weapon in hand, shows a bowgun's, out)
@@ -5810,6 +5893,7 @@ extern "C" bool touch_profile_use(int n) {
     Layout l;
     if (n < 1 || n > PROFILES_N || editing(s) || !load_layout_file(profile_path(n).c_str(), &l, nullptr)) return false;
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     profile_in_use(s, l, "the settings' Use");
     return true;
 }
@@ -5820,6 +5904,7 @@ extern "C" bool touch_profile_store(int n) {
     if (n < 1 || n > PROFILES_N || editing(s)) return false;
     Layout l = s.layout;
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     if (!profile_store(l)) return false;
     profile_in_use(s, l, "the settings' Save the current layout here");
     return true;
@@ -5831,8 +5916,273 @@ extern "C" bool touch_profile_new(int n, int kind) {
     if (n < 1 || n > PROFILES_N || editing(s)) return false;
     Layout l = defaults(kind == KIND_EMU ? KIND_EMU : KIND_OURS);
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     if (!profile_store(l)) return false;
     profile_in_use(s, l, "the settings' New");
+    return true;
+}
+extern "C" uint32_t touch_combo_live(int k) { return k >= 0 && k < TOUCH_COMBOS ? g_combo[k].load() : 0; }
+extern "C" void touch_combo_text(int k, char *out, size_t size) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    ensure_loaded(g_s);
+    snprintf(out, size, "%s", k >= 0 && k < TOUCH_COMBOS ? g_s.layout.combo[k] : "");
+}
+extern "C" bool touch_combo_set(int k, const char *text) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    if (k < 0 || k >= TOUCH_COMBOS || editing(s)) return false;
+    char t[sizeof s.layout.combo[0]];
+    config_combo_text(config_combo_mask(text ? text : ""), t, sizeof t);
+    if (!strcmp(t, s.layout.combo[k])) return true;
+    snprintf(s.layout.combo[k], sizeof s.layout.combo[k], "%s", t);
+    s.layout.profile_line = true;
+    s.saved = s.base = s.layout;
+    save_layout(s.layout, s.epanel);
+    publish_hud(s.layout);
+    bool ok = profile_store(s.layout);
+    rt_logf("[touch] combined button %d: %s (profile %d%s)\n", k + 1, t[0] ? t : "none", s.layout.profile,
+            ok ? "" : ", its file not written");
+    return ok;
+}
+// ---- (1.0.2, S3) A profile in a .zip and back: Export and Import on the settings' profile page. The .zip holds
+// mhgu_profile.txt (the profile's file, its combined buttons too) and images/<file> for each picture it names that the
+// images folder has (never the port's own art). Read with runtime/unzip.c (stored or Deflate), written by zipw.c. A .zip
+// with any other entry, a path that would go outside (.., absolute, a drive), no profile file or one without its
+// layout_kind line is turned down whole; so are more than 64 entries, a profile file over 256 KB, a picture over 16 MB
+// or over 128 MB in all. Its pictures come into the images folder: one of the same name and bytes is that picture;
+// another of that name stays, and the new one is <name>_2 (_3...), the profile's lines changed to match. The MH4U
+// port's the same (mh4u_profile.txt: one game's profile is no profile of the other's)
+namespace {
+const char *const ZIP_PROFILE = "mhgu_profile.txt", *const IMPORT_FILE = "profile_import.zip", *const EXPORT_DIR = "profile_export";
+const size_t ZIP_PROFILE_MOST = 256 << 10, ZIP_PICTURE_MOST = 16 << 20;
+const uint64_t ZIP_ALL_MOST = 128ull << 20;
+const int ZIP_ENTRIES_MOST = 64;
+std::mutex g_io_lock;
+std::string g_io_said;              // what the last export or import did (touch_profile_said)
+std::atomic<int> g_import_wait{0};  // (Android) the slot the .zip the app's screen copies in goes to
+void io_say(const char *english, int n = 0) {
+    char t[400];
+    snprintf(t, sizeof t, T(english), n);
+    std::lock_guard<std::mutex> l(g_io_lock);
+    g_io_said = t;
+}
+// A path for SDL's file functions: UTF-8, and whole on Android (where SDL takes a relative one as the app's internal
+// storage's or its assets', not the folder the runtime works in)
+std::string utf8_of(const std::string &native) {
+    std::string p = native;
+#ifdef __ANDROID__
+    char cwd[1024];
+    if (!p.empty() && p[0] != '/' && getcwd(cwd, sizeof cwd)) p = std::string(cwd) + "/" + p;
+#endif
+    char out[1400];
+    return plat_path_to_utf8(p.c_str(), out, sizeof out) ? std::string(out) : p;
+}
+// A picture's name in the .zip (images/<it>): one file, a picture's extension, no character a file name can't have
+bool zip_picture_name(const char *f) {
+    size_t n = strlen(f);
+    if (!n || n >= IMAGE_NAME - 4 || f[0] == '.' || f[0] == ' ') return false;
+    for (const char *p = f; *p; p++)
+        if ((unsigned char)*p < 32 || strchr("/\\:*?\"<>|", *p)) return false;
+    const char *dot = strrchr(f, '.');
+    if (!dot) return false;
+    static const char *const EXT[] = {".png", ".jpg", ".jpeg", ".webp", ".bmp"};
+    for (const char *x : EXT)
+        if (!SDL_strcasecmp(dot, x)) return true;
+    return false;
+}
+// A path in the .zip that would go outside the folder it is unpacked in: absolute, a drive, ..
+bool zip_escapes(const char *name) {
+    if (name[0] == '/' || strchr(name, ':')) return true;
+    for (const char *p = name; *p;) {
+        size_t n = strcspn(p, "/");
+        if (n == 2 && p[0] == '.' && p[1] == '.') return true;
+        p += n;
+        if (*p) p++;
+    }
+    return false;
+}
+}  // namespace
+extern "C" void touch_profile_zip_name(int n, char *out, size_t size) {
+    time_t t = time(nullptr);
+    struct tm tm;
+#ifdef _WIN32
+    localtime_s(&tm, &t);
+#else
+    localtime_r(&t, &tm);
+#endif
+    snprintf(out, size, "MHGU_profile_%02d_%04d-%02d-%02d.zip", n, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+}
+extern "C" bool touch_profile_export(int n, const char *path) {
+    Layout l;
+    std::string text, tmp = profiles_dir() + "/export.tmp";
+    {
+        std::lock_guard<std::mutex> lk(g_lock);
+        State &s = g_s;
+        ensure_loaded(s);
+        if (n < 1 || n > PROFILES_N) return false;
+        if (n == s.layout.profile) keep_in_use(s.layout);  // (in use with no file of its own yet: written now)
+        if (!load_layout_file(profile_path(n).c_str(), &l, nullptr)) {
+            io_say("Profile %d is empty", n);
+            return false;
+        }
+        // (its file as this version writes it: the combined buttons it takes from the settings, for one from before)
+        l.profile = n, l.profile_line = true;
+        if (!make_folder(profiles_dir()) || !save_layout_file(tmp.c_str(), l, nullptr) || !read_text(tmp.c_str(), &text)) {
+            remove(tmp.c_str());
+            io_say("It couldn't be done. Is the save folder there?");
+            return false;
+        }
+        remove(tmp.c_str());
+    }
+    std::vector<std::string> names, data;
+    auto picture = [&](const char *name) {
+        std::string bytes;
+        if (!name[0] || std::find(names.begin(), names.end(), name) != names.end()) return;
+        if (!read_text((images_dir() + "/" + name).c_str(), &bytes)) return;  // (named, and gone: left out)
+        names.push_back(name), data.push_back(std::move(bytes));
+    };
+    for (int i = 0; i < C_LAID; i++) picture(l.image[i]);
+    picture(l.knob);
+    std::vector<std::string> zipped(names.size());
+    std::vector<ZipItem> items;
+    items.push_back({ZIP_PROFILE, text.data(), text.size()});
+    for (size_t i = 0; i < names.size(); i++) {
+        zipped[i] = "images/" + names[i];
+        items.push_back({zipped[i].c_str(), data[i].data(), data[i].size()});
+    }
+    if (!zip_write(path, items.data(), (int)items.size())) {
+        rt_logf("[touch] profiles: profile %d not exported: %s\n", n, SDL_GetError());
+        io_say("It couldn't be done. Is the save folder there?");
+        return false;
+    }
+    const char *base = strrchr(path, '/');
+    if (const char *b2 = strrchr(path, '\\')) base = !base || b2 > base ? b2 : base;
+    rt_logf("[touch] profiles: profile %d exported with %d picture(s) to %s\n", n, (int)names.size(), path);
+    char t[400];
+    snprintf(t, sizeof t, T("Exported: %s"), base ? base + 1 : path);
+    std::lock_guard<std::mutex> io(g_io_lock);
+    g_io_said = t;
+    return true;
+}
+extern "C" int touch_profile_import(int n, const char *path) {
+    if (n < 1 || n > PROFILES_N) return IMPORT_FAILED;
+    Unzip z;
+    if (unzip_open(&z, path) != UNZIP_OK) {
+        unzip_close(&z);
+        rt_logf("[touch] profiles: import into %d: not a .zip (%s)\n", n, path);
+        io_say("That file is not a .zip, or it is damaged.");
+        return IMPORT_NOT_ZIP;
+    }
+    int prof = -1, why = IMPORT_OK;
+    uint64_t total = 0;
+    std::vector<int> pics;
+    if (z.count > ZIP_ENTRIES_MOST) why = IMPORT_NOT_PROFILE;
+    for (int i = 0; i < z.count && why == IMPORT_OK; i++) {
+        const UnzipEntry *e = &z.entries[i];
+        const char *nm = e->name;
+        total += e->size;
+        if (zip_escapes(nm)) why = IMPORT_ESCAPES;
+        else if (e->flags & 1) why = IMPORT_NOT_PROFILE;
+        else if (!strcmp(nm, ZIP_PROFILE) && !e->dir && prof < 0 && e->size <= ZIP_PROFILE_MOST) prof = i;
+        else if (!strcmp(nm, "images/") && e->dir) continue;
+        else if (!strncmp(nm, "images/", 7) && !e->dir && zip_picture_name(nm + 7) && e->size <= ZIP_PICTURE_MOST) pics.push_back(i);
+        else why = IMPORT_NOT_PROFILE;
+    }
+    if (why == IMPORT_OK && (prof < 0 || total > ZIP_ALL_MOST)) why = IMPORT_NOT_PROFILE;
+    std::string text, dir = profiles_dir(), tmp = dir + "/import.tmp";
+    if (why == IMPORT_OK) {
+        if (!make_folder(dir)) why = IMPORT_FAILED;
+        else if (unzip_extract(&z, prof, utf8_of(tmp).c_str(), nullptr, nullptr) != UNZIP_OK || !read_text(tmp.c_str(), &text))
+            why = IMPORT_NOT_PROFILE;
+        remove(tmp.c_str());
+        bool kind = false;  // (its signature: the layout_kind line every profile file has)
+        for (size_t at = text.find("layout_kind "); at != std::string::npos && !kind; at = text.find("layout_kind ", at + 1))
+            kind = at == 0 || text[at - 1] == '\n';
+        if (why == IMPORT_OK && !kind) why = IMPORT_NOT_PROFILE;
+    }
+    Layout l;
+    if (why == IMPORT_OK) {
+        parse_layout(text, &l, nullptr);
+        std::string images = images_dir();
+        if (!pics.empty() && !make_folder(images)) why = IMPORT_FAILED;
+        for (size_t p = 0; p < pics.size() && why == IMPORT_OK; p++) {
+            const char *name = z.entries[pics[p]].name + 7;
+            std::string got, there, part = images + "/import.tmp";
+            if (unzip_extract(&z, pics[p], utf8_of(part).c_str(), nullptr, nullptr) != UNZIP_OK || !read_text(part.c_str(), &got)) {
+                remove(part.c_str());
+                why = IMPORT_NOT_PROFILE;
+                break;
+            }
+            // (its name in the folder: the same picture there already, or a name nothing has)
+            std::string stem = name, ext, final_name;
+            size_t dot = stem.rfind('.');
+            ext = stem.substr(dot), stem.resize(dot);
+            for (int k = 1; k < 100 && final_name.empty(); k++) {
+                std::string cand = k == 1 ? std::string(name) : stem + "_" + std::to_string(k) + ext;
+                std::string at = images + "/" + cand;
+                if (!is_file(at)) {
+                    if (rename(part.c_str(), at.c_str()) == 0) final_name = cand;
+                    else why = IMPORT_FAILED;
+                    break;
+                }
+                if (read_text(at.c_str(), &there) && there == got) final_name = cand;
+            }
+            remove(part.c_str());
+            if (final_name.empty() && why == IMPORT_OK) why = IMPORT_FAILED;
+            if (final_name != name) {  // (the profile's lines with the name it has here)
+                for (int i = 0; i < C_COUNT; i++)
+                    if (!strcmp(l.image[i], name)) snprintf(l.image[i], IMAGE_NAME, "%s", final_name.c_str());
+                if (!strcmp(l.knob, name)) snprintf(l.knob, IMAGE_NAME, "%s", final_name.c_str());
+                rt_logf("[touch] profiles: import: the picture %s is %s here (another one had its name)\n", name, final_name.c_str());
+            }
+        }
+    }
+    unzip_close(&z);
+    if (why == IMPORT_OK) {
+        std::lock_guard<std::mutex> lk(g_lock);
+        State &s = g_s;
+        ensure_loaded(s);
+        l.profile = n, l.profile_line = true;
+        if (editing(s) || !profile_store(l)) why = IMPORT_FAILED;
+        else if (n == s.layout.profile) profile_in_use(s, l, "the settings' Import");  // (the one in use: replaced, as asked)
+    }
+    rt_logf("[touch] profiles: import into %d from %s: %s (%d picture(s))\n", n, path,
+            why == IMPORT_OK ? "done" : why == IMPORT_ESCAPES ? "turned down, a path goes outside"
+            : why == IMPORT_NOT_PROFILE ? "turned down, not a control profile" : "failed", (int)pics.size());
+    if (why == IMPORT_OK) io_say("Imported into profile %d", n);
+    else if (why == IMPORT_ESCAPES) io_say("That .zip has files that would go outside its folder: it was not imported.");
+    else if (why == IMPORT_NOT_PROFILE) io_say("That .zip is not a control profile of this game.");
+    else io_say("It couldn't be done. Is the save folder there?");
+    return why;
+}
+extern "C" bool touch_profile_export_app(int n) {
+    char name[96];
+    make_folder(EXPORT_DIR);
+    if (DIR *d = opendir(EXPORT_DIR)) {  // (one .zip there at a time: the one the app's screen copies out)
+        while (dirent *e = readdir(d))
+            if (e->d_name[0] != '.') remove((std::string(EXPORT_DIR) + "/" + e->d_name).c_str());
+        closedir(d);
+    }
+    touch_profile_zip_name(n, name, sizeof name);
+    return touch_profile_export(n, utf8_of(std::string(EXPORT_DIR) + "/" + name).c_str());
+}
+extern "C" void touch_profile_import_wait(int n) {
+    remove(IMPORT_FILE);
+    g_import_wait = n;
+}
+extern "C" void touch_profile_import_poll(void) {
+    int n = g_import_wait.load();
+    if (!n || !is_file(IMPORT_FILE)) return;
+    g_import_wait = 0;
+    touch_profile_import(n, utf8_of(IMPORT_FILE).c_str());
+    remove(IMPORT_FILE);
+}
+extern "C" bool touch_profile_said(char *out, size_t size) {
+    std::lock_guard<std::mutex> l(g_io_lock);
+    if (g_io_said.empty()) return false;
+    snprintf(out, size, "%s", g_io_said.c_str());
+    g_io_said.clear();
     return true;
 }
 extern "C" bool touch_profile_clear(int n) {

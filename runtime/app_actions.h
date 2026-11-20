@@ -35,6 +35,10 @@ void pc_open_log_folder(void);
 void pc_import_cheats(void);
 void pc_import_mod(void);
 void pc_import_pictures(void);  // (the layout profiles' images folder: touch_pictures_dir)
+// (1.0.2, S3) Control profile n out to a .zip in a folder the player chooses, or in from a .zip (runtime/touch.cpp
+// touch_profile_export / touch_profile_import, on the dialog's thread; the settings' page shows what they did)
+void pc_profile_export(int n);
+void pc_profile_import(int n);
 void pc_mod_dialog(bool zip);  // (any thread) the dialog the next pc_import_mod opens: the mod's .zip, else its folder
 // The Cheats and Mods tabs (the menu's thread): the cheat files (UTF-8 names, each up to 256 bytes, at most max) in the
 // cheats folders the game reads, one added since the start too, sorted

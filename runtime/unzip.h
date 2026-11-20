@@ -1,4 +1,5 @@
-// Reading a .zip on a desktop (runtime/unzip.c, for Add a mod in runtime/pc_actions.c): its entries from the central
+// Reading a .zip (runtime/unzip.c: Add a mod in runtime/pc_actions.c on a desktop; a control profile's Import in
+// runtime/touch.cpp on both, 1.0.2): its entries from the central
 // directory (ZIP64 too), each one's data stored or compressed with Deflate, checked against its size and CRC-32. Paths
 // are UTF-8 and go through SDL's file functions.
 #pragma once
@@ -6,6 +7,10 @@
 #include <stdint.h>
 
 #include <SDL3/SDL.h>
+
+#ifdef __cplusplus
+extern "C" {  // (runtime/touch.cpp reads a control profile's .zip too)
+#endif
 
 typedef struct {
     char *name;         // UTF-8 ('\' read as '/'; a name in the old DOS code page converted)
@@ -39,3 +44,7 @@ void unzip_close(Unzip *z);  // (after any unzip_open, whatever it answered)
 // Entry i (not a folder) into the file `to`, created or replaced; on a failure it is removed again. progress(ud, n):
 // n more bytes were written (NULL: none).
 UnzipResult unzip_extract(Unzip *z, int i, const char *to, void (*progress)(void *ud, uint64_t n), void *ud);
+
+#ifdef __cplusplus
+}
+#endif

@@ -26,7 +26,7 @@ static SDL_AtomicInt volume = {100}, confirm_exit = {1}, language = {0}, mute_in
 static SDL_AtomicInt live_fps, live_fov, live_mouse, live_draw = {0x3f800000}, live_fxaa = {1}, live_msaa = {1},
                      live_vsync = {1}, live_face, live_menu_confirm, live_background = {1}, live_combo, live_chat_key,
                      live_fxaa_mode, live_smooth, live_discord, live_discord_hunter, live_binds[BINDS][BIND_KEYS],
-                     live_touch, live_touch_hud, live_touch_show[TB_COUNT], live_touch_combo[TOUCH_COMBOS], live_touch_combo_pad[TOUCH_COMBOS], live_touch_cam, live_touch_opacity, live_lock_on = {1}, live_gyro_aim, live_gyro_sens, live_mouse_menus = {1},
+                     live_touch, live_touch_hud, live_touch_show[TB_COUNT], live_touch_combo[INI_COMBOS], live_touch_combo_pad[TOUCH_COMBOS], live_touch_cam, live_touch_opacity, live_lock_on = {1}, live_gyro_aim, live_gyro_sens, live_mouse_menus = {1},
                      live_touch_vibration = {1}, live_phone_rumble = {1}, live_show_stats, live_pause_bg = {1}, live_pause_menu = {1},
                      live_shadows = {1}, live_bloom = {1}, live_grass = {1}, live_effects = {1}, live_reverb = {1},
                      live_online_notice, live_send_all_rewards, live_gather_all, live_touch_cam_smooth, live_camera_shake, live_frame_gen,
@@ -117,10 +117,8 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->touch_controls != saved.touch_controls) SDL_SetAtomicInt(&live_touch, c->touch_controls);
     if (all || c->touch_hud != saved.touch_hud) SDL_SetAtomicInt(&live_touch_hud, c->touch_hud);
     for (int i = 0; i < TB_COUNT; i++) SDL_SetAtomicInt(&live_touch_show[i], c->touch_show[i]);
-    for (int i = 0; i < TOUCH_COMBOS; i++) {
-        SDL_SetAtomicInt(&live_touch_combo[i], (int)config_combo_mask(c->touch_combo[i]));
-        SDL_SetAtomicInt(&live_touch_combo_pad[i], c->touch_combo_pad[i]);
-    }
+    for (int i = 0; i < INI_COMBOS; i++) SDL_SetAtomicInt(&live_touch_combo[i], (int)config_combo_mask(c->touch_combo[i]));
+    for (int i = 0; i < TOUCH_COMBOS; i++) SDL_SetAtomicInt(&live_touch_combo_pad[i], c->touch_combo_pad[i]);
     if (all || c->lock_on != saved.lock_on) SDL_SetAtomicInt(&live_lock_on, c->lock_on);
     if (all || c->gyro_aim != saved.gyro_aim) SDL_SetAtomicInt(&live_gyro_aim, c->gyro_aim);
     if (all || c->gyro_sensitivity != saved.gyro_sensitivity) set_float(&live_gyro_sens, c->gyro_sensitivity);
@@ -232,7 +230,9 @@ int config_live_mouse_menus(void) { return 0; }
 int config_live_mouse_menus(void) { return SDL_GetAtomicInt(&live_mouse_menus); }
 #endif
 int config_live_touch_show(int button) { return SDL_GetAtomicInt(&live_touch_show[button]); }
-uint32_t config_live_touch_combo(int index) { return (uint32_t)SDL_GetAtomicInt(&live_touch_combo[index]); }
+uint32_t config_live_touch_combo(int index) {
+    return index >= 0 && index < INI_COMBOS ? (uint32_t)SDL_GetAtomicInt(&live_touch_combo[index]) : 0;
+}
 int config_live_touch_combo_pad(int index) { return SDL_GetAtomicInt(&live_touch_combo_pad[index]); }
 
 // The names of a combined button's parts, in BTN_* order (hle/input.h)
