@@ -1577,7 +1577,9 @@ void crossplay_saved(const Config &before, const Config &now) {
     if (!rooms_now || !now.xroom_host) xroomhost_stop();
     if (before.crossplay == XPLAY_RYUJINX && now.crossplay != XPLAY_RYUJINX) ryuldn_leave();
 }
-void crossplay_rows(std::vector<Row> &r) {
+// Play online with (1.0.2: at the top of Multiplayer, the MH4U port's place; the rest of crossplay's rows on Play with
+// emulators, shown while it is not This app's hubs)
+void crossplay_choice_row(std::vector<Row> &r) {
     Config &c = s.draft;
     add_choice(r, "xplay", xl("Play online with", "Jugar en línea con"), c.crossplay,
                {xl("This app's hubs", "Las salas de esta app"),
@@ -1594,6 +1596,9 @@ void crossplay_rows(std::vector<Row> &r) {
                        "jugadores de esos emuladores y de esta app. Ryujinx: los servidores LDN de Ryujinx (y Ryubing). Todos "
                        "necesitan la versión " XPLAY_GAME_VERSION " del juego. Después, Crear sala y Buscar salas funcionan "
                        "como siempre.");
+}
+void crossplay_rows(std::vector<Row> &r) {
+    Config &c = s.draft;
     if (!c.crossplay) return;
     XStatus st;
     bool rooms = c.crossplay == XPLAY_ROOMS;
@@ -1765,16 +1770,17 @@ void crossplay_rows(std::vector<Row> &r) {
             "original: la sincronización de monstruos pequeños, los ajustes de vida de los monstruos y las misiones de la "
             "Aldea en la sala quedan apagados."));
 }
-void reset_crossplay() {
+void reset_crossplay() {  // (Play online with: its own entry, on Multiplayer)
     Config f = config_defaults(), &c = s.draft;
-    c.crossplay = f.crossplay, c.xroom_host = f.xroom_host, c.xroom_host_port = f.xroom_host_port;
+    c.xroom_host = f.xroom_host, c.xroom_host_port = f.xroom_host_port;
     SDL_strlcpy(c.xroom, f.xroom, sizeof c.xroom);
     SDL_strlcpy(c.xroom_password, f.xroom_password, sizeof c.xroom_password);
     SDL_strlcpy(c.xnick, f.xnick, sizeof c.xnick);
     SDL_strlcpy(c.ryu_server, f.ryu_server, sizeof c.ryu_server);
     SDL_strlcpy(c.ryu_passphrase, f.ryu_passphrase, sizeof c.ryu_passphrase);
 }
-MENU_ENTRY("multiplayer/crossplay", 10, crossplay_rows, reset_crossplay);
+MENU_ENTRY("multiplayer/crossplay", 10, crossplay_rows, reset_crossplay, []() { return s.draft.crossplay != 0; });
+MENU_ENTRY("multiplayer", 3, crossplay_choice_row, []() { s.draft.crossplay = config_defaults().crossplay; });
 // The hub server and key being edited: checked as the page shows them (once the notice about playing online was
 // closed: settings_panel_online_ok) and on request (runtime/net/ldn.c); the value: the server's last known state, from
 // the check or from the game's own searches and hubs
@@ -1928,6 +1934,7 @@ void keyboard_mouse_rows(std::vector<Row> &r) {
     r.back().help = tr("The keys and mouse buttons for the game's buttons, for moving, the camera, the item bar and the combined buttons. A click in the game captures the mouse: it turns the camera until Esc lets it go. These rows show while a keyboard and a mouse are connected.");
     number(r, "mouse", tr("Mouse sensitivity"), &s.draft.mouse_sensitivity, lo("MouseSensitivity"), hi("MouseSensitivity"), .05f, ini("MouseSensitivity"));
     r.back().value = fmt("%.2fx", s.draft.mouse_sensitivity);
+    r.back().help = tr("How far the camera turns for the mouse's movement.");  // (1.0.2: the MH4U port's words)
 }
 #endif
 bool combo_listed(int k);  // (S2: below, with the combined buttons' page)
@@ -2223,6 +2230,8 @@ void cheat_rows(std::vector<Row> &r) {
 #ifdef __ANDROID__  // (the app's cheats folder is in Android/data, out of a file manager's reach: copied in by ImportActivity)
     action(r, "cheats.add", tr("Add cheats"), []() { ui_request_import(0); });
     r.back().help = tr("Copies cheat .txt files (Atmosphere's format, for 1.4.0: in a list's folder, the file named FB08F1D20FD1204F.txt) from your phone's storage. You can also put them yourself in the cheats folder inside your game folder. The game restarts to read them.");
+    if (!cheat_tab.draft.empty())  // (1.0.2: the MH4U port's section)
+        header(r, "cheats.head", tr("Cheats"));
     for (int i = 0; i < (int)cheat_tab.draft.size(); ++i)
         r.push_back(cheat_row(i));
     cheat_left_rows(r);
@@ -2293,6 +2302,8 @@ void mods_rows(std::vector<Row> &r) {
     if (mods.draft.empty())
         action(r, "mods.none", tr("No mods found in the mods folder"), []() {});
 #endif
+    if (!mods.draft.empty())  // (1.0.2: the MH4U port's section)
+        header(r, "mods.head", tr("Mods, in load order"));
     for (int i = 0; i < (int)mods.draft.size(); ++i) {
         std::string name = mods.draft[i].name;
         bool on = mods.draft[i].on, clash = false;
@@ -2351,15 +2362,18 @@ void mods_rows(std::vector<Row> &r) {
     }
     if (!result->done) {
         action(r, "mods.scanning", tr("Checking for conflicts..."), []() {});
+        r.back().help = tr("Mods that change the same game files: where both are on, the one lower in the list is used. Select it to see each pair and choose which mod is used.");  // (1.0.2: the MH4U port's)
     } else {
         std::vector<Row> found;
         conflict_rows(found);
-        if (found.empty())
+        if (found.empty()) {
             action(r, "mods.clear", tr("No conflicts found"), []() {});
-        else {
+            r.back().help = tr("Mods that change the same game files: where both are on, the one lower in the list is used. Select it to see each pair and choose which mod is used.");
+        } else {
             action(r, "mods.conflicts", fmt("Mods change the same files (%d): select to review", (int)found.size()),
                    []() { push(View::Conflicts, ""); });
             r.back().value = "!";
+            r.back().help = tr("Mods that change the same game files: where both are on, the one lower in the list is used. Select it to see each pair and choose which mod is used.");
         }
     }
     auto order = suggested_mods();
@@ -2370,6 +2384,7 @@ void mods_rows(std::vector<Row> &r) {
             s.saved_notice = false;
         },
         !same_mods(order, mods.draft));
+    r.back().help = tr("Orders the mods that change the same files from the biggest to the smallest, so a small tweak wins over a large overhaul. The others keep their places.");
     action(r, "mods.rescan", tr("Rescan mods"), []() {
         std::vector<ModEntry> now(MODS_MAX);
         int n = mods_installed(now.data(), MODS_MAX);
@@ -3722,12 +3737,14 @@ void rows_graphics_advanced_60(std::vector<Row> &r) {
                           "responsabilidad; si no arranca, la app vuelve sola al del sistema. Por defecto se usa el del "
                           "sistema.");
 }
-MENU_ENTRY("graphics/advanced", 60, rows_graphics_advanced_60, {});
+// (1.0.2: last on the page, as the MH4U port's GPU driver section)
+MENU_ENTRY("graphics/advanced", 80, rows_graphics_advanced_60, {});
 void rows_graphics_advanced_70(std::vector<Row> &r) {  // [Graphics] FrameGen (nvn/vulkan/framegen.c)
     add_bool(r, "framegen", "Frame generation", &s.draft.frame_gen, ini("FrameGen"));
 }
 void reset_graphics_advanced_70() { s.draft.frame_gen = config_defaults().frame_gen; }
-MENU_ENTRY("graphics/advanced", 70, rows_graphics_advanced_70, reset_graphics_advanced_70);
+// (1.0.2: after Clear shader cache, the MH4U port's place too)
+MENU_ENTRY("graphics/advanced", 55, rows_graphics_advanced_70, reset_graphics_advanced_70);
 // Full-size textures (1.0.2, GU#259; the MH4U port has its own): where the device has under 5 GB, its 3D textures keep
 // their largest levels (nvn/vulkan/textures.c low_memory_textures), at the player's own risk; a start-up setting
 extern "C" bool vk_low_memory_device(void);
@@ -3876,8 +3893,8 @@ void reset_multiplayer_10() {
 MENU_ENTRY("multiplayer", 10, rows_multiplayer_10, reset_multiplayer_10, no_crossplay);
 // (crossplay on: a line where the hubs' rows were, saying where they went)
 MENU_ENTRY("multiplayer", 5, [](std::vector<Row> &r) {
-    note(r, "xplay.on", xl("Online play goes through the emulators' rooms or servers: Play with emulators. Choose This app's hubs there to see the hub server and the key again.",
-                           "El juego en línea pasa por las salas o servidores de los emuladores: Jugar con emuladores. Elige Las salas de esta app ahí para volver a ver el servidor de salas y la clave."));
+    note(r, "xplay.on", xl("Online play goes through the emulators' rooms or servers: their rows are in Play with emulators. Choose This app's hubs above to see the hub server and the key again.",
+                           "El juego en línea pasa por las salas o servidores de los emuladores: sus filas están en Jugar con emuladores. Elige Las salas de esta app arriba para volver a ver el servidor de salas y la clave."));
 }, {}, []() { return s.draft.crossplay != 0; });
 // S32, S35 (the chat group's, MENU.md 4b): Share the key in the chat under the hub's rows, then the Chat and Friends
 // pages' rows (View::Chat, View::Friends: settings_chat.inc)
@@ -3988,9 +4005,12 @@ MENU_ENTRY("system", 70, rows_system_70, reset_system_70);
 void rows_system_90(std::vector<Row> &r) {
     header(r, "app.head", tr("The app"));
     action(r, "restart", tr("Restart"), []() { push(View::Restart, "dialog.cancel"); });
+    r.back().help = tr("Closes the game and opens it again, for the options marked *. Save in the game first.");  // (1.0.2: as MH4U's)
     action(r, "exit", tr("Exit game"), []() { push(View::Exit, "dialog.cancel"); });
+    r.back().help = tr("Closes the game and the app. Save your hunt in the game first.");
 #ifdef __ANDROID__  // (as the header's X: unsaved changes asked about first)
     action(r, "back.game", tr("Back to the game"), []() { request_back.store(true); });
+    r.back().help = tr("Closes this menu.");
 #endif
 }
 MENU_ENTRY("system", 90, rows_system_90);
