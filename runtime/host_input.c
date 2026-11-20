@@ -1165,7 +1165,11 @@ static int display_quarter(SDL_DisplayOrientation o) {  // (the device turned th
 static void gyro_off(void) {
     if (gyro_dev) SDL_CloseSensor(gyro_dev), gyro_dev = NULL;
     if (gyro_pad) SDL_SetGamepadSensorEnabled(gyro_pad, SDL_SENSOR_GYRO, false), gyro_pad = NULL;
-    if (gyro_on) LOG("[gyro] off\n");
+    if (gyro_on) {  // (why, for a report: the hunter's action, or a locked shot's own aim)
+        unsigned act = weapon_action(weapon_hunter());
+        LOG("[gyro] off (action %04x:%03u, weapon out %d%s)\n", act >> 16, act & 0xffff, weapon_drawn(),
+            touch_lock_assist() ? ", a locked shot aims" : "");
+    }
     gyro_on = false, gyro_ns = 0;
 }
 static void gyro_update(void) {
