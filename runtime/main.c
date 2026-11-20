@@ -81,6 +81,7 @@ static void boot(const char *root) {
     gather_init();   // ([Gathering] GatherAll: runtime/hle/gather.c)
     flexcancel_init();  // ([Comforts] FlexCancel: moving or another action ends the flex: runtime/hle/flexcancel.c)
     rewards_init();  // ([Quest Rewards] SendAllRewards: every reward to the item box at once: runtime/hle/rewards.c)
+    supplybox_init();  // (the Supply Box without the wait between items: runtime/hle/supplybox.c)
     mashrate_init();  // (mashing out of a stun at high frame rates: runtime/hle/mashrate.c)
     grass_init();  // ([Performance] Grass: the game's grass unit left out while Off: runtime/hle/grass.c)
     effects_init();  // ([Performance] Effects: the game's particle effects left out while Off: runtime/hle/effects.c)
