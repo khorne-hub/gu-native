@@ -106,6 +106,12 @@ bool touch_profile_use(int n);
 bool touch_profile_store(int n);
 bool touch_profile_new(int n, int kind);
 bool touch_profile_clear(int n);
+// (1.0.2, S2) The combined buttons of the layout profile in use (k: 0 to TOUCH_COMBOS - 1): the game's buttons each presses
+// (any thread; config_combo_mask's bits), as text ("A+X", "" none), and changed at once, the layout in use and its
+// profile's file written (false: an editor open, or the profile's file not written: the save folder not reached)
+uint32_t touch_combo_live(int k);
+void touch_combo_text(int k, char *out, size_t size);
+bool touch_combo_set(int k, const char *text);
 // The layout profiles' images folder, where the players' own pictures for the buttons go (the runtime's spelling of a
 // path; runtime/pc_actions.c copies them in)
 void touch_pictures_dir(char *out, size_t size);

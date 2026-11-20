@@ -182,13 +182,23 @@ const Def DEFS[C_COUNT] = {
     {"minus_hunt", "Minus  -", I_MINUS, "-", B(BTN_MINUS), false, .18f, .67f, .046f},
     {"r3", "Right stick click", I_LETTER, "R3", B(BTN_RSTICK), true, .075f, .56f, .045f},
     {"dpad_hunt", "D-pad", I_DPAD, "", 0, false, .33f, .60f, .105f},
-    // the player's own ([Touch] Combo1..): what they press and their label are in the settings
+    // the player's own (the layout's combo <n> lines; 1.0.1.1's [Touch] Combo1..6): what they press and their label are in
+    // the settings. 7 to 15 (1.0.2) further in, shown once they have buttons
     {"combo1", "", I_COMBO, "", 0, true, .60f, .30f, .052f},
     {"combo2", "", I_COMBO, "", 0, true, .60f, .44f, .052f},
     {"combo3", "", I_COMBO, "", 0, true, .60f, .58f, .052f},
     {"combo4", "", I_COMBO, "", 0, true, .73f, .30f, .052f},
     {"combo5", "", I_COMBO, "", 0, true, .73f, .44f, .052f},
     {"combo6", "", I_COMBO, "", 0, true, .73f, .58f, .052f},
+    {"combo7", "", I_COMBO, "", 0, true, .86f, .30f, .052f},
+    {"combo8", "", I_COMBO, "", 0, true, .86f, .44f, .052f},
+    {"combo9", "", I_COMBO, "", 0, true, .86f, .58f, .052f},
+    {"combo10", "", I_COMBO, "", 0, true, .60f, .72f, .052f},
+    {"combo11", "", I_COMBO, "", 0, true, .73f, .72f, .052f},
+    {"combo12", "", I_COMBO, "", 0, true, .86f, .72f, .052f},
+    {"combo13", "", I_COMBO, "", 0, true, .99f, .30f, .052f},
+    {"combo14", "", I_COMBO, "", 0, true, .99f, .44f, .052f},
+    {"combo15", "", I_COMBO, "", 0, true, .99f, .58f, .052f},
     // a bow's or a bowgun's (their buttons: ranged_buttons): the shot large under the thumb, the rest in an arc round it,
     // the dodge in the corner, the ammo arrows beside the item bar
     {"fire", "Fire / shoot", I_SHOT, "", 0, true, .215f, .26f, .115f},
@@ -295,6 +305,8 @@ int show_setting(int i) {  // the [Touch] Show* a control follows (the settings 
     }
 }
 bool is_combo(int i) { return i >= C_COMBO && i <= C_COMBO_END; }
+// (S2) The layout in use's combined buttons, for every thread: what each presses (config_combo_mask's bits; publish_hud)
+std::atomic<uint32_t> g_combo[TOUCH_COMBOS];
 bool is_tab(int i) { return i == C_ML || i == C_MR || i == C_MZL || i == C_MZR; }  // (the menu pad's shoulders, as tabs)
 bool is_dpad(int i) { return i == C_HDPAD || i == C_EDPAD; }
 bool dpad_in_menus(void) { return config_live_touch_show(TB_DPAD_MENUS) != 0; }  // ([Touch] DpadInMenus: hit, under_mpad)
@@ -326,7 +338,7 @@ bool hideable(int i) {
 bool emu_mode(int i, bool menu) {
     if (i != C_SETTINGS && (g_off.load() >> i & 1)) return false;
     if (emu_ctl(i) || i == C_SETTINGS || i == C_STICK) return true;
-    if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
+    if (is_combo(i)) return g_combo[i - C_COMBO].load() != 0;
     if (i == C_LOCKON) return lockon_here(menu) && config_live_touch_show(TB_LOCKON);
     return false;
 }
@@ -347,7 +359,7 @@ bool in_mode(int i, bool menu) {
     if (is_ranged(i) ? !ranged_layout() : ranged_layout() && (i == C_ATTACK || i == C_HEAVY || i == C_LIGHT || i == C_CORNER ||
                                                               i == C_R || i == C_DODGE || i == C_SHEATHE))
         return false;
-    if (is_combo(i)) return config_live_touch_combo(i - C_COMBO) != 0;
+    if (is_combo(i)) return g_combo[i - C_COMBO].load() != 0;
     // (ZL in a town, whatever the settings say: it is the way to the multiplayer menu; in a hunt it is the target button,
     // ShowZL. It stays while a menu opened in the town is open, whether the town's update runs under it or not)
     if (i == C_ZL && (plat_now_ns() - g_town_ns < 500 * 1000000ull || (menu && g_menu_town.load()))) return true;
@@ -368,7 +380,7 @@ bool in_editor(int i) {
         if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
         if (i == C_RUNLOCK) return config_live_touch_show(TB_STICK_RUN) != 0;
         if (i == C_LOCKON) return config_live_lock_on() && config_live_touch_show(TB_LOCKON);
-        return is_combo(i) && config_live_touch_combo(i - C_COMBO) != 0;
+        return is_combo(i) && g_combo[i - C_COMBO].load() != 0;
     }
     if (i == C_MPAD) return config_live_touch_show(TB_MENU_PAD);
     if (i == C_ITEML || i == C_ITEMR) return config_live_touch_show(TB_ITEM_ARROWS) != 0;
@@ -458,6 +470,10 @@ struct Layout {
                                              // folder (image <key> <file>); "" none. The stick's: its base. Drawn in
                                              // place of the control's whole look (pic_only)
     char knob[IMAGE_NAME];                   // the stick's knob's (image_knob <file>)
+    char combo[TOUCH_COMBOS][32];            // (1.0.2, S2) its combined buttons: the game's buttons each presses together
+                                             // ("A+X", config_combo_text; "" none: combo <n> <buttons>, - for none). A
+                                             // file with no such line (a layout or a profile from before) takes 1.0.1.1's
+                                             // [Touch] Combo1..6, the rest none; a new layout has none
 };
 // The layout editor's panel: its middle where the player dragged it (fractions of the screen's width from the left and
 // of its height from the top; below 0 its usual place, a little above the middle) and its size (EPANEL_MIN to 100 %).
@@ -499,6 +515,7 @@ std::atomic<float> g_fps_x{-1.0f}, g_fps_y{-1.0f};  // (Layout.fps_x / fps_y, fo
 std::atomic<float> g_bars_x{-1.0f}, g_bars_y{-1.0f}, g_bars_k{1.0f};  // (Layout.bars_*: touch_bars_place)
 void publish_hud(const Layout &l) {  // (to the render thread; the kind and what it hides, the FPS counter's place, to all)
     g_kind = l.kind, g_off = l.off, g_fps_x = l.fps_x, g_fps_y = l.fps_y;
+    for (int k = 0; k < TOUCH_COMBOS; k++) g_combo[k] = config_combo_mask(l.combo[k]);  // (the combined buttons: S2)
     g_bars_x = l.bars_x, g_bars_y = l.bars_y, g_bars_k = l.bars_k;
     for (int p = 0; p < HUD_PROFILES; p++)
         for (int k = 0; k < HP_COUNT; k++) {
@@ -536,6 +553,7 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
     char key[32], name[64];
     float x, y, s, alpha;
     int hidden;
+    bool combos = false;  // (a combo line: the file has its own combined buttons)
     for (size_t at = 0, end; at < text.size(); at = end + 1) {
         end = text.find('\n', at);
         if (end == std::string::npos) end = text.size();
@@ -559,6 +577,16 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
                 const char *f = strstr(line, key) + strlen(key);
                 while (*f == ' ' || *f == '\t') f++;
                 if (*f && !strchr(f, '/') && !strchr(f, '\\')) snprintf(l->knob, IMAGE_NAME, "%s", f);
+                continue;
+            }
+            // (combo <n> <buttons>: a combined button, 1.0.2. An older version skips the line: its second word is no
+            // control's, and the line has too few numbers for a control's or the HUD's)
+            if (!strcmp(key, "combo")) {
+                int k = atoi(name) - 1;
+                const char *f = strstr(line, name) + strlen(name);
+                while (*f == ' ' || *f == '\t') f++;
+                if (k >= 0 && k < TOUCH_COMBOS) config_combo_text(config_combo_mask(f), l->combo[k], sizeof l->combo[k]);
+                combos = true;
                 continue;
             }
         }
@@ -600,6 +628,8 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
             ep->x = usual ? -1.0f : x, ep->y = usual ? -1.0f : y, ep->k = s;
     }
     if (l->kind != KIND_EMU) l->off = 0;  // (the port's own layout hides by the settings' Show*)
+    if (!combos)  // (a layout from before 1.0.2: the combined buttons every layout had, [Touch] Combo1..6)
+        for (int k = 0; k < INI_COMBOS; k++) config_combo_text(config_live_touch_combo(k), l->combo[k], sizeof l->combo[k]);
 }
 bool load_layout_file(const char *path, Layout *l, EditPanel *ep) {
     std::string text;
@@ -641,6 +671,8 @@ bool save_layout_file(const char *path, const Layout &l, const EditPanel *ep) {
         if (l.image[i][0]) fprintf(f, "image %s %s\n", DEFS[i].key, l.image[i]);
     }
     if (l.knob[0]) fprintf(f, "image_knob %s\n", l.knob);
+    fprintf(f, "# the combined buttons: the game's buttons each presses together (- none)\n");
+    for (int k = 0; k < TOUCH_COMBOS; k++) fprintf(f, "combo %d %s\n", k + 1, l.combo[k][0] ? l.combo[k] : "-");
     if (ep) {
         char line[80];
         epanel_line(line, *ep);
@@ -1706,7 +1738,7 @@ uint64_t finger_buttons(const Finger &f) {
     uint64_t b = f.ctl == C_ATTACK || f.ctl == C_CORNER ? PILL_BUTTONS[f.part]
                : of_mpad(f.ctl) ? mpad_buttons(f.ctl, f.sent)
                : is_dpad(f.ctl) ? dpad_buttons(f.part)
-               : is_combo(f.ctl) ? (uint64_t)config_live_touch_combo(f.ctl - C_COMBO)
+               : is_combo(f.ctl) ? (uint64_t)g_combo[f.ctl - C_COMBO].load()
                : f.ctl == C_LIGHT && f.part ? PILL_BUTTONS[2]
                : f.btn || f.ctl == C_ZL ? f.btn  // (the target and camera buttons: what they pressed as they landed, target_buttons
                                                  // (0 nothing) and camera_buttons)
@@ -2008,6 +2040,8 @@ bool same_layout(const Layout &a, const Layout &b) {
     for (int p = 0; p < HUD_PROFILES; p++)
         for (int k = 0; k < HP_COUNT; k++)
             if (!same_hud(a.hud[p][k], b.hud[p][k])) return false;
+    for (int k = 0; k < TOUCH_COMBOS; k++)
+        if (strcmp(a.combo[k], b.combo[k])) return false;
     return !memcmp(a.image, b.image, sizeof a.image) && !strcmp(a.knob, b.knob);
 }
 // (T39, 1.0.2) The profile in use is about to be left (another one used or made new, from the settings or the editor):
@@ -2420,6 +2454,7 @@ void edit_button(State &s, int i) {
     case E_DEFAULTS: {  // (the kind's own: the profile stays the one it is)
         Layout was = s.layout;
         if (touch) s.layout = defaults(was.kind), s.layout.profile = was.profile, s.layout.profile_line = was.profile_line;
+        memcpy(s.layout.combo, was.combo, sizeof was.combo);  // (the combined buttons stay: S2)
         for (int p = 0; p < HUD_PROFILES; p++)
             for (int k = 0; k < HP_COUNT; k++) s.layout.hud[p][k] = p == s.edit_prof ? hud_default() : was.hud[p][k];
         publish_hud(s.layout);
@@ -4666,7 +4701,7 @@ void menu_pad(ImDrawList *dl, Geo g, ImVec2 knob, int part, float a, bool on) {
     dl->AddConvexPolyFilled(q, 4, fade(GOLD, a));
 }
 
-void combo_label(int i, char *out, size_t size) { config_combo_text(config_live_touch_combo(i - C_COMBO), out, size); }
+void combo_label(int i, char *out, size_t size) { config_combo_text(g_combo[i - C_COMBO].load(), out, size); }
 
 // What a control of the ranged layout shows now: the weapon in hand, the game's Bow Controls, out or sheathed (the editor,
 // with no such weapon in hand, shows a bowgun's, out)
@@ -5850,6 +5885,30 @@ extern "C" bool touch_profile_new(int n, int kind) {
     if (!profile_store(l)) return false;
     profile_in_use(s, l, "the settings' New");
     return true;
+}
+extern "C" uint32_t touch_combo_live(int k) { return k >= 0 && k < TOUCH_COMBOS ? g_combo[k].load() : 0; }
+extern "C" void touch_combo_text(int k, char *out, size_t size) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    ensure_loaded(g_s);
+    snprintf(out, size, "%s", k >= 0 && k < TOUCH_COMBOS ? g_s.layout.combo[k] : "");
+}
+extern "C" bool touch_combo_set(int k, const char *text) {
+    std::lock_guard<std::mutex> lk(g_lock);
+    State &s = g_s;
+    ensure_loaded(s);
+    if (k < 0 || k >= TOUCH_COMBOS || editing(s)) return false;
+    char t[sizeof s.layout.combo[0]];
+    config_combo_text(config_combo_mask(text ? text : ""), t, sizeof t);
+    if (!strcmp(t, s.layout.combo[k])) return true;
+    snprintf(s.layout.combo[k], sizeof s.layout.combo[k], "%s", t);
+    s.layout.profile_line = true;
+    s.saved = s.base = s.layout;
+    save_layout(s.layout, s.epanel);
+    publish_hud(s.layout);
+    bool ok = profile_store(s.layout);
+    rt_logf("[touch] combined button %d: %s (profile %d%s)\n", k + 1, t[0] ? t : "none", s.layout.profile,
+            ok ? "" : ", its file not written");
+    return ok;
 }
 extern "C" bool touch_profile_clear(int n) {
     std::lock_guard<std::mutex> lk(g_lock);

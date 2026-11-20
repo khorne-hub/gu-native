@@ -18,14 +18,16 @@ enum { FXAA_ORIGINAL, FXAA_311 };  // [Anti-aliasing] FXAAMode (runtime/nvn/vulk
 // [Keybinds]: the keyboard and mouse controls (runtime/host_input.c), in the file's order. Each takes up to two keys
 // or mouse buttons: an SDL scancode, KEY_MOUSE + SDL_BUTTON_*, or the wheel's KEY_WHEEL_UP / KEY_WHEEL_DOWN (0: none).
 // BIND_CAM_* tilt the right stick all the way. BIND_ITEM_LEFT / RIGHT turn the item bar directly (runtime/hle/itembar.c),
-// not a Switch button. BIND_COMBO1.. press a combined button's buttons ([Touch] Combo1.., TOUCH_COMBOS of them).
+// not a Switch button. BIND_COMBO1.. press a combined button's buttons (the layout profile in use's, TOUCH_COMBOS of them).
 enum {
     BIND_MOVE_UP, BIND_MOVE_DOWN, BIND_MOVE_LEFT, BIND_MOVE_RIGHT, BIND_WALK,
     BIND_CAM_UP, BIND_CAM_DOWN, BIND_CAM_LEFT, BIND_CAM_RIGHT,
     BIND_A, BIND_B, BIND_X, BIND_Y, BIND_L, BIND_R, BIND_ZL, BIND_ZR, BIND_PLUS, BIND_MINUS,
     BIND_DPAD_UP, BIND_DPAD_DOWN, BIND_DPAD_LEFT, BIND_DPAD_RIGHT, BIND_LSTICK, BIND_RSTICK,
     BIND_ITEM_LEFT, BIND_ITEM_RIGHT,
-    BIND_COMBO1, BIND_COMBO2, BIND_COMBO3, BIND_COMBO4, BIND_COMBO5, BIND_COMBO6, BINDS
+    BIND_COMBO1, BIND_COMBO2, BIND_COMBO3, BIND_COMBO4, BIND_COMBO5, BIND_COMBO6,
+    BIND_COMBO7, BIND_COMBO8, BIND_COMBO9, BIND_COMBO10, BIND_COMBO11, BIND_COMBO12, BIND_COMBO13, BIND_COMBO14, BIND_COMBO15,
+    BINDS
 };
 #define BIND_KEYS 2
 #define KEY_MOUSE 0x1000
@@ -56,7 +58,12 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 // pad's L and R and the Hunter Arts' taps with a controller as up to 0.1.9.3, the D-pad in menus off: the menu pad takes
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
-#define TOUCH_COMBOS 6
+// The combined buttons: 15 from 1.0.2 (S2), each layout profile with its own (runtime/touch.cpp: combo <n> <buttons> in
+// its file). [Touch] Combo1..6, 1.0.1.1's six for every layout, are what a profile from before (no such lines) takes; each
+// one's controller button and key stay settings of their own (Combo<n>Pad, [Keybinds] Combo<n>Key: the n-th of the
+// profile in use)
+#define TOUCH_COMBOS 15
+#define INI_COMBOS 6
 // a controller's button a combined button can be on ([Touch] Combo<n>Pad, runtime/host_input.c): up to 1.0.1.1 the less
 // used ones; from 1.0.2 (S1) any of them, the face buttons by their place (A on the right, as on the Switch, whatever
 // [Controls] FaceButtons says) and ZL and ZR (axes: pressed past half); and a button the controller's map doesn't name, by
@@ -145,8 +152,9 @@ typedef struct {
     int touch_show[TB_COUNT]; // [Touch] Show*: which of the game's buttons are on the screen in a hunt (runtime/touch.cpp)
     int thanks_shown;         // [Application] ThanksShown: the thank-you shown once, after the credits of the first start,
                               // was closed (settings_panel.cpp draw_thanks); from then on only Credits & Licenses shows it
-    char touch_combo[TOUCH_COMBOS][32];  // [Touch] Combo1..: the game's buttons one screen button presses together
-                                         // ("A+X"; config_combo_mask); "" none
+    char touch_combo[INI_COMBOS][32];    // [Touch] Combo1..6: the game's buttons one screen button pressed together up to
+                                         // 1.0.1.1 ("A+X"; config_combo_mask; "" none): a layout profile with no combined
+                                         // buttons of its own takes these (runtime/touch.cpp)
     int touch_combo_pad[TOUCH_COMBOS];   // [Touch] Combo1Pad..: PADB_*, a controller's button that does the same
     char gpu[256];            // [Display] GPU: the Vulkan device's name (nvn/vulkan/device.c pick_device); "Auto" or "" the
                               // best one (MHGU_GPU=<index> overrides)
@@ -372,7 +380,8 @@ int config_live_gyro_aim(void);           // [Controls] GyroAim
 float config_live_gyro_sensitivity(void); // [Controls] GyroSensitivity
 int config_live_mouse_menus(void);  // [Controls] MouseMenus (a desktop's; 0 on a phone)
 int config_live_touch_show(int button);        // TB_*
-uint32_t config_live_touch_combo(int index);   // its buttons (config_combo_mask)
+uint32_t config_live_touch_combo(int index);   // its buttons (config_combo_mask): [Touch] Combo1..6, INI_COMBOS (the
+                                               // profile in use's: touch.h touch_combo_live)
 int config_live_touch_combo_pad(int index);    // PADB_*
 float config_live_touch_camera(void);
 int config_live_touch_cam_smooth(void);  // [Touch] CameraSmoothing (0..100)

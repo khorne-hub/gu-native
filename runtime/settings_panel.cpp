@@ -1814,7 +1814,9 @@ const char *const bind_titles[] = {"Move forward", "Move back", "Move left", "Mo
                                    "ZR", "Plus", "Minus", "D-pad up", "D-pad down", "D-pad left", "D-pad right",
                                    "Left stick click", "Right stick click", "Item left", "Item right",
                                    "Combined button 1", "Combined button 2", "Combined button 3", "Combined button 4",
-                                   "Combined button 5", "Combined button 6"};
+                                   "Combined button 5", "Combined button 6", "Combined button 7", "Combined button 8",
+                                   "Combined button 9", "Combined button 10", "Combined button 11", "Combined button 12",
+                                   "Combined button 13", "Combined button 14", "Combined button 15"};
 static_assert(std::size(bind_titles) == BINDS, "a title for each keybind");
 // What else a key (or KEY_MOUSE + a mouse button) does: one of the recomp's own keys (keymap.h), a keybind other than
 // skip, or (for a keybind's) the chat key; nullptr: nothing
@@ -1879,8 +1881,9 @@ Row bind_row(int i, const char *what = nullptr) {
     if (i == BIND_A)
         row.help = tr("A mouse button here presses A outside the game's menus and talks only with the weapon out: it attacks, and never talks, opens, gathers or picks up - a key does that (F by default).");
 #endif
-    if (i >= BIND_COMBO1) {  // (host_input.c: the buttons of [Touch] Combo<n>)
-        const char *combo = s.draft.touch_combo[i - BIND_COMBO1];
+    if (i >= BIND_COMBO1) {  // (host_input.c: the buttons of the profile in use's combined button n)
+        char combo[32];
+        touch_combo_text(i - BIND_COMBO1, combo, sizeof combo);
         row.help = *combo ? fmt("Presses %s together while held: the buttons of combined button %d, chosen in Combined buttons.",
                                 combo, i - BIND_COMBO1 + 1)
                           : fmt("Combined button %d has no buttons yet: choose them in Combined buttons.", i - BIND_COMBO1 + 1);
@@ -1920,6 +1923,7 @@ void keyboard_mouse_rows(std::vector<Row> &r) {
     r.back().value = fmt("%.2fx", s.draft.mouse_sensitivity);
 }
 #endif
+bool combo_listed(int k);  // (S2: below, with the combined buttons' page)
 // The Keybinds submenu: a row per keybind, the chat key
 void keybind_rows(std::vector<Row> &r) {
     for (int i = 0; i < BINDS; i++) {
@@ -1933,6 +1937,7 @@ void keybind_rows(std::vector<Row> &r) {
             header(r, "bind.items", tr("Item bar"));
         if (i == BIND_COMBO1)
             header(r, "bind.combos", tr("Combined buttons"));
+        if (i >= BIND_COMBO1 && !combo_listed(i - BIND_COMBO1)) continue;  // (7 to 15: as they are used, S2)
         r.push_back(bind_row(i));
     }
     header(r, "bind.other", tr("Chat"));
@@ -4094,6 +4099,19 @@ const int TB_ORDER[TB_COUNT] = {TB_ATTACKS, TB_DODGE, TB_GUARD, TB_GUARD_SLIDE, 
                                 TB_MENU_ZL, TB_MENU_ZR, TB_ARTS_PAD, TB_HOLD_HIDE};
 static_assert(TB_COUNT == 32, "TB_ORDER: a place for each of the touch settings");
 int s_combo;  // the combined button being edited
+// (S2) Combined button k in the lists: the first six always, then each one used (its buttons, its controller button or
+// key) and the one after the last used, up to TOUCH_COMBOS: the rest start empty and out of the way
+bool combo_used(int k) {
+    char t[32];
+    touch_combo_text(k, t, sizeof t);
+    return t[0] || s.draft.touch_combo_pad[k] || s.draft.binds[BIND_COMBO1 + k][0];
+}
+bool combo_listed(int k) {
+    if (k < INI_COMBOS) return true;
+    for (int j = k - 1; j < TOUCH_COMBOS; j++)
+        if (combo_used(j)) return true;
+    return false;
+}
 std::string pad_button_name(int v);
 void set_combo_pad(int k, int v);
 extern int s_cap_combo;
@@ -4131,11 +4149,14 @@ void touch_button_rows(std::vector<Row> &r) {
     }
     header(r, "tc.head", tr("Combined buttons"));
     for (int k = 0; k < TOUCH_COMBOS; k++) {
+        if (!combo_listed(k)) continue;  // (S2: 7 to 15 as they are used)
         action(r, "tc." + std::to_string(k), fmt("Button %d", k + 1), [k]() {
             s_combo = k;
             push(View::ComboEdit, "ce.0");
         });
-        r.back().value = c.touch_combo[k][0] ? c.touch_combo[k] : tr("Empty");
+        char combo[32];
+        touch_combo_text(k, combo, sizeof combo);
+        r.back().value = combo[0] ? std::string(combo) : std::string(tr("Empty"));
         if (!fingers)
 #ifdef __ANDROID__  // (no Keybinds on a phone)
             r.back().help = tr("A button of your own presses several of the game's together. Give it a controller's button here.");
@@ -4270,19 +4291,26 @@ void combo_rows(std::vector<Row> &r) {
     static const int ORDER[16] = {0, 1, 2, 3, 6, 7, 8, 9, 10, 11, 13, 15, 12, 14, 4, 5};  // (the face buttons first)
     Config &c = s.draft;
     int k = s_combo;
-    uint32_t mask = config_combo_mask(c.touch_combo[k]);
+    // (1.0.2, S2: the profile in use's combined button, changed at once, as the profiles' own actions are)
+    char text[32];
+    touch_combo_text(k, text, sizeof text);
+    uint32_t mask = config_combo_mask(text);
+    auto set = [k](uint32_t m) {
+        char t[32];
+        config_combo_text(m, t, sizeof t);
+        if (!touch_combo_set(k, t)) s.error = tr("It couldn't be done. Is the save folder there?");
+    };
     for (int n = 0; n < 16; n++) {
         int b = ORDER[n];
         Row row;
         row.id = "ce." + std::to_string(n);
         row.title = tr(NAMES[b]);
         row.toggle = mask >> b & 1;
-        row.activate = [k, b, mask]() { config_combo_text(mask ^ 1u << b, s.draft.touch_combo[k], sizeof s.draft.touch_combo[k]); };
-        row.adjust = [k, b, mask](int d) {
-            config_combo_text(d > 0 ? mask | 1u << b : mask & ~(1u << b), s.draft.touch_combo[k], sizeof s.draft.touch_combo[k]);
-        };
+        row.activate = [set, b, mask]() { set(mask ^ 1u << b); };
+        row.adjust = [set, b, mask](int d) { set(d > 0 ? mask | 1u << b : mask & ~(1u << b)); };
         r.push_back(std::move(row));
     }
+    note(r, "ce.profile", fmt("Kept in control profile %d.", touch_profile_active()));
     // (1.0.2, S1: any of a controller's buttons, the face buttons by their place; one a combined button has is no longer
     // what it was. A button the controller's map doesn't name comes from Press a controller button, by its number)
     int cur = c.touch_combo_pad[k];
@@ -4309,7 +4337,7 @@ void combo_rows(std::vector<Row> &r) {
         r.back().title = tr("Key");
     }
     action(r, "ce.clear", tr("Clear"), [k]() {
-        s.draft.touch_combo[k][0] = 0;
+        touch_combo_set(k, "");
         s.draft.touch_combo_pad[k] = 0;
     });
     action(r, "ce.back", tr("Back"), []() { pop(); });

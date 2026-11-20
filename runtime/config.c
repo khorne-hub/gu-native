@@ -52,7 +52,7 @@
     [BIND_DPAD_LEFT] = {SDL_SCANCODE_LEFT}, [BIND_DPAD_RIGHT] = {SDL_SCANCODE_RIGHT},                                 \
     [BIND_LSTICK] = DEFAULT_L3_KEYS, [BIND_RSTICK] = {SDL_SCANCODE_LALT, SDL_SCANCODE_RALT},                          \
     [BIND_ITEM_LEFT] = {KEY_WHEEL_UP}, [BIND_ITEM_RIGHT] = {KEY_WHEEL_DOWN}}
-_Static_assert(BIND_COMBO6 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for each combined button");
+_Static_assert(BIND_COMBO15 - BIND_COMBO1 + 1 == TOUCH_COMBOS, "a keybind for each combined button");
 // (the screen's own size, full screen, on a phone and on a PC: the game at the display's resolution, not a smaller
 // picture made bigger)
 #define CONFIG_DEFAULT_SIZE 0, 0
@@ -1038,6 +1038,9 @@ const ConfigSetting g_settings[] = {
 #define COMBO(n) {"Touch", "Combo" #n, SET_TEXT, F(touch_combo[n - 1]), sizeof g_config.touch_combo[0], 0, 0, NULL, NULL, false, ERR_MISC}, \
     {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, COMBO_PADS, NULL, false, ERR_MISC}
     COMBO(1), COMBO(2), COMBO(3), COMBO(4), COMBO(5), COMBO(6),
+#define COMBO_PAD(n) {"Touch", "Combo" #n "Pad", SET_CHOICE, F(touch_combo_pad[n - 1]), 0, 0, 0, COMBO_PADS, NULL, false, ERR_MISC}
+    COMBO_PAD(7), COMBO_PAD(8), COMBO_PAD(9), COMBO_PAD(10), COMBO_PAD(11), COMBO_PAD(12), COMBO_PAD(13), COMBO_PAD(14),
+    COMBO_PAD(15),  // (1.0.2: the buttons of 7 to 15 are only in the layout profiles)
     {"Touch", "CameraSpeed", SET_FLOAT, F(touch_camera), 0, 0.2f, 5.0f, NULL, NULL, false, ERR_VIEW},
     {"Touch", "CameraSmoothing", SET_INT, F(touch_cam_smooth), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     {"Touch", "Opacity", SET_FLOAT, F(touch_opacity), 0, 0.2f, 1.0f, NULL, NULL, false, ERR_VIEW},
@@ -1053,6 +1056,9 @@ const ConfigSetting g_settings[] = {
     // (not "Combo1": [Touch] has that key, and a key names one setting whatever its section)
     KEYS("Combo1Key", BIND_COMBO1), KEYS("Combo2Key", BIND_COMBO2), KEYS("Combo3Key", BIND_COMBO3),
     KEYS("Combo4Key", BIND_COMBO4), KEYS("Combo5Key", BIND_COMBO5), KEYS("Combo6Key", BIND_COMBO6),
+    KEYS("Combo7Key", BIND_COMBO7), KEYS("Combo8Key", BIND_COMBO8), KEYS("Combo9Key", BIND_COMBO9),
+    KEYS("Combo10Key", BIND_COMBO10), KEYS("Combo11Key", BIND_COMBO11), KEYS("Combo12Key", BIND_COMBO12),
+    KEYS("Combo13Key", BIND_COMBO13), KEYS("Combo14Key", BIND_COMBO14), KEYS("Combo15Key", BIND_COMBO15),
     {"Multiplayer", "Port", SET_INT, F(ldn_port), 0, 1, 65535, NULL, NULL, true, ERR_NET},
     {"Multiplayer", "Join", SET_TEXT, F(ldn_join), sizeof g_config.ldn_join, 0, 0, NULL, NULL, true, ERR_NET},
     {"Multiplayer", "Server", SET_TEXT, F(ldn_server), sizeof g_config.ldn_server, 0, 0, NULL, NULL, false, ERR_SERVER},

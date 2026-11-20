@@ -80,6 +80,8 @@ static const int bind_buttons[BINDS] = {
     [BIND_DPAD_DOWN] = BTN_DOWN, [BIND_DPAD_LEFT] = BTN_LEFT, [BIND_DPAD_RIGHT] = BTN_RIGHT, [BIND_LSTICK] = BTN_LSTICK,
     [BIND_RSTICK] = BTN_RSTICK, [BIND_ITEM_LEFT] = -2, [BIND_ITEM_RIGHT] = -2,
     [BIND_COMBO1] = -3, [BIND_COMBO2] = -3, [BIND_COMBO3] = -3, [BIND_COMBO4] = -3, [BIND_COMBO5] = -3, [BIND_COMBO6] = -3,
+    [BIND_COMBO7] = -3, [BIND_COMBO8] = -3, [BIND_COMBO9] = -3, [BIND_COMBO10] = -3, [BIND_COMBO11] = -3,
+    [BIND_COMBO12] = -3, [BIND_COMBO13] = -3, [BIND_COMBO14] = -3, [BIND_COMBO15] = -3,
 };
 static uint32_t mouse_held;  // the mouse buttons held (bit: SDL_BUTTON_*), while captured
 // (the game's menus: the buttons pressed while a menu had the mouse, or held as one took it, are the menu's until let
@@ -1547,7 +1549,7 @@ void host_input_update(void) {
     for (int i = 0; i < BINDS; i++)
         if (bind_buttons[i] >= 0 && bind_held(i, true)) b |= B(bind_buttons[i]);
     for (int i = 0; i < TOUCH_COMBOS; i++)  // (a combined button's key: its buttons, as its button on the screen)
-        if (bind_held(BIND_COMBO1 + i, true)) b |= config_live_touch_combo(i);
+        if (bind_held(BIND_COMBO1 + i, true)) b |= touch_combo_live(i);  // (the profile in use's: S2)
     static bool item_held[2];  // ItemLeft / ItemRight's keys and buttons: a press turns the item bar once
     for (int i = 0; i < 2; i++) {  // (their wheel notches turn it in wheel_turn)
         bool held = bind_held(BIND_ITEM_LEFT + i, false);
@@ -1631,7 +1633,7 @@ void host_input_update(void) {
         SDL_Joystick *joy = SDL_GetGamepadJoystick(pad);
         for (int i = 0; i < TOUCH_COMBOS; i++) {
             int on = config_live_touch_combo_pad(i);
-            uint32_t combo = config_live_touch_combo(i);
+            uint32_t combo = touch_combo_live(i);
             if (on <= PADB_NONE || on >= PADB_COUNT || !combo) continue;
             bool held;
             if (on >= PADB_RAW0) {
