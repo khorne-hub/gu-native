@@ -952,6 +952,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(damage_numbers);
     SAME(number_size);
     SAME(number_colour);
+    SAME(number_style);
     SAME(monster_bars);
     SAME(ps1_filter);
     SAME(colour_hue);  // (Graphics & Audio > Colour)
@@ -3414,13 +3415,13 @@ void hunt_aids_rows(std::vector<Row> &r) {
         "otros cazadores el mapa queda como lo tiene el juego. Apagado: como lo hace el juego.");
     add_bool(r, "hunt.numbers", en_es("Damage numbers", "Números de daño"), &s.draft.damage_numbers, ini("DamageNumbers"));
     r.back().help = en_es(
-        "Each hit on a large monster shows its damage as a number over the monster, which rises and fades in about a "
-        "second. Any damage counts: yours, your Palicos', bombs, poison and the other hunters' in your party. The numbers "
-        "are drawn over the game's picture; the game is not changed. Off: no numbers, as the game does it.",
-        "Cada golpe a un monstruo grande muestra su daño como un número sobre el monstruo, que sube y se desvanece en un "
-        "segundo, más o menos. Cuenta todo el daño: el tuyo, el de tus Felynes, bombas, veneno y el de los otros "
-        "cazadores de tu grupo. Los números se dibujan sobre la imagen del juego; el juego no cambia. Apagado: sin "
-        "números, como lo hace el juego.");
+        "Each hit on a monster, large or small, shows its damage as a number over the monster, which rises and fades in "
+        "about a second. Any damage counts: yours, your Palicos', bombs, poison and the other hunters' in your party. The "
+        "numbers are drawn over the game's picture; the game is not changed. Off: no numbers, as the game does it.",
+        "Cada golpe a un monstruo, grande o chico, muestra su daño como un número sobre el monstruo, que sube y se "
+        "desvanece en un segundo, más o menos. Cuenta todo el daño: el tuyo, el de tus Felynes, bombas, veneno y el de "
+        "los otros cazadores de tu grupo. Los números se dibujan sobre la imagen del juego; el juego no cambia. Apagado: "
+        "sin números, como lo hace el juego.");
     // (the size as the file keeps it: 0 Medium, the default, 1 Small, 2 Large; the menu lists them small to large)
     static const int SIZE_OF_CHOICE[] = {1, 0, 2};
     const int size = s.draft.number_size == 1 ? 0 : s.draft.number_size == 2 ? 2 : 1;
@@ -3432,11 +3433,33 @@ void hunt_aids_rows(std::vector<Row> &r) {
     add_choice(r, "hunt.numbers.colour", en_es("Damage number colour", "Color de los números de daño"),
                s.draft.number_colour,
                {en_es("White", "Blanco"), en_es("Yellow", "Amarillo"), en_es("Red", "Rojo"), en_es("Light blue", "Celeste"),
-                en_es("Green", "Verde")},
+                en_es("Green", "Verde"), en_es("By hit", "Por golpe")},
                [](int v) { s.draft.number_colour = v; }, ini("DamageNumberColour"));
-    r.back().help = en_es("The damage numbers' colour, always with a dark outline so they read on any ground.",
-                          "El color de los números de daño, siempre con un borde oscuro para que se lean sobre cualquier "
-                          "fondo.");
+    r.back().help = en_es(
+        "The damage numbers' colour, always with a dark outline so they read on any ground. By hit: each hit's own. "
+        "A weak point (the part takes 45 or more) orange, a normal hit white, a hard part or a bounce grey, fixed damage "
+        "(shells, bombs) blue-green; a critical hit has a red mark, one with negative affinity a blue line under it; "
+        "the element's damage is a second, smaller number in its colour (fire, water, thunder, ice, dragon). Damage "
+        "the game doesn't work out on your side (poison, the other hunters' hits) stays white.",
+        "El color de los números de daño, siempre con un borde oscuro para que se lean sobre cualquier fondo. Por "
+        "golpe: el de cada golpe. Un punto débil (la parte recibe 45 o más) naranja, un golpe normal blanco, una parte "
+        "dura o un rebote gris, el daño fijo (cartuchos, bombas) verde azulado; un golpe crítico lleva una marca roja, "
+        "uno con afinidad negativa una línea azul abajo; el daño del elemento es un segundo número, más chico, de su "
+        "color (fuego, agua, trueno, hielo, dragón). El daño que el juego no calcula de tu lado (veneno, los golpes de "
+        "los otros cazadores) queda blanco.");
+    add_choice(r, "hunt.numbers.style", en_es("Damage number style", "Estilo de los números de daño"),
+               s.draft.number_style,
+               {en_es("Classic", "Clásico"), en_es("Outlined", "Con contorno"), en_es("Compact", "Compacto"),
+                en_es("Burst", "Ráfaga")},
+               [](int v) { s.draft.number_style = v; }, ini("DamageNumberStyle"));
+    r.back().help = en_es(
+        "How the damage numbers look. Classic: as they came, rising and fading. Outlined: a thicker outline, and each "
+        "number pops in. Compact: smaller and shorter, the element's damage beside it. Burst: a run of hits on one "
+        "monster adds up in one number that grows with each hit, with how many hits it holds.",
+        "Cómo se ven los números de daño. Clásico: como venían, suben y se desvanecen. Con contorno: un borde más "
+        "grueso, y cada número aparece con un salto. Compacto: más chicos y cortos, el daño del elemento al lado. "
+        "Ráfaga: una seguidilla de golpes a un monstruo se suma en un solo número que crece con cada golpe, con "
+        "cuántos golpes lleva.");
     add_bool(r, "hunt.bars", en_es("Monster health bars", "Barra de vida de los monstruos"), &s.draft.monster_bars,
              ini("MonsterHealthBars"));
 #ifdef __ANDROID__  // (where the bars are moved and sized: a phone has the touch layout editor alone)
@@ -3465,6 +3488,7 @@ void reset_hunt_aids() {
     c.damage_numbers = f.damage_numbers;
     c.number_size = f.number_size;
     c.number_colour = f.number_colour;
+    c.number_style = f.number_style;
     c.monster_bars = f.monster_bars;
 }
 MENU_ENTRY("graphics/screen", 95, hunt_aids_rows, reset_hunt_aids);

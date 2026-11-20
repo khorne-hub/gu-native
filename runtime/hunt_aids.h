@@ -21,12 +21,27 @@ extern "C" {
 #define HUNT_BARS 5          // monsters with a bar at once
 #define HUNT_NUMBER_NS 1000000000ull  // how long a number shows (it rises and fades meanwhile)
 
+// What a hit was (1.0.2, the "By hit" colour): read from the game's damage step as the hit is worked out
+// (runtime/hle/huntaids.c, hit_part); PLAIN a drop of health with no hit of this game's read for it (poison, another
+// hunter's hit in a party, a bomb the step doesn't go through)
+enum { HUNT_HIT_PLAIN, HUNT_HIT_NORMAL, HUNT_HIT_WEAK, HUNT_HIT_HARD, HUNT_HIT_FIXED };
+// [Hunting Aids] DamageNumberStyle: the numbers' own looks (none of another game's)
+enum { HUNT_STYLE_CLASSIC, HUNT_STYLE_OUTLINED, HUNT_STYLE_COMPACT, HUNT_STYLE_BURST };
+#define HUNT_COLOUR_BY_HIT 5  // [Hunting Aids] DamageNumberColour = ByHit
+#define HUNT_BURST_NS 1200000000ull  // (Burst) a hit within this of the last one adds to its number
+
 typedef struct {
     float x, y;        // where its hit is on the game's picture this frame: 0..1 from its left and top edges
     bool shown;        // in front of the camera (else not drawn this frame)
-    int value;         // the damage
+    int value;         // the damage (By hit: its raw part, elem the rest)
     uint32_t id;       // its own number (a steady sideways offset for numbers at one place)
     uint64_t born_ns;  // when it was dealt (plat_now_ns)
+    uint64_t last_ns;  // the last hit it holds (Burst: a number sums a run of hits; else born_ns)
+    uint8_t kind;      // HUNT_HIT_*
+    int8_t crit;       // 1 a critical hit, -1 a negative one (an affinity below 0), 0 neither
+    uint8_t element;   // the weapon's element: 0 none, 1 fire, 2 water, 3 thunder, 4 ice, 5 dragon
+    int elem;          // the element's part of the damage (By hit: drawn as a second, smaller number)
+    int hits;          // how many hits it holds (Burst; 1 for the others)
 } HuntNumber;
 
 typedef struct {
@@ -40,6 +55,7 @@ typedef struct {
     HuntNumber num[HUNT_NUMBERS];
     HuntBar bar[HUNT_BARS];
     int number_size, number_colour;  // [Hunting Aids] DamageNumberSize (0 Medium, 1 Small, 2 Large), DamageNumberColour
+    int number_style;                // [Hunting Aids] DamageNumberStyle (HUNT_STYLE_*)
 } HuntView;
 
 // (game's update thread, once a frame, after the game's update: runtime/overlay.cpp overlay_frame) both sides' step:
@@ -62,11 +78,13 @@ bool hunt_bars_rect(float r[4]);
 void touch_bars_place(float *x, float *y, float *k);
 // (tests: the control file's "huntaids <map> <numbers> <bars> [size] [colour]", runtime/host_input.c) the three aids, the
 // numbers' size and colour from now on, as if the menu had saved them (not saved); config_live_hunt_* read them
-void config_huntaids_test(int map, int numbers, int bars, int size, int colour);
+void config_huntaids_test(int map, int numbers, int bars, int size, int colour, int style);
 int config_live_monsters_on_map(void);  // [Hunting Aids] MonstersOnMap
 int config_live_damage_numbers(void);   // [Hunting Aids] DamageNumbers
 int config_live_number_size(void);      // [Hunting Aids] DamageNumberSize: 0 Medium, 1 Small, 2 Large
-int config_live_number_colour(void);    // [Hunting Aids] DamageNumberColour: 0 White, 1 Yellow, 2 Red, 3 Light blue, 4 Green
+int config_live_number_colour(void);    // [Hunting Aids] DamageNumberColour: 0 White, 1 Yellow, 2 Red, 3 Light blue, 4 Green,
+                                        // 5 By hit
+int config_live_number_style(void);     // [Hunting Aids] DamageNumberStyle: 0 Classic, 1 Outlined, 2 Compact, 3 Burst
 int config_live_monster_bars(void);     // [Hunting Aids] MonsterHealthBars
 
 #ifdef __cplusplus

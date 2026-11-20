@@ -100,23 +100,93 @@ void outlined(ImDrawList *dl, ImFont *font, float size, ImVec2 at, ImU32 colour,
     dl->AddText(font, size, at, (colour & 0x00ffffffu) | IM_COL32(0, 0, 0, alpha), text);
 }
 
+// By hit (1.0.2, the owner's "complete" numbers, the colours the players asked for): a weak point (45 or more) orange, a
+// normal hit white, a hard part (under 25, where a weapon bounces) grey, fixed damage (shells, bombs) blue-green, a drop
+// with no hit read (poison, another hunter's) white; a critical hit a red spark at the top right, a negative one a blue
+// line under it; the element's damage a second, smaller number in its colour
+constexpr ImU32 KIND_COLOURS[] = {IM_COL32(255, 255, 255, 0), IM_COL32(255, 255, 255, 0), IM_COL32(255, 168, 36, 0),
+                                  IM_COL32(150, 150, 150, 0), IM_COL32(64, 214, 196, 0)};
+constexpr ImU32 ELEMENT_COLOURS[] = {IM_COL32(220, 220, 220, 0), IM_COL32(255, 104, 56, 0), IM_COL32(72, 156, 255, 0),
+                                     IM_COL32(255, 224, 64, 0), IM_COL32(170, 236, 255, 0), IM_COL32(196, 104, 240, 0)};
+constexpr ImU32 kSpark = IM_COL32(236, 40, 36, 0), kFeeble = IM_COL32(72, 128, 255, 0);
+constexpr double COMPACT_NS = .7e9;  // (Compact: its numbers last this long, and rise half as far)
+
+// The styles (1.0.2, [Hunting Aids] DamageNumberStyle, the port's own looks): Classic as they came; Outlined, a thick
+// outline and a jump in (larger for its first moment); Compact, smaller and shorter, the element's part beside it;
+// Burst, a run of hits on one monster added up in one number (runtime/hle/huntaids.c) that jumps at each hit, stays
+// put and shows how many hits it holds. Sizes are a handful of fixed steps of the player's size, never a size that
+// changes every frame (each one is baked once).
 void numbers(ImDrawList *dl, const HuntView &v, const Pic &p, float h, uint64_t now) {
     ImFont *font = ImGui::GetFont();
-    const float size = std::max(8.0f, std::floor(SIZES[std::clamp(v.number_size, 0, 2)] * h + .5f));
+    const int style = std::clamp(v.number_style, 0, 3);
+    const bool by_hit = v.number_colour == HUNT_COLOUR_BY_HIT;
+    const float base = std::max(8.0f, std::floor(SIZES[std::clamp(v.number_size, 0, 2)] * h + .5f));
+    auto step = [&](float k) { return std::max(8.0f, std::floor(base * k + .5f)); };
+    const float main_size = style == HUNT_STYLE_COMPACT ? step(.72f) : style == HUNT_STYLE_BURST ? step(1.1f) : base;
+    const float big = step(style == HUNT_STYLE_BURST ? 1.3f : 1.25f), second = step(style == HUNT_STYLE_COMPACT ? .5f : .6f),
+                count = step(.45f);
     const ImU32 colour = COLOURS[std::clamp(v.number_colour, 0, 4)];
+    const double life = style == HUNT_STYLE_COMPACT ? COMPACT_NS : (double)HUNT_NUMBER_NS;
+    const float rise_k = style == HUNT_STYLE_COMPACT  ? .5f
+                         : style == HUNT_STYLE_OUTLINED ? .8f
+                         : style == HUNT_STYLE_BURST    ? .15f
+                                                        : 1.f;
     dl->PushClipRect(ImVec2(p.x0, p.y0), ImVec2(p.x0 + p.w, p.y0 + p.h), true);
     for (int i = 0; i < v.nnum; i++) {
         const HuntNumber &n = v.num[i];
-        float t = (float)((double)(now - n.born_ns) / (double)HUNT_NUMBER_NS);
+        const uint64_t since = style == HUNT_STYLE_BURST ? n.last_ns : n.born_ns;  // (a run lasts from its last hit)
+        float t = (float)((double)(now - since) / life), age = (float)((double)(now - n.born_ns) / life);
         if (!n.shown || t > 1 || now < n.born_ns) continue;
-        const float rise = RISE * h * (1 - (1 - t) * (1 - t));
-        const float jitter = (float)((int)(n.id * 37u % 9u) - 4) * JITTER * p.w;
+        age = std::min(age, 1.f);
+        const float rise = RISE * rise_k * h * (1 - (1 - age) * (1 - age));
+        const float jitter = style == HUNT_STYLE_BURST ? 0.f : (float)((int)(n.id * 37u % 9u) - 4) * JITTER * p.w;
+        // (Outlined jumps in, Burst at each hit: larger for its first 0.12 s)
+        const bool jump = (style == HUNT_STYLE_OUTLINED || style == HUNT_STYLE_BURST) && now - since < 120000000ull;
+        const float size = jump ? big : main_size;
+        const int value = by_hit ? n.value : n.value + n.elem;  // (one colour: the whole damage, as it came)
         char text[16];
-        std::snprintf(text, sizeof text, "%d", n.value);
+        std::snprintf(text, sizeof text, "%d", value);
         const ImVec2 sz = font->CalcTextSizeA(size, 1e9f, 0, text);
         const ImVec2 at(p.x0 + n.x * p.w + jitter - sz.x * .5f, p.y0 + n.y * p.h - rise - sz.y * .5f);
         const int a = (int)(255 * std::clamp(t < FADE ? 1 : 1 - (t - FADE) / (1 - FADE), 0.f, 1.f));
-        outlined(dl, font, size, at, colour, a, text, std::max(1.f, size * .07f));
+        const ImU32 ink = by_hit ? KIND_COLOURS[std::min<int>(n.kind, 4)] : colour;
+        const float o =
+            std::max(1.f, size * (style == HUNT_STYLE_OUTLINED ? .13f : style == HUNT_STYLE_COMPACT ? .06f : .07f));
+        if (style == HUNT_STYLE_OUTLINED)  // (the thick outline: a second ring of shadow around the first)
+            outlined(dl, font, size, ImVec2(at.x + o * .5f, at.y + o * .5f), IM_COL32(0, 0, 0, 0), a / 2, text, o);
+        outlined(dl, font, size, at, ink, a, text, o);
+        float right = at.x + sz.x;
+        if (by_hit && n.elem > 0) {  // the element's part: smaller, in its colour (Compact: beside it)
+            char e[16];
+            std::snprintf(e, sizeof e, style == HUNT_STYLE_COMPACT ? "+%d" : "%d", n.elem);
+            const ImVec2 es = font->CalcTextSizeA(second, 1e9f, 0, e);
+            const ImVec2 ea = style == HUNT_STYLE_COMPACT ? ImVec2(right + second * .15f, at.y + sz.y - es.y)
+                                                          : ImVec2(right - es.x * .3f, at.y + sz.y * .78f);
+            outlined(dl, font, second, ea, ELEMENT_COLOURS[std::min<int>(n.element, 5)], a, e, std::max(1.f, second * .08f));
+            if (style == HUNT_STYLE_COMPACT) right = ea.x + es.x;
+        }
+        if (by_hit && n.crit > 0) {  // a critical hit: a red spark at the top right
+            const float r = size * .2f, cx = at.x + sz.x + r * .6f, cy = at.y + r * .9f, w = std::max(1.5f, size * .07f);
+            const ImU32 c = (kSpark & 0x00ffffffu) | IM_COL32(0, 0, 0, a), s = IM_COL32(0, 0, 0, a * 3 / 4);
+            for (int pass = 0; pass < 2; pass++) {  // (its dark edge first, then the spark)
+                const float k = pass ? 1.f : 1.3f, ww = pass ? w : w + 2;
+                const ImU32 cc = pass ? c : s;
+                dl->AddLine(ImVec2(cx - r * k, cy), ImVec2(cx + r * k, cy), cc, ww);
+                dl->AddLine(ImVec2(cx, cy - r * k), ImVec2(cx, cy + r * k), cc, ww);
+                dl->AddLine(ImVec2(cx - r * .6f * k, cy - r * .6f * k), ImVec2(cx + r * .6f * k, cy + r * .6f * k), cc, ww * .7f);
+                dl->AddLine(ImVec2(cx - r * .6f * k, cy + r * .6f * k), ImVec2(cx + r * .6f * k, cy - r * .6f * k), cc, ww * .7f);
+            }
+        } else if (by_hit && n.crit < 0) {  // a negative one: a blue line under it
+            const float y = at.y + sz.y * .98f, w = std::max(2.f, size * .08f);
+            dl->AddLine(ImVec2(at.x - 1, y + 1), ImVec2(at.x + sz.x + 1, y + 1), IM_COL32(0, 0, 0, a * 3 / 4), w + 2);
+            dl->AddLine(ImVec2(at.x, y), ImVec2(at.x + sz.x, y), (kFeeble & 0x00ffffffu) | IM_COL32(0, 0, 0, a), w);
+        }
+        if (style == HUNT_STYLE_BURST && n.hits > 1) {  // how many hits the run holds
+            char k[16];
+            std::snprintf(k, sizeof k, "x%d", n.hits);
+            outlined(dl, font, count, ImVec2(right + count * .25f, at.y + sz.y - count * 1.05f), IM_COL32(244, 232, 200, 0),
+                     a, k, std::max(1.f, count * .08f));
+        }
     }
     dl->PopClipRect();
 }

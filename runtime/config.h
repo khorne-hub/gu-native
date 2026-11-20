@@ -212,7 +212,10 @@ typedef struct {
                               // if marked (in quests hunted alone)
     int damage_numbers;       // [Hunting Aids] DamageNumbers: each hit's damage as a number over the monster
     int number_size;          // [Hunting Aids] DamageNumberSize: 0 Medium (the default), 1 Small, 2 Large
-    int number_colour;        // [Hunting Aids] DamageNumberColour: 0 White, 1 Yellow, 2 Red, 3 Light blue, 4 Green
+    int number_colour;        // [Hunting Aids] DamageNumberColour: 0 White, 1 Yellow, 2 Red, 3 Light blue, 4 Green, 5 By
+                              // hit (1.0.2: weak point, critical, element, fixed damage: runtime/hunt_overlay.cpp)
+    int number_style;         // [Hunting Aids] DamageNumberStyle (1.0.2): 0 Classic (the default), 1 Outlined, 2 Compact,
+                              // 3 Burst
     int monster_bars;         // [Hunting Aids] MonsterHealthBars: a health bar a large monster at the top in a quest
     int ps1_filter;           // [Graphics] PS1Filter (1.0.1.1, the owner's after a suggestion; off by default, 0: nothing in
                               // CONFIG_DEFAULT_VALUES; live): the look of the 3D games of the late 90s, style only (no

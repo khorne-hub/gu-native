@@ -105,8 +105,11 @@ static const char *monster_name(uint16_t id) {
     if (!tried) tried = true, gmd_load(&names, "nativeNX/eng/GUI/06_msg/monsterName_eng.gmd");
     for (uint32_t i = 0; i < MON_PAIR_COUNT; i++)
         if (LD32(MON_PAIRS + 8 * i) == id) {
-            uint32_t index = LD32(MON_PAIRS + 8 * i + 4);
-            return index < MON_PAIR_COUNT ? gmd_str(&names, LD32(MON_UI + 4 * index)) : NULL;
+            uint32_t index = LD32(MON_PAIRS + 8 * i + 4), ui = index < MON_PAIR_COUNT ? LD32(MON_UI + 4 * index) : ~0u;
+            // (1.0.2, T05: a UI number past the 137 names is the second list's, another monster's name; the Village's
+            // Valstrax, 0x56, is Valstrax: huntaids.c's monster_name)
+            if (ui >= MON_PAIR_COUNT) ui = id == 0x56 ? 132u : ~0u;
+            return gmd_str(&names, ui);
         }
     return NULL;
 }
