@@ -26,6 +26,9 @@
 #define MHGU_VERSION ""  // (the build gives it: native/CMakeLists.txt)
 #endif
 #include <SDL3/SDL.h>
+#ifdef __ANDROID__
+#include <jni.h>  // (keyboard_top: the phone's keyboard's height, GameActivity.imeInsets)
+#endif
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -4944,8 +4947,8 @@ const PhoneHelp PHONE_HELP[] = {
      "Un botón propio del port, en la herrería mientras muestra un arma (Forjar, Mejorar): un toque abre el árbol de esa arma, con las que tienes y la equipada, las anteriores y las siguientes como ?. El clic de la palanca derecha también lo abre. Muévelo o agrándalo con Personalizar controles y HUD."},  // (1.0.2)
     {"RenderScale", "The size of the 3D picture against the screen's. Lower runs faster and looks softer.",
      "El tamaño de la imagen 3D respecto de la pantalla. Más bajo corre más rápido y se ve más suave."},
-    {"ShowMenuPad", "While a menu of the game's is open, a small pad shows that moves its cursor, with the page buttons above it (L and R, or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay where they are; where the hunter can't walk (a town's item box, a shop) it moves the cursor too. If the pad covers a combined button, move it with Customize controls and HUD. Off: no pad in the menus; a drag on the screen moves their cursor, and the movement stick where the hunter can't walk.",
-     "Mientras hay un menú del juego abierto aparece un pad chico que mueve su cursor, con los botones de página encima (L y R, o ZL y ZR si las opciones del juego pasan páginas con ellos). La palanca de movimiento sigue caminando y los demás botones quedan donde están; donde el cazador no puede caminar (la caja de objetos de un pueblo, una tienda) también mueve el cursor. Si el pad tapa un botón combinado, muévelo con Personalizar controles y HUD. Desactivado: no hay pad en los menús; arrastrar el dedo por la pantalla mueve su cursor, y la palanca de movimiento donde el cazador no puede caminar."},
+    {"ShowMenuPad", "While a menu of the game's is open, a small pad shows that moves its cursor, with the page buttons above it (L and R, or ZL and ZR if the game's options turn pages with them). The movement stick keeps walking and the other buttons stay where they are; where the hunter can't walk (a town's item box, a shop) it moves the cursor too. If the pad covers a combined button, move it with Customize controls and HUD. Off: no pad in the menus; a drag on the screen moves their cursor, and the movement stick where the hunter doesn't walk (a shop, the item box; in a hunt it walks).",
+     "Mientras hay un menú del juego abierto aparece un pad chico que mueve su cursor, con los botones de página encima (L y R, o ZL y ZR si las opciones del juego pasan páginas con ellos). La palanca de movimiento sigue caminando y los demás botones quedan donde están; donde el cazador no puede caminar (la caja de objetos de un pueblo, una tienda) también mueve el cursor. Si el pad tapa un botón combinado, muévelo con Personalizar controles y HUD. Desactivado: no hay pad en los menús; arrastrar el dedo por la pantalla mueve su cursor, y la palanca de movimiento donde el cazador no camina (una tienda, la caja de objetos; en una cacería, la palanca camina)."},
     {"ShowMenuZL", "With the menu pad, a ZL tab above its left one (L when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.",
      "Con el pad de menú, una pestaña ZL sobre la de la izquierda (L si el juego pasa páginas con ZL y ZR). Algunos menús la usan para cambiar de sección o ver más información: la caja de objetos, la herrería."},
     {"ShowMenuZR", "With the menu pad, a ZR tab above its right one (R when the game turns pages with ZL and ZR). Some menus use it to change sections or show more information: the item box, the smithy.",
@@ -6037,7 +6040,7 @@ std::string view_title() {
                     : s.view == View::OpenSite   ? "Open the project's page?"
                     : s.view == View::OpenDiscord ? "Open the community's Discord?"
                     : s.view == View::BuildCode  ? "Close the game and build the game code?"
-                    : s.view == View::Chat       ? cs("Chat", "Chat")
+                    : s.view == View::Chat       ? chat_title()
                     : s.view == View::Friends    ? cs("Friends", "Amigos")
                     : s.view == View::ChatOn     ? cs("Turn on the online chat?", "¿Activar el chat en línea?")
                                                  : "Unsaved changes");
@@ -6225,8 +6228,9 @@ void touch_picker(std::vector<Row> &options, float scale) {
 // (1.0.2, the owner's) The chat window (chat_window_view): the menu's place and size until the player moves it by its
 // header or sizes it by its bottom right corner; chat.txt keeps them (chat::window, fractions of the screen). On the
 // screen, at least CHAT_MIN_W by CHAT_MIN_H screen heights; its body see-through to CHAT_SEE. While the phone's keyboard is
-// up for Say something (chat_typing) a window low on the screen rises for the moment, its text no lower than about the
-// screen's top 40 % (the phone's keyboard takes about the lower half), and goes back after; the same in the MH4U port
+// up for Say something (chat_typing) the window goes to the screen's top for the moment, as tall as the keyboard leaves
+// (keyboard_top: on a Galaxy in landscape it takes 57 % of the screen, and a window that only rose still had Send and every
+// line under it), with the text and Send at its top and the chat's lines under them; the same in the MH4U port
 // (1.0.2) The HUD's size just changed (Screen and HUD > HUD size): for a moment the whole menu fades to HUD_PEEK, so the
 // HUD shows behind it at its new size as the value moves (the game, waiting while the menu is open, draws it at once);
 // each change keeps it faded HUD_PEEK_NS more. The same in the MH4U port
@@ -6237,7 +6241,7 @@ bool hud_peek() { return g_hud_peek_ns && SDL_GetTicksNS() - g_hud_peek_ns < HUD
 void fade_drawn(ImDrawList *dl, float a) {
     for (ImDrawVert &v : dl->VtxBuffer) v.col = fade(v.col, a);
 }
-const float CHAT_SEE = .6f, CHAT_MIN_W = .95f, CHAT_MIN_H = .5f, CHAT_TYPING_TOP = .18f;
+const float CHAT_SEE = .6f, CHAT_MIN_W = .95f, CHAT_MIN_H = .5f;
 struct ChatDrag {
     int mode = 0;            // 1: moved by its header, 2: sized by its corner
     ImVec2 grab, pos, size;  // where the finger landed, and the window then
@@ -6251,6 +6255,46 @@ void chat_window_fit(const ImGuiViewport *vp, ImVec2 *at, ImVec2 *size) {
     at->x = std::clamp(at->x, vp->WorkPos.x, vp->WorkPos.x + W - size->x);
     at->y = std::clamp(at->y, vp->WorkPos.y, vp->WorkPos.y + H - size->y);
 }
+// Where the phone's keyboard begins, in the menu's coordinates: the window's height less the keyboard's
+// (GameActivity.imeInsets, by JNI, asked every 250 ms while the chat's Say something is typed). Not known, or not up yet:
+// KEYBOARD_GUESS of the screen's height (a Galaxy S25 Ultra's keyboard took about 57 % of it, in landscape)
+const float KEYBOARD_GUESS = .58f;
+float keyboard_top(const ImGuiViewport *vp) {
+    float top = -1;
+#ifdef __ANDROID__
+    static uint64_t asked;
+    static float seen = -1;  // (the keyboard's top, a part of the window's width; -1: not known)
+    const uint64_t now = SDL_GetTicksNS();
+    if (now - asked > 250000000ull) {
+        asked = now, seen = -1;
+        JNIEnv *env = (JNIEnv *)SDL_GetAndroidJNIEnv();
+        jobject act = env ? (jobject)SDL_GetAndroidActivity() : nullptr;
+        if (act) {
+            jclass cls = env->GetObjectClass(act);
+            jmethodID m = cls ? env->GetStaticMethodID(cls, "imeInsets", "()[I") : nullptr;
+            jintArray v = !env->ExceptionCheck() && m ? (jintArray)env->CallStaticObjectMethod(cls, m) : nullptr;
+            if (env->ExceptionCheck())
+                env->ExceptionClear(), v = nullptr;
+            if (v && env->GetArrayLength(v) == 3) {
+                jint a[3] = {};
+                env->GetIntArrayRegion(v, 0, 3, a);
+                if (a[0] > 0 && a[1] > 0 && a[2] > a[0])
+                    seen = (float)(a[2] - a[0]) / (float)a[1];
+            }
+            if (v)
+                env->DeleteLocalRef(v);
+            if (cls)
+                env->DeleteLocalRef(cls);
+            env->DeleteLocalRef(act);
+        }
+    }
+    if (seen > 0)
+        top = vp->Pos.y + seen * vp->Size.x;
+#endif
+    if (top < 0)
+        top = vp->Pos.y + vp->Size.y * (1 - KEYBOARD_GUESS);
+    return std::clamp(top, vp->Pos.y + vp->Size.y * .2f, vp->Pos.y + vp->Size.y);
+}
 void chat_window_rect(const ImGuiViewport *vp, ImVec2 *at, ImVec2 *size) {
     const float W = vp->WorkSize.x, H = vp->WorkSize.y;
     float x, y, w, h;
@@ -6259,8 +6303,10 @@ void chat_window_rect(const ImGuiViewport *vp, ImVec2 *at, ImVec2 *size) {
     else if (chat::window(&x, &y, &w, &h))
         *at = ImVec2(vp->WorkPos.x + x * W, vp->WorkPos.y + y * H), *size = ImVec2(w * W, h * H);
     chat_window_fit(vp, at, size);
-    if (chat_typing() && !g_chat_drag.mode)
-        at->y = std::min(at->y, vp->WorkPos.y + H * CHAT_TYPING_TOP);
+    if (chat_typing() && !g_chat_drag.mode) {  // (the phone's keyboard up: at the screen's top, as tall as it leaves)
+        at->y = vp->WorkPos.y;
+        size->y = std::max(H * .2f, keyboard_top(vp) - vp->WorkPos.y - H * .01f);
+    }
 }
 // Its header (but its buttons) moves it, its corner sizes it: where the finger has it until it lets go, then kept. The
 // corner's grip drawn as three short rules, as a window's
@@ -6448,11 +6494,59 @@ void touch_panel(bool *open, const Config &before) {
         }
         dl->PopClipRect();
     }
+    // (1.0.2, the owner's) The chat window's first row: the text (the chat page: "Say something", a tap types) and Send
+    // beside it, and Keys (the keys on the screen instead of the phone's keyboard, or the phone's again) where they fit.
+    // Typing (keys): the text is the view's own (the caller draws it in the width this gives). Returns the row's height,
+    // or with keys the text's width
+    auto chat_first_row = [&](bool can, bool keys) -> float {
+        const float rt = y0 + band + line * 2 + pad, rh = f * 2.3f, rl = x0 + pad, re = x1 - pad;
+        const char *send_t = cs("Send", "Enviar");
+        const char *keys_t = !keys ? nullptr : s.keyboard.phone ? cs("Keys", "Teclas") : cs("Phone keyboard", "Teclado del teléfono");
+        const float sw = std::max(f * 5.f, ImGui::CalcTextSize(send_t).x + f * 1.8f);
+        const float kw = keys_t ? std::max(f * 5.f, ImGui::CalcTextSize(keys_t).x + f * 1.8f) : 0.f;
+        const bool keys_fit = keys_t && re - rl - sw - kw - pad * 2 > f * 8;
+        ImRect send(re - sw, rt, re, rt + rh);
+        ImRect keys_r(send.Min.x - pad - kw, rt, send.Min.x - pad, rt + rh);
+        const float field_end = (keys_fit ? keys_r.Min.x : send.Min.x) - pad;
+        bool h = false;
+        if (touch_button("###chatsend", send, can, &h))
+            later = keys ? std::function<void()>([]() { accept_keyboard(); }) : std::function<void()>([]() { chat_say_open(); });
+        const bool lit = keys && !s.keyboard.buffer.empty();
+        plate(dl, send, line, h, can && (lit || !keys));
+        ImVec2 ts = ImGui::CalcTextSize(send_t);
+        shadow_text(dl, f, ImVec2(send.GetCenter().x - ts.x * .5f, send.GetCenter().y - ts.y * .5f),
+                    h ? k.glow : can && lit ? k.ink : look.text_off, send_t);
+        if (keys_fit) {
+            bool hk = false;
+            if (touch_button("###chatkeys", keys_r, true, &hk))
+                later = []() {
+                    s.keyboard.phone = !s.keyboard.phone;
+                    if (s.keyboard.phone)
+                        textinput_menu_keyboard_show();
+                };
+            plate(dl, keys_r, line, hk, true);
+            ImVec2 kt = ImGui::CalcTextSize(keys_t);
+            shadow_text(dl, f, ImVec2(keys_r.GetCenter().x - kt.x * .5f, keys_r.GetCenter().y - kt.y * .5f), hk ? k.glow : k.ink, keys_t);
+        }
+        if (keys)
+            return field_end - rl;
+        ImRect field(rl, rt, field_end, rt + rh);  // (the chat page: the text to say, a tap types)
+        bool hf = false;
+        if (touch_button("###chatfield", field, can, &hf))
+            later = []() { chat_say_open(); };
+        dl->AddRectFilled(field.Min, field.Max, IM_COL32(14, 10, 8, can ? 235 : 150));
+        dl->AddRect(field.Min, field.Max, hf ? k.glow : k.rule, 0, 0, line * .7f);
+        const char *hint = cs("Say something", "Decir algo");
+        ImVec2 hs = ImGui::CalcTextSize(hint);
+        shadow_text(dl, f, ImVec2(field.Min.x + f * .6f, field.GetCenter().y - hs.y * .5f), can ? k.dim : look.text_off, hint);
+        return rh;
+    };
     // The body: the sections at the left of a section's pages; a submenu's or a dialog's rows alone; under them, a strip
     // with the last save's outcome, what the restart mark means and, with a controller, its buttons
     float frame = std::max(2.f, f * .14f) * 1.7f;  // (draw_frame's rules at the bottom)
     const bool pad_guides = host_input_real_pad();
-    const float guide = std::floor(f * 1.1f), foot = guide + pad * .9f;
+    const bool typing = chat_typing();  // (the chat window over the phone's keyboard: no strip at the foot, the lines' room)
+    const float guide = std::floor(f * 1.1f), foot = typing ? 0.f : guide + pad * .9f;
     float top = y0 + band + line * 2 + pad, bottom = y1 - frame - pad - foot, left = x0 + pad, end = x1 - pad;
     auto error_text = [&](float y, float x, float w) {  // (s.error, wrapped at w; the height it takes)
         if (s.error.empty())
@@ -6509,12 +6603,18 @@ void touch_panel(bool *open, const Config &before) {
         float lx = left + tw + pad * 1.4f;
         float y = top + error_text(top, lx, end - lx);
         list_rect = ImRect(lx, y, end, bottom);
+    } else if (s.view == View::Chat && chat_strip()) {  // (1.0.2: the text and Send in the window's first row, the lines under)
+        float y = top + chat_first_row(chat_can_say(), false) + pad;
+        y += error_text(y, left, end - left);
+        list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::TouchButtons || s.view == View::Profiles || s.view == View::ProfileSlot || s.view == View::Chat ||
                s.view == View::Friends || s.view == View::ColourPreset) {
         float y = top + error_text(top, left, end - left);
         list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)
         ImRect field(left, top, end, top + f * 2.3f);
+        if (s.keyboard.chat && chat_strip())  // (the chat window's: Send and Keys beside the text, the chat's lines under)
+            field.Max.x = left + chat_first_row(true, true);
         dl->AddRectFilled(field.Min, field.Max, IM_COL32(14, 10, 8, 235));
         dl->AddRect(field.Min, field.Max, k.rule, 0, 0, line * .7f);
         std::string text = s.keyboard.buffer;
@@ -6554,7 +6654,7 @@ void touch_panel(bool *open, const Config &before) {
         float y = top + error_text(top, left, end - left);
         list_rect = ImRect(left, y, end, bottom);
     }
-    {  // the strip at the foot: the last save's outcome and the restart mark at its left, a controller's buttons at its right
+    if (!typing) {  // the strip at the foot: the last save's outcome and the restart mark at its left, a controller's buttons at its right
         float fy = y1 - frame - pad * .55f - guide;
         dl->AddLine(ImVec2(left, fy - pad * .4f), ImVec2(end, fy - pad * .4f), fade(k.rule, .25f), std::max(1.f, line * .4f));
         float small = std::floor(f * .8f), x = left + f * .2f, cy = fy + guide * .5f;
