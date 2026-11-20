@@ -547,6 +547,7 @@ void parse_layout(const std::string &text, Layout *l, EditPanel *ep) {
             int c = ctl_by_key(name);
             if (!strcmp(key, "hidden") && c >= 0) { l->off |= 1ull << c; continue; }
             if (!strcmp(key, "hold") && c >= 0) { l->hold |= 1ull << c; continue; }
+            if (c < 0 && !strcmp(name, DEFS[C_MMINUS].key)) c = C_MMINUS;  // (its picture alone: 1.0.2)
             if (!strcmp(key, "bare")) continue;  // (1.0.1's first test builds: a picture without the button's frame.
                                                  // Every picture is drawn alone now: the line is read and left out)
             if (!strcmp(key, "image") && c >= 0) {  // (image <key> <file>: the name, to the line's end)
@@ -641,6 +642,7 @@ bool save_layout_file(const char *path, const Layout &l, const EditPanel *ep) {
         if (l.image[i][0]) fprintf(f, "image %s %s\n", DEFS[i].key, l.image[i]);
     }
     if (l.knob[0]) fprintf(f, "image_knob %s\n", l.knob);
+    if (l.image[C_MMINUS][0]) fprintf(f, "image %s %s\n", DEFS[C_MMINUS].key, l.image[C_MMINUS]);
     if (ep) {
         char line[80];
         epanel_line(line, *ep);
@@ -1430,6 +1432,8 @@ struct State {
     char prof_say[200];
     // the pictures' window (its Image button): the files of the images folder, the page shown, its button held down
     bool img_open, img_knob;  // (img_knob: the stick's window picks its knob's picture, not its base's)
+    bool img_minus;           // (the menu pad's window picks its Minus's picture, not the pad's: 1.0.2)
+    bool sel_knob, sel_minus;  // (the editor's pick was a tap on the stick's knob, on the menu pad's Minus: 1.0.2)
     int img_n, img_page, img_btn;
     ImgName img_names[IMG_MAX];
     uint64_t img_scan_ns;
@@ -1859,8 +1863,9 @@ bool holdable(int i) {
 }
 // A picture of the player's (Layout.image) can be on every control the editor places (1.0.1, the owner's call: the round
 // buttons as in 1.0, and the stick - its base, and its knob apart -, both d-pads, the sprint lock's circle, the item bar's
-// arrows, the attacks' pill and corner band, the menu pad), drawn in place of the control's whole look (pic_only)
-bool image_ok(int i) { return i >= 0 && i < C_LAID; }
+// arrows, the attacks' pill and corner band, the menu pad), drawn in place of the control's whole look (pic_only); and
+// the menu pad's Minus (1.0.2: it goes with the pad, its picture is its own; the tabs have none)
+bool image_ok(int i) { return (i >= 0 && i < C_LAID) || i == C_MMINUS; }
 
 // ---- the layout editor: the touch controls and the game's HUD. A panel in two rows: what is picked (smaller, bigger,
 // hide or show a part - or a control of the emulator-style layout -, back to its default, held by a tap, a picture of
@@ -2183,16 +2188,23 @@ void img_scan(State &s) {
     s.img_page = std::clamp(s.img_page, 0, pages - 1);
     s.img_scan_ns = SDL_GetTicksNS();
 }
-// The picture the window sets for control c: the stick's knob's while it picks that, else the control's own
-char *img_target(State &s, int c) { return c == C_STICK && s.img_knob ? s.layout.knob : s.layout.image[c]; }
-const char *img_target(const State &s, int c) { return c == C_STICK && s.img_knob ? s.layout.knob : s.layout.image[c]; }
+// The picture the window sets for control c: the stick's knob's or the menu pad's Minus's while it picks that, else the
+// control's own
+char *img_target(State &s, int c) {
+    return c == C_STICK && s.img_knob ? s.layout.knob : c == C_MPAD && s.img_minus ? s.layout.image[C_MMINUS] : s.layout.image[c];
+}
+const char *img_target(const State &s, int c) { return img_target(const_cast<State &>(s), c); }
+// (the window's "For:" button: the stick's base or knob, the menu pad or its Minus while it shows)
+bool img_has_part(int c) { return c == C_STICK || (c == C_MPAD && mpad_member(C_MMINUS)); }
 void img_page_of(State &s) {  // (the page of the picture the button has)
     int c = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
     for (int i = 0; i < s.img_n && c >= 0; i++)
         if (!strcmp(s.img_names[i].n, img_target(s, c))) s.img_page = i / IMG_PAGE;
 }
 void img_open(State &s) {
-    s.img_open = true, s.img_knob = false, s.prof_open = false, s.img_page = 0, s.img_btn = -1;
+    s.img_open = true, s.prof_open = false, s.img_page = 0, s.img_btn = -1;
+    // (picked by a tap on the stick's knob or the menu pad's Minus: that one's picture, 1.0.2)
+    s.img_knob = s.sel == C_STICK && s.sel_knob, s.img_minus = s.sel == C_MPAD && s.sel_minus && mpad_member(C_MMINUS);
     img_scan(s);
     img_page_of(s);
 }
@@ -2206,7 +2218,8 @@ void img_tap(State &s, float x, float y) {
         int k = s.img_page * IMG_PAGE + i;
         if (k < s.img_n && tile[i].in(x, y) && c >= 0) {
             snprintf(img_target(s, c), IMAGE_NAME, "%s", s.img_names[k].n);
-            rt_logf("[touch] layout editor: a picture on %s%s (%s)\n", DEFS[c].key, c == C_STICK && s.img_knob ? "'s knob" : "",
+            rt_logf("[touch] layout editor: a picture on %s%s (%s)\n", DEFS[c == C_MPAD && s.img_minus ? C_MMINUS : c].key,
+                    c == C_STICK && s.img_knob ? "'s knob" : "",
                     s.img_names[k].n);
             s.img_open = false;
             tap_due();
@@ -2221,6 +2234,9 @@ void img_tap(State &s, float x, float y) {
         if (i == IA_NONE && c >= 0) img_target(s, c)[0] = 0, s.img_open = false;
         else if (i == IA_KNOB && c == C_STICK) {
             s.img_knob = !s.img_knob;
+            img_page_of(s);
+        } else if (i == IA_KNOB && img_has_part(c)) {
+            s.img_minus = !s.img_minus;
             img_page_of(s);
         } else if (i == IA_PREV) s.img_page = (s.img_page + pages - 1) % pages;
         else if (i == IA_NEXT) s.img_page = (s.img_page + 1) % pages;
@@ -2445,6 +2461,14 @@ void edit_event(State &s, const SDL_Event *e, float x, float y) {
         // a control (with the touch controls' HUD), else a part of the game's HUD, else the panel's face (nothing moves),
         // else the panel by its title strip's edge
         int c = edit_controls(s) ? hit(s.layout, x, y, s.w, s.h, nullptr, 1.5f, true, false, true) : -1;
+        s.sel_knob = s.sel_minus = false;  // (a tap on the stick's knob or on Minus: the picture window sets theirs, 1.0.2)
+        if (c == C_STICK) {
+            Geo g = place(s.layout, C_STICK, s.w, s.h);
+            s.sel_knob = hypotf(x - g.c.x, y - g.c.y) < g.r * KNOB * 1.2f;
+        } else if (c == C_MPAD && mpad_member(C_MMINUS)) {
+            Geo g = place(s.layout, C_MMINUS, s.w, s.h), p = place(s.layout, C_MPAD, s.w, s.h);
+            s.sel_minus = hypotf(x - g.c.x, y - g.c.y) / g.r < hypotf(x - p.c.x, y - p.c.y) / p.r;
+        }
         Rect fps;
         if (c < 0 && fps_frame(s.w, s.h, &fps) && fps.in(x, y)) c = SEL_FPS;  // (the FPS counter, over the HUD's parts)
         Rect bars;
@@ -5267,6 +5291,7 @@ void draw_pictures(ImDrawList *dl, ImFont *font, const State &s, float w, float 
     int c = s.sel >= 0 && s.sel < C_COUNT ? s.sel : -1;
     char title[96];
     snprintf(title, sizeof title, T("Picture for: %s"), c < 0 ? "" : c == C_STICK && s.img_knob ? T("the stick's knob")
+                                                        : c == C_MPAD && s.img_minus ? T("the menu pad's Minus")
                                                         : is_combo(c) ? T("Combined button") : T(DEFS[c].name));
     window_frame(dl, win, h, title);
     for (int i = 0; i < IMG_PAGE; i++) {
@@ -5289,10 +5314,12 @@ void draw_pictures(ImDrawList *dl, ImFont *font, const State &s, float w, float 
     if (!s.img_n) snprintf(line, sizeof line, "%s", T("No pictures yet: Add pictures copies yours in (PNG or JPG). They are your own responsibility."));
     else snprintf(line, sizeof line, T("Page %d of %d. The pictures you add are your own responsibility."), s.img_page + 1, pages);
     window_line(dl, font, win, say_y, h, line, INK);
-    const char *const LABEL[IA_COUNT] = {"No picture", "<", ">", s.img_knob ? "For: knob" : "For: base", "Add pictures", "Close"};
+    const char *const LABEL[IA_COUNT] = {"No picture", "<", ">",
+                                         c == C_MPAD ? (s.img_minus ? "For: Minus" : "For: pad") : s.img_knob ? "For: knob" : "For: base",
+                                         "Add pictures", "Close"};
     for (int i = 0; i < IA_COUNT; i++) {
         bool off = (i == IA_NONE && (c < 0 || !img_target(s, c)[0])) || ((i == IA_PREV || i == IA_NEXT) && pages < 2) ||
-                   (i == IA_KNOB && c != C_STICK);
+                   (i == IA_KNOB && !img_has_part(c));
         window_button(dl, font, btn[i], h, T(LABEL[i]), s.img_btn == i, off, false);
     }
 }

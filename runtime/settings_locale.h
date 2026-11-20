@@ -1177,6 +1177,10 @@ static inline const char *settings_text(int language, const char *english) {
         {"No picture", "Sin imagen"},
         {"For: base", "Para: base"},
         {"For: knob", "Para: centro"},
+        // (1.0.2: the menu pad's Minus takes a picture of its own)
+        {"For: pad", "Para: cruceta"},
+        {"For: Minus", "Para: Menos"},
+        {"the menu pad's Minus", "el Menos de la cruceta de menú"},
         {"the stick's knob", "el centro de la palanca"},
         {"Pictures (.png, .bmp)", "Imágenes (.png, .bmp)"},
         {"(hidden)", "(oculto)"},
