@@ -820,6 +820,14 @@ static void squash(char *s) {
     *d = 0;
 }
 
+// A number's value: lower case and spaces removed, its '-' kept ("-15" stays -15; squash made it 15, so every negative
+// [Colour] value came back positive at the next start: 1.0.2, GU#268)
+static void squash_number(char *s) {
+    char *d = s;
+    for (; *s; s++) if (!isspace((unsigned char)*s) && *s != '_') *d++ = (char)tolower((unsigned char)*s);
+    *d = 0;
+}
+
 static bool parse_size(const char *v, int *w, int *h) {
     int a, b;
     char x;
@@ -1198,7 +1206,8 @@ static bool parse_bool(const char *v, int *out) {
 bool config_parse(const ConfigSetting *s, const char *value, Config *c) {
     char v[256], *end;
     snprintf(v, sizeof v, "%s", value);
-    squash(v);
+    if (s->kind == SET_INT || s->kind == SET_FLOAT) squash_number(v);
+    else squash(v);
     int index;
     float f[4];
     switch (s->kind) {
