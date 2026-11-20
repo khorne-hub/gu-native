@@ -483,12 +483,13 @@ three chats, and private messages with your friends:
 - **General:** everyone in the online chat who plays MHGU, on Android and PC.
 - **Global:** everyone in the online chat of both ports, MHGU and MH4U.
 
-The **Chat** page opens as a chat window over the game, see-through: the text to say and **Send** in its first row, the
-newest line right under them (no need to scroll to read it), and the chat picked, the switches, **Friends** and the
-options at the end. Drag its top to move it and its bottom right corner to make it larger or smaller; it stays where you
-leave it, and **Options**, **Chat window back in its place** puts it back. While your phone's keyboard is up, the window
-goes to the top of the screen and is as tall as the keyboard leaves: the text, **Send** and the last lines stay in
-sight.
+The **Chat** page opens as a chat window over the game, smaller and see-through, with the chat alone: its header says
+which chat (the arrow beside it picks another), the gear opens the chat's options (the switches, **Friends**, the lines
+over the game, the chat button...) and X closes it; under it the text to say and **Send**, and the lines, the newest
+first. Drag its top to move it and its bottom right corner to make it larger or smaller; it stays where you leave it
+(the chat's options: **Chat window back in its place**). While your phone's keyboard is up, the window goes to the top
+of the screen and is as tall as the keyboard leaves: the text, **Send** and the last lines stay in sight. The chat
+button is moved and sized in **Customize controls and HUD**, like any button, and kept with the control profile.
 
 **Both chats start off.** Until you turn one on, on the **Chat** page (under the lines), nothing of the chat shows over the game:
 **Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
