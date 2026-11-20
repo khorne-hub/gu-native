@@ -45,6 +45,9 @@ bool touch_editor_step(void);
 // (1.0.2) the HUD's size changed in the settings menu (Screen and HUD > HUD size): the game it holds takes a step, as for a
 // part dragged in the editor, so the HUD shows at the new size at once
 void touch_hud_step(void);
+// (1.0.2) the chat's button where the touch controls' editor has it: its centre (fractions of the screen) and radius (a
+// fraction of its height); false before the layout is read
+bool touch_chat_place(float *fx, float *fy, float *fr);
 void touch_editor_cancel(void);
 #ifndef __ANDROID__
 // The HUD editor (a desktop's, worked with the mouse): every part of the HUD (runtime/hud_parts.h) moved, sized and

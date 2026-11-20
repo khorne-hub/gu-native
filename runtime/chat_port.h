@@ -17,6 +17,7 @@ void chat_bubble_finger(bool up, float fx, float fy);
 void chat_bubble_size(float s);
 float chat_bubble_scale(void);
 void chat_bubble_reset(void);
+bool chat_bubble_on(void);  // (Chat > Options > Chat button: the touch controls' editor places it while it is on)
 
 #ifdef __cplusplus
 }
