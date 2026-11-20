@@ -187,7 +187,7 @@ void ElementMark(ImDrawList* dl, ImVec2 c, float r, int e, bool hidden) {
         dl->PathLineTo(ImVec2(c.x - s * .35f, c.y));
         dl->PathLineTo(ImVec2(c.x + s * .35f, c.y));
         dl->PathLineTo(ImVec2(c.x - s * .35f, c.y + s));
-        dl->PathStroke(k, 0, t);
+        dl->PathStroke(k, t);
         if (e == weapon_tree::kParalysis) dl->AddCircle(c, s * 1.05f, k, 0, t * .6f);
         break;
     case weapon_tree::kIce:
@@ -208,7 +208,7 @@ void ElementMark(ImDrawList* dl, ImVec2 c, float r, int e, bool hidden) {
         dl->PathLineTo(ImVec2(c.x + s * .55f, c.y - s * .6f));
         dl->PathLineTo(ImVec2(c.x - s * .55f, c.y + s * .6f));
         dl->PathLineTo(ImVec2(c.x + s * .55f, c.y + s * .6f));
-        dl->PathStroke(k, 0, t);
+        dl->PathStroke(k, t);
         break;
     case weapon_tree::kBlast:
         for (int i = 0; i < 4; ++i) {
@@ -261,7 +261,7 @@ struct Shape {
         ImVec2 q[16];
         int n = 0;
         for (ImVec2 p : pts) q[n++] = P(p.x, p.y);
-        dl->AddPolyline(q, n, edge, ImDrawFlags_Closed, t * 2.2f);
+        dl->AddPolyline(q, n, edge, t * 2.2f, ImDrawFlags_Closed);
         dl->AddConcavePolyFilled(q, n, fill);
     }
     void Bar(float x0, float y0, float x1, float y1, float w) const {  // a thick line with an edge
@@ -322,9 +322,9 @@ void DrawnIcon(ImDrawList* dl, const ImRect& r, int cls, ImU32 col) {
         break;
     case kBow:
         dl->PathArcTo(s.P(.5f, .5f), r.GetWidth() * .4f, -2.3f, -0.84f, 12);
-        dl->PathStroke(s.edge, 0, r.GetWidth() * .14f);
+        dl->PathStroke(s.edge, r.GetWidth() * .14f);
         dl->PathArcTo(s.P(.5f, .5f), r.GetWidth() * .4f, -2.3f, -0.84f, 12);
-        dl->PathStroke(s.fill, 0, r.GetWidth() * .08f);
+        dl->PathStroke(s.fill, r.GetWidth() * .08f);
         s.Bar(.24f, .26f, .76f, .26f, .025f);
         s.Bar(.5f, .9f, .5f, .14f, .04f);
         break;
