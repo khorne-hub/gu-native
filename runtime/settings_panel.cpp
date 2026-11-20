@@ -55,6 +55,7 @@ namespace {
 // (Page: a page one level down from a section's, State::at; MENU.md)
 enum class View { Main, Page, Keyboard, CloseChanges, Exit, Restart, Reset, Move, Conflicts, KeyCapture, Keybinds, TouchButtons,
                   ComboEdit, PadList, PadMap, ImportSave, Licenses, Remove, OpenSite, OpenDiscord, Profiles, ProfileSlot,
+                  ColourPreset,  // (a colour preset's page: Graphics & Audio > Colour > Preset n, 1.0.2)
                   Chat, Friends, ChatOn,  // (the chat's pages and its question: settings_chat.inc)
                   Verify,  // (Verify game files: runtime/verify.c)
                   BuildCode };  // (a desktop's Build the game code: the game closes into its builder, runtime/pc_builder.c)
@@ -3282,6 +3283,114 @@ void rows_graphics_colour_10(std::vector<Row> &r) {
 }
 void reset_graphics_colour_10() { colour_draft_reset(); }
 MENU_ENTRY("graphics/colour", 10, rows_graphics_colour_10, reset_graphics_colour_10);
+// The colour presets (1.0.2, 4U#68; the MH4U port's the same rows and texts): three places for the seven controls above
+// ([Colour] Preset1..3, colour_filter.h colour_preset_parse), each with a page of its own as a control profile's
+// (View::ColourPreset): Use puts it in the controls above (the picture shows it at once and Save keeps it, as when they
+// are moved by hand), Save the current colour here and Clear write the file at once, as the profiles do, so Save,
+// Discard and Reset colour have nothing to do with them; replacing or emptying a place asks for a second tap. Not the
+// HDR output
+int s_colour_preset = 0;      // the place View::ColourPreset shows (0..COLOUR_PRESETS - 1)
+std::string s_colour_arm;     // the row tapped once that a second tap confirms ("" none)
+ColourAdjust colour_draft_adjust() {
+    const Config &c = s.draft;
+    ColourAdjust a = {c.colour_hue, c.colour_temperature, c.colour_tint, c.colour_brightness, c.colour_contrast,
+                      c.colour_saturation, c.colour_gamma};
+    return a;
+}
+bool colour_preset_of(int k, ColourAdjust *a) { return colour_preset_parse(s.saved.colour_preset[k], a); }
+// A place written in the file at once, and in the menu's saved settings and draft (as forget does)
+bool colour_preset_put(int k, const char *text) {
+    auto out = [k, text](Config &c) { snprintf(c.colour_preset[k], sizeof c.colour_preset[k], "%s", text); };
+    Config c = s.saved;
+    out(c);
+    char error[512];
+    if (!config_save(&c, error, sizeof error)) {
+        s.error = settings_text(s.draft.language, error);
+        return false;
+    }
+    out(s.saved);
+    out(s.draft);
+    return true;
+}
+// What a place holds: Empty, All at 0, or the controls that aren't 0 ("Hue +10°, Temperature -15")
+std::string colour_preset_summary(int k) {
+    ColourAdjust a;
+    if (!colour_preset_of(k, &a))
+        return en_es("Empty", "Vacío");
+    if (colour_neutral(&a))
+        return en_es("All at 0", "Todo en 0");
+    const struct { const char *name; int v; const char *unit; } parts[] = {
+        {"Hue", a.hue, "\xC2\xB0"}, {"Temperature", a.temperature, ""}, {"Tint", a.tint, ""},
+        {"Brightness", a.brightness, ""}, {"Contrast", a.contrast, ""}, {"Saturation", a.saturation, ""},
+        {"Gamma", a.gamma, ""}};
+    std::string t;
+    for (const auto &p : parts)
+        if (p.v) {
+            if (!t.empty())
+                t += ", ";
+            t += std::string(tr(p.name)) + " " + colour_value(p.v, p.unit);
+        }
+    return t;
+}
+const char *colour_preset_help() {
+    return en_es("Keeps the seven colour controls to come back to them with Use. Saved at once in the settings file; Reset colour doesn't empty it.",
+                 "Guarda los siete controles de color para volver a ellos con Usar. Se guarda al momento en el archivo de ajustes; Restablecer el color no lo vacía.");
+}
+void rows_graphics_colour_20(std::vector<Row> &r) {
+    for (int k = 0; k < COLOUR_PRESETS; k++) {
+        std::string id = "colour.preset" + std::to_string(k + 1);
+        action(r, id, fmt(en_es("Preset %d", "Preset %d"), k + 1), [k]() {
+            s_colour_preset = k, s_colour_arm.clear();
+            push(View::ColourPreset, "cp.use");
+        });
+        r.back().value = colour_preset_summary(k);
+        r.back().help = colour_preset_help();
+    }
+}
+MENU_ENTRY("graphics/colour", 20, rows_graphics_colour_20, {});
+void colour_preset_rows(std::vector<Row> &r) {
+    const int k = s_colour_preset;
+    ColourAdjust a, now = colour_draft_adjust();
+    bool used = colour_preset_of(k, &a), same = used && !memcmp(&a, &now, sizeof a);
+    note(r, "cp.what", colour_preset_summary(k));
+    action(r, "cp.use", tr("Use"), [k]() {
+        ColourAdjust p;
+        s_colour_arm.clear();
+        if (!colour_preset_of(k, &p))
+            return;
+        Config &c = s.draft;
+        c.colour_hue = p.hue, c.colour_temperature = p.temperature, c.colour_tint = p.tint;
+        c.colour_brightness = p.brightness, c.colour_contrast = p.contrast, c.colour_saturation = p.saturation;
+        c.colour_gamma = p.gamma;
+        pop();  // (the Colour page, its controls showing the preset: Save keeps it)
+    }, used && !same);
+    r.back().help = en_es("Puts this preset in the colour controls: the picture shows it at once, and Save keeps it.",
+                          "Pone este preset en los controles de color: la imagen lo muestra al momento, y Guardar lo conserva.");
+    // (an action that replaces or empties the place: a first tap arms it, its title says to tap again)
+    auto armed = [&r](const char *id, const char *title, const char *again, bool ask, std::function<bool()> fn) {
+        bool on = s_colour_arm == id;
+        action(r, id, on ? again : title, [id = std::string(id), ask, fn]() {
+            if (ask && s_colour_arm != id) {
+                s_colour_arm = id;
+                return;
+            }
+            s_colour_arm.clear();
+            fn();
+        });
+    };
+    armed("cp.save", en_es("Save the current colour here", "Guardar el color actual aquí"), tr("Tap again to replace it"),
+          used && !same, [k]() {
+              char text[48];
+              ColourAdjust now = colour_draft_adjust();
+              colour_preset_format(&now, text, sizeof text);
+              return colour_preset_put(k, text);
+          });
+    r.back().help = en_es("The colour controls as they are now go into this preset (saved at once).",
+                          "Los controles de color como están ahora van a este preset (se guarda al momento).");
+    armed("cp.clear", tr("Clear"), tr("Tap again to empty it"), true, [k]() { return colour_preset_put(k, ""); });
+    r.back().enabled = used;
+    action(r, "cp.back", tr("Back"), []() { s_colour_arm.clear(), pop(); });
+}
 // The HDR output: on a phone, shown only where the window's surface offers HDR10 (vk_surface_hdr10: what Android says of
 // the screen is not enough; an Anbernic RG406V says HDR10 and its surface has none), On or not: an On saved where it can't
 // be stays SDR, harmless, and says so once in the log. A desktop's monitor may have it whatever can be told before the
@@ -4357,6 +4466,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::ComboEdit) { combo_rows(r); return r; }
     if (s.view == View::Profiles) { profile_rows(r); return r; }
     if (s.view == View::ProfileSlot) { profile_slot_rows(r); return r; }
+    if (s.view == View::ColourPreset) { colour_preset_rows(r); return r; }
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
     if (s.view == View::Verify) { verify_rows(r); return r; }
@@ -5536,6 +5646,8 @@ std::string view_title() {
     if (s.view == View::Remove)
         return removal_question();
 #endif
+    if (s.view == View::ColourPreset)
+        return fmt(en_es("Colour preset %d", "Preset de color %d"), s_colour_preset + 1);
     return s.view == View::Keyboard ? s.keyboard.title
            : s.view == View::KeyCapture && s.capture_bind >= 0
                ? fmt("Press a key or mouse button for %s (Esc: cancel)", tr(bind_titles[s.capture_bind]))
@@ -5950,7 +6062,7 @@ void touch_panel(bool *open, const Config &before) {
         float y = top + error_text(top, lx, end - lx);
         list_rect = ImRect(lx, y, end, bottom);
     } else if (s.view == View::TouchButtons || s.view == View::Profiles || s.view == View::ProfileSlot || s.view == View::Chat ||
-               s.view == View::Friends) {
+               s.view == View::Friends || s.view == View::ColourPreset) {
         float y = top + error_text(top, left, end - left);
         list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)

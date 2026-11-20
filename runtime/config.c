@@ -15,6 +15,7 @@
 #include <SDL3/SDL.h>
 
 #include "config.h"
+#include "colour_filter.h"
 #include "rt.h"
 
 #include "keymap.h"
@@ -245,6 +246,12 @@ static const char DEFAULT_INI[] =
     "Contrast = 0\n"
     "Saturation = 0\n"
     "Gamma = 0\n"
+    "; Presets (the menu's Colour page: Use, Save the current colour here, Clear): the seven above kept to come back to,\n"
+    "; in their order (Hue, Temperature, Tint, Brightness, Contrast, Saturation, Gamma) separated by commas, as in\n"
+    "; 10,-15,0,0,5,-20,0. Empty: nothing kept. Not the HDR output\n"
+    "Preset1 =\n"
+    "Preset2 =\n"
+    "Preset3 =\n"
     "; HDR output, on a screen that can show it: the game's picture made brighter where it is bright. Needs a restart;\n"
     "; where the screen or the driver can't, the picture stays as it is and the log says why\n"
     "; Default: Off\n"
@@ -827,6 +834,14 @@ static void squash(char *s) {
     *d = 0;
 }
 
+// A number's value: lower case and spaces removed, its '-' kept ("-15" stays -15; squash made it 15, so every negative
+// [Colour] value came back positive at the next start: 1.0.2, GU#268)
+static void squash_number(char *s) {
+    char *d = s;
+    for (; *s; s++) if (!isspace((unsigned char)*s) && *s != '_') *d++ = (char)tolower((unsigned char)*s);
+    *d = 0;
+}
+
 static bool parse_size(const char *v, int *w, int *h) {
     int a, b;
     char x;
@@ -969,6 +984,9 @@ const ConfigSetting g_settings[] = {
     {"Colour", "Contrast", SET_INT, F(colour_contrast), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "Saturation", SET_INT, F(colour_saturation), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "Gamma", SET_INT, F(colour_gamma), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
+    {"Colour", "Preset1", SET_TEXT, F(colour_preset[0]), sizeof g_config.colour_preset[0], 0, 0, NULL, NULL, false, ERR_COLOUR},
+    {"Colour", "Preset2", SET_TEXT, F(colour_preset[1]), sizeof g_config.colour_preset[1], 0, 0, NULL, NULL, false, ERR_COLOUR},
+    {"Colour", "Preset3", SET_TEXT, F(colour_preset[2]), sizeof g_config.colour_preset[2], 0, 0, NULL, NULL, false, ERR_COLOUR},
     ON_OFF("Colour", "HDR", hdr, true),
     {"Colour", "HDRBrightness", SET_INT, F(hdr_brightness), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
     {"Colour", "HDRHighlights", SET_INT, F(hdr_highlights), 0, -100, 100, NULL, NULL, false, ERR_COLOUR},
@@ -1206,7 +1224,8 @@ static bool parse_bool(const char *v, int *out) {
 bool config_parse(const ConfigSetting *s, const char *value, Config *c) {
     char v[256], *end;
     snprintf(v, sizeof v, "%s", value);
-    squash(v);
+    if (s->kind == SET_INT || s->kind == SET_FLOAT) squash_number(v);
+    else squash(v);
     int index;
     float f[4];
     switch (s->kind) {
@@ -1644,6 +1663,13 @@ void config_load(void) {
         }
         fclose(f);
         append_missing_sections(path, seen);
+    }
+    for (int i = 0; i < COLOUR_PRESETS; i++) {  // (1.0.2: a preset that isn't seven whole numbers stays empty, said once)
+        ColourAdjust a;
+        if (*g_config.colour_preset[i] && !colour_preset_parse(g_config.colour_preset[i], &a)) {
+            LOG("[config] [Colour] Preset%d \"%s\" is not seven whole numbers: left empty\n", i + 1, g_config.colour_preset[i]);
+            g_config.colour_preset[i][0] = 0;
+        }
     }
     recent_tidy(g_config.ldn_recent_server[0], LDN_RECENT, sizeof g_config.ldn_recent_server[0], true);
     recent_tidy(g_config.ldn_recent_key[0], LDN_RECENT, sizeof g_config.ldn_recent_key[0], false);

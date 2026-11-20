@@ -57,6 +57,7 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
 #define TOUCH_COMBOS 6
+#define COLOUR_PRESETS 3  // [Colour] Preset1..3 (1.0.2)
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
        PADB_TOUCHPAD, PADB_COUNT };
@@ -196,6 +197,9 @@ typedef struct {
     int colour_contrast;      // [Colour] Contrast: -100..100
     int colour_saturation;    // [Colour] Saturation: -100..100
     int colour_gamma;         // [Colour] Gamma: -100..100 (+ brighter mid-tones)
+    char colour_preset[COLOUR_PRESETS][48];  // [Colour] Preset1..3 (1.0.2, 4U#68): the seven above kept to come back
+                              // to, "hue,temperature,tint,brightness,contrast,saturation,gamma" (colour_filter.h
+                              // colour_preset_parse; the MH4U port's file says the same); "": empty. Not the HDR output
     int hdr;                  // [Colour] HDR: the window image in HDR10 where the screen and the driver offer it (a start-up
                               // setting: nvn/vulkan/device.c; falls back to SDR, logged, where they don't)
     int hdr_brightness;       // [Colour] HDRBrightness: -100..100, the paper white 203 nits times 2^(x/100)
