@@ -394,6 +394,7 @@ int config_live_gather_all(void);       // [Gathering] GatherAll (runtime/hle/ga
 int config_live_ps1_filter(void);       // [Graphics] PS1Filter (nvn/vulkan/exec.c, ps1.c, fsr.c)
 int config_live_text_outline(void);     // [Graphics] TextOutline (nvn/vulkan/exec.c)
 void config_ps1_test(int on);           // (tests: MHGU_CONTROL "ps1 0|1") as if saved, until the next save
+void config_text_outline_test(int on);  // (tests: MHGU_CONTROL "textoutline 0|1") as if saved, until the next save
 // [Colour] (runtime/colour_filter.h ColourAdjust; the window image's pass, nvn/vulkan/exec.c): the saved values, or while
 // the settings menu is open the ones being adjusted there (config_colour_preview), so the picture shows them at once
 struct ColourAdjust;

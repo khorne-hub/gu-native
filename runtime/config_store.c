@@ -277,6 +277,7 @@ int config_live_gather_all(void) { return SDL_GetAtomicInt(&live_gather_all); }
 int config_live_ps1_filter(void) { return SDL_GetAtomicInt(&live_ps1_filter); }
 int config_live_text_outline(void) { return SDL_GetAtomicInt(&live_text_outline); }
 void config_ps1_test(int on) { SDL_SetAtomicInt(&live_ps1_filter, on ? 1 : 0); }
+void config_text_outline_test(int on) { SDL_SetAtomicInt(&live_text_outline, on ? 1 : 0); }
 // [Hunting Aids] (runtime/hunt_aids.h: runtime/hle/huntaids.c and runtime/hunt_overlay.cpp read them each frame)
 int config_live_monsters_on_map(void) { return SDL_GetAtomicInt(&live_monsters_on_map); }
 int config_live_damage_numbers(void) { return SDL_GetAtomicInt(&live_damage_numbers); }
