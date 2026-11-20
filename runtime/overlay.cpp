@@ -200,6 +200,10 @@ static std::atomic<bool> g_menu_opened;  // (the player opened the settings menu
 #endif
 void overlay_toggle_settings(void) {
     if (!g_enabled || g_modal_open) return;  // (the thank-you first: closed, F1 and the chord work again)
+    if (g_settings_open && settings_panel_chat_floating()) {  // (1.0.2: the chat window afloat - the menu in its place)
+        settings_panel_chat_request(SETTINGS_CHAT_TO_MENU);
+        return;
+    }
     if (g_settings_open) { settings_panel_request_back(); return; }
 #ifndef __ANDROID__
     g_menu_opened = true;
@@ -289,6 +293,7 @@ void overlay_pad(const OverlayPad *p) {
 
 bool overlay_enabled(void) { return g_enabled; }
 bool overlay_menu_open(void) { return g_open; }
+bool overlay_chat_floating(void) { return g_settings_open && settings_panel_chat_floating(); }
 void overlay_open_forge(void) { g_forge_pending = true; }
 bool overlay_forge_typing(void) { return g_forge_typing.load(std::memory_order_relaxed); }
 
@@ -890,7 +895,8 @@ extern "C" uint64_t vk_last_present_ns(void);
 // The settings menu, or the touch controls' layout editor opened from it, is open and the player plays alone
 // ([Application] PauseInMenu; never with others: a Local Play or hub network up)
 static bool menu_holds_game(void) {
-    return g_ready && ((g_settings_open && !g_modal_open) || touch_editor_open()) && config_live_pause_menu() && !ldn_net_up();
+    return g_ready && ((g_settings_open && !g_modal_open && !settings_panel_chat_floating()) || touch_editor_open()) &&
+           config_live_pause_menu() && !ldn_net_up();  // (1.0.2: not the chat window afloat - the game goes on under it)
 }
 #endif
 

@@ -492,7 +492,8 @@ chats, y mensajes privados con tus amigos:
 - **Global:** todos los del chat en línea de los dos ports, MHGU y MH4U.
 
 La página **Chat** se abre como una ventana de chat sobre el juego, más chica y que deja ver lo de atrás, solo con el
-chat: su encabezado dice cuál chat es (la flecha de al lado elige otro), el engranaje abre las opciones del chat (los
+chat: su encabezado tiene una pestaña por cada chat que hay ahora (Sala, General, Global, Amigos), cada una con las líneas que
+no leíste (en **Amigos** las flechas pasan de un amigo a otro), el engranaje abre las opciones del chat (los
 interruptores, **Amigos**, las líneas sobre el juego, el botón del chat...) y la X la cierra; debajo, el texto para
 escribir y **Enviar**, y las líneas, la más nueva primero, cada una sobre una tira oscura para que se lea sobre pasto o
 nieve. Arrastra su parte de arriba para moverla y su esquina de abajo a la derecha para agrandarla o achicarla; queda
@@ -501,13 +502,20 @@ ventana sube arriba de todo de la pantalla y usa el alto que deja el teclado: el
 quedan a la vista. El botón del chat se mueve y se cambia de tamaño en **Personalizar controles y HUD**, como cualquier
 botón, y queda guardado con el perfil de controles.
 
+Jugando con el dedo, el juego sigue debajo de la ventana del chat y los controles táctiles funcionan alrededor: solo
+los controles de la ventana toman el dedo, y tocar su parte vacía mueve la palanca o la cámara. Mientras escribes,
+tocar fuera de la ventana la cierra junto con el teclado. Un menú del juego la esconde hasta que se cierra, el botón
+de ajustes va al menú y el botón del chat la cierra. En las opciones del chat, **Fondo de la ventana**, **Fondo de
+los mensajes** y **Fondo del campo de escribir** van de 0 a 100 %; el texto queda siempre sólido.
+
 **Los dos chats empiezan apagados.** Hasta que actives uno, en la página **Chat** (debajo de las líneas), no se ve nada del chat sobre el
 juego: **Chat de la sala** activa el de la sala (sin relés, nada sale de la sala) y **Chat en línea** Global, General y
 amigos.
 
 Un botón redondo del chat aparece sobre el juego mientras el chat en línea está activo, o el chat de la sala está activo y
 estás en una sala. Un toque abre el chat, arrastrarlo lo mueve, y el número que tiene cuenta las líneas que no leíste. En **Chat**, **Opciones**, **Botón del
-chat** lo apaga y **Tamaño del botón del chat** cambia su tamaño. Las líneas nuevas se ven unos segundos a su lado:
+chat** lo apaga y **Tamaño del botón del chat** cambia su tamaño. Las líneas nuevas se ven 8 segundos a su lado, hasta cuatro, cada chat con su color y el nombre de cada jugador con el suyo
+(las tuyas no; se van al abrirse un menú):
 **Líneas sobre el juego** elige **Apagado**, **Sala y amigos** (lo predeterminado) o **Todos**.
 
 **El chat en línea** (Global, General y amigos) está apagado hasta que lo activas con **Chat en línea**, en la página

@@ -483,8 +483,9 @@ three chats, and private messages with your friends:
 - **General:** everyone in the online chat who plays MHGU, on Android and PC.
 - **Global:** everyone in the online chat of both ports, MHGU and MH4U.
 
-The **Chat** page opens as a chat window over the game, smaller and see-through, with the chat alone: its header says
-which chat (the arrow beside it picks another), the gear opens the chat's options (the switches, **Friends**, the lines
+The **Chat** page opens as a chat window over the game, smaller and see-through, with the chat alone: its header has a
+tab for each chat there is now (Hub, General, Global, Friends), each with the lines you haven't read (under **Friends** the
+arrows go from friend to friend), the gear opens the chat's options (the switches, **Friends**, the lines
 over the game, the chat button...) and X closes it; under it the text to say and **Send**, and the lines, the newest
 first, each on a dark strip so it reads over grass or snow. Drag its top to move it and its bottom right corner to make
 it larger or smaller; it stays where you leave it (the chat's options: **Chat window back in its place**). While your
@@ -492,12 +493,18 @@ phone's keyboard is up, the window goes to the top of the screen and is as tall 
 **Send** and the last lines stay in sight. The chat button is moved and sized in **Customize controls and HUD**, like
 any button, and kept with the control profile.
 
+Played with your fingers, the game goes on under the chat window and the touch controls work round it: only the
+window's own controls take your finger, and a tap on its blank part is the stick's or the camera's. While you type,
+a tap away from the window closes it and the keyboard. A menu of the game's hides it until it closes, the settings
+button goes to the menu, and the chat button closes it. In the chat's options, **Window background**, **Message
+background** and **Typing field background** go from 0 to 100 %; the text is always solid.
+
 **Both chats start off.** Until you turn one on, on the **Chat** page (under the lines), nothing of the chat shows over the game:
 **Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
 
 A round chat button shows over the game while the online chat is on, or the hub chat is on and you are in a hub. A tap opens
 the chat, a drag moves it, and the number on it counts the lines you haven't read. Under **Chat**, **Options**, **Chat button** turns it off and
-**Chat button size** changes its size. New lines show for a few seconds beside it: **Lines over the game** picks **Off**,
+**Chat button size** changes its size. New lines show for 8 seconds beside it, up to four, each chat in its colour and each player's name in its own (not yours; they go when a menu opens): **Lines over the game** picks **Off**,
 **Hub and friends** (the default) or **All**.
 
 **The online chat** (Global, General and friends) is off until you turn it on with **Online chat**, on the **Chat**

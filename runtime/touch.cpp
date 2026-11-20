@@ -1954,6 +1954,9 @@ bool slide_to(State &s, Finger *f, float x, float y) {
     return true;
 }
 
+// (1.0.2) The port's menu is up as a menu: the chat window afloat over the game is none (settings_panel.h) - the touch
+// controls are drawn and played round it
+bool menu_up() { return overlay_menu_open() && !overlay_chat_floating(); }
 // the port's settings menu takes the fingers as its mouse (overlay.cpp)
 void to_menu(const SDL_Event *e) {
     SDL_Window *win = ui_window();
@@ -3014,7 +3017,23 @@ extern "C" bool touch_event(const SDL_Event *e) {
         bool alone = true;
         for (Finger &g : s.f)
             if (&g != f && g.kind != F_NONE) alone = false, g.hold_ok = false;
-        if (overlay_menu_open()) {
+        // (1.0.2, after tabarong's floating chat) the chat window afloat over the game (settings_panel.h): the chat button
+        // over it first, then the window's own controls take the finger as the menu's; anywhere else - the blank part of
+        // the window too - it is the game's, as with the menu closed, and while typing such a tap closes the window and the
+        // phone's keyboard as well
+        bool to_menu_too = overlay_menu_open();
+        if (to_menu_too && overlay_chat_floating()) {
+            if (chat_bubble_down(x / s.w, y / s.h)) {  // (a tap closes the window: chat_port.cpp)
+                f->kind = F_CHAT;
+                return true;
+            }
+            to_menu_too = settings_panel_chat_claims(x / s.w, y / s.h);
+            if (!to_menu_too && settings_panel_chat_typing()) {
+                settings_panel_chat_request(SETTINGS_CHAT_CLOSE);
+                rt_logf("[touch] a tap away from the chat window while typing: it closes, the keyboard too\n");
+            }
+        }
+        if (to_menu_too) {
             f->kind = F_MENU;
             bool other = false;
             for (Finger &g : s.f)
@@ -3298,7 +3317,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     ensure_loaded(s);
     uint64_t now = SDL_GetTicksNS();
     g_menu_buttons = 0;
-    bool menu = overlay_menu_open();
+    bool menu = menu_up();  // (1.0.2: the chat window afloat is no menu here - the controls go on: settings_panel.h)
     uint32_t hunter = weapon_hunter();
     g_in_quest = hunter != 0;  // (in_mode: the Lock-on button)
     play_seen(hunter);
@@ -3419,9 +3438,9 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
 #ifndef __ANDROID__
     if (s.edit_request && s.hud_edit) s.edit_request = false;  // (the HUD editor open: one at a time)
 #endif
-    if (s.edit_request && !menu) edit_begin(s);
+    if (s.edit_request && !overlay_menu_open()) edit_begin(s);
 #ifndef __ANDROID__
-    if (s.hud_request && !menu) hud_edit_begin(s);  // (the HUD editor: the same way)
+    if (s.hud_request && !overlay_menu_open()) hud_edit_begin(s);  // (the HUD editor: the same way)
     if (s.hud_edit && menu) {  // (the port's menu over it: the usual pointer, and a finger or a drag under way let go)
         hud_cursor(false);
         hud_let_go(s), hud_release(s);
@@ -3432,7 +3451,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     // a long press on the settings button opens the editor (L held is the game's L: the lock-on is its own button's)
     for (Finger &f : s.f) {
         if (f.kind != F_BUTTON || f.done) continue;
-        if (f.ctl == C_SETTINGS && now - f.t0 > 700 * MS && !menu) {
+        if (f.ctl == C_SETTINGS && now - f.t0 > 700 * MS && !overlay_menu_open()) {
             f.done = true;
             edit_begin(s);
             break;
@@ -3495,7 +3514,7 @@ extern "C" void touch_input(bool pad_connected, bool typing, uint64_t *buttons, 
     g_gear_only = !visible && !typing && screen && !s.user_hidden;
     g_hold_hint = now < s.hint_until;
 #ifdef __ANDROID__
-    g_text_plate = typing && textinput_active() && !menu;
+    g_text_plate = typing && textinput_active() && !overlay_menu_open();
 #endif
 #ifndef __ANDROID__
     if (s.hud_edit) g_gear_only = false;
@@ -3876,7 +3895,7 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
     std::lock_guard<std::mutex> l(g_lock);
     State &s = g_s;
     uint64_t now = SDL_GetTicksNS();
-    if (!overlay_menu_open()) {  // (the port's menu takes the presses while it is open)
+    if (!menu_up()) {  // (the port's menu takes the presses while it is open - not the chat window afloat)
         static uint64_t was;
         // (with a gun out A fires, and the scope's window comes back after each shot)
         const uint64_t OPENS = (s.weapon && s.drawn == 1 ? 0 : B(BTN_A) | B(BTN_Y)) | B(BTN_PLUS) | B(BTN_MINUS) | B(BTN_ZL) | B(BTN_ZR);
@@ -3894,7 +3913,7 @@ extern "C" uint64_t touch_lock_buttons(uint64_t buttons, bool cam_input) {
     if (cam_input || (l_now && !l_was)) s.cam_ns = now;
     l_was = l_now;
     if (s.lock && !config_live_lock_on()) lock_set(s, false, "the settings");
-    bool on = s.lock && !s.edit && hunt && !overlay_menu_open() && !s.menu;
+    bool on = s.lock && !s.edit && hunt && !menu_up() && !s.menu;
     g_lock_shots = on;
     g_lock_follow = on && now - s.cam_ns > LOCK_AFTER_TURN;
     g_lock_mark = s.lock && !s.edit && !s.menu;
@@ -5998,7 +6017,7 @@ bool draw_key(float w, float h, DrawKey *k) {
     s.last_ns = s.menu_on_ns = s.item_flash = s.art_flash = s.lit_until = s.hint_until = 0;
     s.hunt_ns = s.hunter_ns = s.cam_ns = s.step_ns = s.others_ns = s.stuck_ns = s.smooth_ns = 0;
     s.smooth_x = s.smooth_y = 0;  // (the camera's, which the controls don't draw)
-    k->flags = (int)g_visible | (int)g_gear_only << 1 | (int)overlay_menu_open() << 2 | (int)lit << 3 | (int)item_lit << 4 |
+    k->flags = (int)g_visible | (int)g_gear_only << 1 | (int)menu_up() << 2 | (int)lit << 3 | (int)item_lit << 4 |
                (int)art_lit << 5 | (int)idle << 6 | (int)menu_pages_zl() << 7;
     k->w = w, k->h = h;
     k->ranged = g_ranged.load(), k->bow_type = g_bow_type.load(), k->style = g_style.load(), k->edit_set = g_edit_set.load();
@@ -6435,9 +6454,9 @@ extern "C" void touch_draw(float w, float h) {
     if (g_reuse_on) g_drawn_ok = draw_key(w, h, &g_drawn);  // (MHGU_PERF_OVERLAY_REUSE: what this frame is made of)
     pics_sweep();  // (the players' pictures not shown for a while given back)
 #ifndef __ANDROID__
-    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_hud_edit && !g_hold_hint && !g_hold_ring) || overlay_menu_open()) return;
+    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_hud_edit && !g_hold_hint && !g_hold_ring) || menu_up()) return;
 #else
-    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_text_plate && !g_hold_hint && !g_hold_ring) || overlay_menu_open()) return;
+    if ((!g_visible && !g_gear_only && !g_lock_mark && !g_text_plate && !g_hold_hint && !g_hold_ring) || menu_up()) return;
 #endif
     State s;
     {

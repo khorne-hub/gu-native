@@ -16,6 +16,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <string>
@@ -46,7 +47,22 @@ std::string hub_id() {
     char id[64] = "";
     return ldn_party(&n, &max, id, sizeof id) ? std::string(id) : std::string();
 }
+#ifdef MHGU_DEV
+// (1.0.2, tests: a DEV build's env.txt with MHGU_CHAT_TEST=1) a hub that isn't there to talk in, and lines in each chat
+// as if they had come (chat::test_lines): the chat window's tabs and the lines beside the button with no one else
+bool chat_test() {
+    static int on = -1;
+    if (on < 0) on = getenv("MHGU_CHAT_TEST") && atoi(getenv("MHGU_CHAT_TEST")) > 0;
+    return on > 0;
+}
+#endif
 bool hub_up(std::string *label) {
+#ifdef MHGU_DEV
+    if (chat_test()) {
+        if (label) *label = "test";
+        return true;
+    }
+#endif
     int n = 0, max = 0;
     char id[64];
     if (!ldn_party(&n, &max, id, sizeof id)) return false;
@@ -58,6 +74,12 @@ bool hub_up(std::string *label) {
     return true;
 }
 bool hub_send(const std::string &text) {
+#ifdef MHGU_DEV
+    if (chat_test()) {  // (the hub that isn't there: the line as said, nothing sent)
+        chat::hub_line(chat::my_key(), chat::name(), text, true);
+        return true;
+    }
+#endif
     std::string id = hub_id();
     if (id.empty()) return false;
     std::string name = chat::name();
@@ -125,8 +147,15 @@ extern "C" void chat_port_init(void) {
     chat::init(p);
     chat::OverlayPort o;
     o.controls_shown = []() { return touch_drawn(); };
-    o.menu_open = []() { return overlay_menu_open(); };
+    // (1.0.2, after tabarong's floating chat: with the chat window afloat the button stays, and a tap on it closes the
+    // window; the lines beside it go while a menu of the game's is open, or the chat window is up)
+    o.menu_open = []() { return overlay_menu_open() && !overlay_chat_floating(); };
+    o.lines_hidden = []() { return overlay_menu_open() || touch_game_menu(); };
     o.open_chat = []() {  // (the menu, on its chat page)
+        if (overlay_chat_floating()) {
+            settings_panel_chat_request(SETTINGS_CHAT_CLOSE);
+            return;
+        }
         if (!overlay_menu_open()) overlay_toggle_settings();
         settings_panel_request_view(SETTINGS_VIEW_CHAT);
     };
@@ -199,6 +228,9 @@ extern "C" bool chat_port_frame(void) {
     if (!chat::active()) return chat::overlay_frame();
     chat::set_spanish(config_language() == 1);
     chat::tick();
+#ifdef MHGU_DEV
+    if (chat_test()) chat::test_lines();
+#endif
     play_together_notices();
     return chat::overlay_frame();
 }

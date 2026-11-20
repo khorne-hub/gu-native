@@ -42,6 +42,19 @@ bool settings_panel_online_ok(const char *server);
 
 void settings_panel_before_frame(bool open); // Own navigation keys before ImGui NewFrame.
 void settings_panel_request_back(void); // F1 / chord: same one-level back route.
+// (1.0.2, after tabarong's floating chat) The chat window afloat (any thread): played by touch with no controller in hand,
+// on the chat's lines or Say something, it floats over the game, which goes on with the touch controls drawn and working
+// round it (the menu doesn't hold the game then: overlay.cpp). A finger is the window's only where
+// settings_panel_chat_claims says (fx, fy: fractions of the screen) - its header and tabs, the text and Send, a friend's
+// arrows, the grip, a row that does something, the lines' scroll strip -; anywhere else the game's (touch.cpp).
+// settings_panel_chat_typing: Say something is being typed in it. settings_panel_chat_request: SETTINGS_CHAT_CLOSE closes
+// it and the phone's keyboard (a tap away from it while typing, the chat button again), SETTINGS_CHAT_TO_MENU leaves it for
+// the menu (the settings button)
+enum { SETTINGS_CHAT_CLOSE = 1, SETTINGS_CHAT_TO_MENU = 2 };
+bool settings_panel_chat_floating(void);
+bool settings_panel_chat_typing(void);
+bool settings_panel_chat_claims(float fx, float fy);
+void settings_panel_chat_request(int what);
 bool settings_panel_dirty(void); // Atomic for the host close-event handler.
 int settings_panel_theme(void); // THEME_*: the one picked in the menu while it is open, else the saved one (game frame).
 bool settings_panel_key(int scancode); // Choosing a key (keybind, chat): takes the key pressed (host event thread).

@@ -1,11 +1,13 @@
 // The chat over the game: chat_overlay.h. In the touch controls' look: a dark plate with a bronze edge and a gold rule;
-// each line on a wine-dark plate with its chat's colour at its left (Global gold, General green, Hub blue, a friend pink).
+// each line on a wine-dark plate with its chat's colour at its left (Global gold, General green, Hub blue, a friend pink),
+// and its sender's name in a colour of its own (name_ink, 1.0.2).
 #include "chat_overlay.h"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdint>
 #include <cmath>
 #include <cstdio>
 #include <string>
@@ -48,6 +50,7 @@ bool placed() {
 }
 float radius() { return g_placed ? g_h * g_pr : g_h * .048f * g_bs; }
 bool menu_open() { return g_port.menu_open && g_port.menu_open(); }
+bool lines_hidden() { return menu_open() || (g_port.lines_hidden && g_port.lines_hidden()); }
 bool wanted() {  // (the online chat on, or the hub's chat on and a hub up)
 #ifdef __ANDROID__
     return bubble_shown() && g_port.controls_shown && g_port.controls_shown() && !menu_open() && (enabled() || (hub_chat() && hub_up()));
@@ -72,6 +75,19 @@ ImU32 faded(ImU32 c, float a) { return (c & 0x00ffffffu) | ((ImU32)(((c >> 24) &
 }  // namespace
 
 void overlay_setup(const OverlayPort &port) { g_port = port; }
+unsigned channel_ink(int channel) { return ink(channel); }
+
+unsigned name_ink(const std::string &name) {
+    // (warm and cool tones that read on the dark plates and strips, apart from the chats' gold, green, blue and pink)
+    static const unsigned inks[] = {
+        IM_COL32(255, 168, 92, 255),  IM_COL32(255, 124, 112, 255), IM_COL32(198, 156, 255, 255), IM_COL32(112, 228, 204, 255),
+        IM_COL32(240, 232, 128, 255), IM_COL32(178, 226, 96, 255),  IM_COL32(150, 176, 255, 255), IM_COL32(232, 184, 140, 255),
+        IM_COL32(118, 222, 146, 255), IM_COL32(255, 204, 156, 255), IM_COL32(222, 140, 232, 255), IM_COL32(160, 214, 236, 255),
+    };
+    uint32_t h = 2166136261u;  // (FNV-1a of the name, its letters' case aside: "Ana" and "ana" the same colour)
+    for (unsigned char c : name) h = (h ^ (unsigned)((c >= 'A' && c <= 'Z') ? c + 32 : c)) * 16777619u;
+    return inks[h % (sizeof inks / sizeof inks[0])];
+}
 
 bool overlay_frame() {
     if (!active()) {  // (both chats off, as they come: nothing over the game, and the button takes no finger)
@@ -81,7 +97,7 @@ bool overlay_frame() {
     unsigned last = last_serial();
     if (!g_serial_known) g_seen_serial = last, g_serial_known = true;
     double now = SDL_GetTicks() / 1000.0;
-    const bool menu = menu_open();
+    const bool menu = lines_hidden();  // (1.0.2: a menu of the game's too, and the chat window up: none, those up gone)
     if (last != g_seen_serial) {
         for (const Line &l : since(g_seen_serial))
             if (!l.mine && counts(l.channel) && !menu) g_shown.push_back({l, now});
@@ -155,7 +171,7 @@ void overlay_draw(float w, float h) {
         float tx = x + pad;
         dl->AddText(font, fs * .8f, ImVec2(tx, y + pad + fs * .12f), faded(ink(s.line.channel), a), tag.c_str());
         tx += ms.x;
-        if (!who.empty()) dl->AddText(font, fs, ImVec2(tx, y + pad), faded(IM_COL32(255, 214, 92, 255), a), who.c_str());
+        if (!who.empty()) dl->AddText(font, fs, ImVec2(tx, y + pad), faded(name_ink(s.line.name), a), who.c_str());
         const float tw = std::max(fs * 4, wrap - ws.x - ms.x);
         dl->AddText(font, fs, ImVec2(tx + ws.x + scale, y + pad + scale), faded(IM_COL32(0, 0, 0, 255), a), text.c_str(), nullptr, tw);
         dl->AddText(font, fs, ImVec2(tx + ws.x, y + pad), faded(cream, a), text.c_str(), nullptr, tw);

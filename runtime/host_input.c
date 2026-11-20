@@ -1833,7 +1833,8 @@ void host_input_update(void) {
         b &= ~(B(BTN_PLUS) | B(BTN_MINUS));
     }
     static bool menu, menu_face_release;
-    if (overlay_menu_open() != menu) {
+    // (1.0.2: the chat window afloat is no menu here - the touch controls' presses go to the game: settings_panel.h)
+    if ((overlay_menu_open() && !overlay_chat_floating()) != menu) {
         if (menu) menu_face_release = true;
         menu = !menu;
         memset(keys, 0, sizeof keys);  // (keys held as it opened went to the menu: nothing stays pressed)
