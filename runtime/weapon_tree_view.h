@@ -15,6 +15,23 @@
 
 namespace weapon_tree {
 
+// One material of a recipe: the game's item (its id in the port's tables), its name in the game's language and how
+// many the recipe takes
+struct Material {
+    int item = 0;
+    std::string name;
+    int count = 0;
+};
+
+// What making a weapon takes, as the game's tables give it (an empty one: none known)
+struct Recipe {
+    std::vector<Material> items;
+    int zenny = 0;        // 0: not in the tables
+    std::string points;   // (MHGU) the material category the game also asks for, and its value: "Ore 4"
+    int level = 0;        // (MHGU) the level it makes (an upgrade to a weapon's next level)
+    bool Empty() const { return items.empty() && zenny == 0 && points.empty(); }
+};
+
 struct Weapon {
     bool real = false;                  // a weapon of the game's (an empty or unused id: false)
     std::string name;                   // in the game's language (UTF-8; empty while not read)
@@ -30,12 +47,21 @@ struct Weapon {
     // (MHGU: a weapon is a line of levels) the level shown (the one had, worn or in the Smithy; 0 none), its last
     // level, and the level of the weapon before it that upgrades into it; 0 where a port has no levels (MH4U)
     int level = 0, levels = 0, from_level = 0;
+    int defense = 0;                    // the defense it adds
+    // its sharpness as the game shows it: where each colour ends (red, orange, yellow, green, blue, white, purple; in the
+    // tables' units, from 0), and how far the skill that adds sharpness takes it (0: not in the tables)
+    std::vector<int> sharpness;
+    int sharpness_plus = 0;
+    // forged from scratch (the game's Create), upgraded from the weapon before it, and (MHGU) its next level; empty
+    // where none
+    Recipe create, upgrade, next;
 };
 
 enum Element { kElementNone, kFire, kWater, kThunder, kIce, kDragon, kPoison, kParalysis, kSleep, kBlast };
 
 struct Class {
     std::vector<Weapon> weapons;  // by id
+    int sharpness_full = 0;       // a sharpness bar's whole length in the tables' units (0: no bars)
 };
 
 enum NodeFlags : unsigned {
