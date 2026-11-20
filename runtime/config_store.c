@@ -40,6 +40,8 @@ static float get_float(SDL_AtomicInt *slot) {
     int bits = SDL_GetAtomicInt(slot); float value; memcpy(&value, &bits, sizeof value); return value;
 }
 static SDL_AtomicInt live_flex_cancel;  // [Comforts] FlexCancel (runtime/hle/flexcancel.h)
+static SDL_AtomicInt live_fsr1_sharp;   // [Display] FSR1Sharpness (a float's bits)
+float config_live_fsr1_sharpness(void) { return get_float(&live_fsr1_sharp); }
 int config_live_flex_cancel(void) { return SDL_GetAtomicInt(&live_flex_cancel); }
 static SDL_AtomicInt live_gen;  // (each publish: config_live_generation)
 // [Colour] as the window image's pass reads it each frame (config_live_colour): the saved values, or the settings menu's
@@ -136,6 +138,7 @@ static void publish_live(const Config *c, bool all) {
     if (all || c->bloom != saved.bloom) SDL_SetAtomicInt(&live_bloom, c->bloom);
     if (all || c->frame_gen != saved.frame_gen) SDL_SetAtomicInt(&live_frame_gen, c->frame_gen);
     if (all || c->upscale_sharp != saved.upscale_sharp) SDL_SetAtomicInt(&live_upscale_sharp, c->upscale_sharp);
+    if (all || c->fsr1_sharpness != saved.fsr1_sharpness) set_float(&live_fsr1_sharp, c->fsr1_sharpness);
     if (all || c->grass != saved.grass) SDL_SetAtomicInt(&live_grass, c->grass);
     if (all || c->flex_cancel != saved.flex_cancel) SDL_SetAtomicInt(&live_flex_cancel, c->flex_cancel);
     if (all || c->effects != saved.effects) SDL_SetAtomicInt(&live_effects, c->effects);
@@ -266,7 +269,7 @@ int config_live_shadows(void) { return SDL_GetAtomicInt(&live_shadows); }
 int config_live_bloom(void) { return SDL_GetAtomicInt(&live_bloom); }
 int config_live_frame_gen(void) { return SDL_GetAtomicInt(&live_frame_gen); }
 int config_live_upscale_sharp(void) { return SDL_GetAtomicInt(&live_upscale_sharp); }
-void config_upscale_test(int sharp) { SDL_SetAtomicInt(&live_upscale_sharp, sharp ? 1 : 0); }
+void config_upscale_test(int sharp) { SDL_SetAtomicInt(&live_upscale_sharp, sharp >= 0 && sharp <= UPSCALE_FSR1 ? sharp : 0); }
 int config_live_grass(void) { return SDL_GetAtomicInt(&live_grass); }
 int config_live_effects(void) { return SDL_GetAtomicInt(&live_effects); }
 int config_live_reverb(void) { return SDL_GetAtomicInt(&live_reverb); }
@@ -318,6 +321,9 @@ void config_window_focus(bool focused) { SDL_SetAtomicInt(&window_focused, focus
 bool config_confirm_exit(void) { return SDL_GetAtomicInt(&confirm_exit) != 0; }
 bool config_restart_required(const Config *c) {
     if (!runtime_ready) return false;
+#ifdef __ANDROID__  // (UpscaleFilter FSR1 without Low-end mode or FSR: the HUD's own picture, made at the start, config.c fsr1_hud)
+    if (!c->low_end && !c->fsr && (c->upscale_sharp == UPSCALE_FSR1) != (startup.upscale_sharp == UPSCALE_FSR1)) return true;
+#endif
     if (c->hp.quests < 0 || c->hp.quests > HP_QUESTS_MAX) return true;
     for (int i = 0; i < g_nsettings; i++) {
         const ConfigSetting *s = &g_settings[i];

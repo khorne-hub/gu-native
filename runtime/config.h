@@ -57,6 +57,7 @@ enum { TB_ATTACKS, TB_DODGE, TB_GUARD, TB_SHEATHE, TB_PLUS, TB_MINUS, TB_DPAD, T
 // its place, as then; the long press that hides the controls on, and a slide between buttons keeping both)
 #define TOUCH_SHOW_DEFAULT {1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1}
 #define TOUCH_COMBOS 6
+enum { UPSCALE_SMOOTH, UPSCALE_SHARP, UPSCALE_FSR1 };  // [Display] UpscaleFilter (Config.upscale_sharp)
 // a controller's buttons a combined button can be on (the less used ones)
 enum { PADB_NONE, PADB_L3, PADB_R3, PADB_MINUS, PADB_GUIDE, PADB_MISC, PADB_PADDLE1, PADB_PADDLE2, PADB_PADDLE3, PADB_PADDLE4,
        PADB_TOUCHPAD, PADB_COUNT };
@@ -97,6 +98,7 @@ typedef struct {
     int fsr;                  // [Upscaler] FSR 3.1: 1 on (runtime/nvn/vulkan/fsr.c), 0 off
     int fsr_quality;          // FSR_*: the render scale
     float fsr_sharpness;      // FSR's RCAS sharpening, 0..1
+    float fsr1_sharpness;     // [Display] FSR1Sharpness (1.0.2): UpscaleFilter FSR1's RCAS, 0..1 as FSR's (2 - 2x stops)
     int fsr_objmotion;        // FSR: motion vectors of moving objects (characters, monsters): 1 on, 0 camera only
     float fsr_reactive;       // FSR: reactive mask strength on the game's moving-object mask, 0 (off) .. 1
     int fsr_animsurf;         // FSR: surfaces animated through their texture (banners, water): 1 detected, 0 off
@@ -205,7 +207,8 @@ typedef struct {
                               // rate or less (nvn/vulkan/framegen.c); off by default (0: nothing in CONFIG_DEFAULT_VALUES)
     int upscale_sharp;        // [Display] UpscaleFilter (1.0.1, gu-native #247): a 3D picture smaller than the screen scaled
                               // up by its nearest pixels (Sharp, 1) instead of linearly (Smooth, 0: the default, as before);
-                              // FSR off only (nvn/vulkan/fsr.c scale_to_stand, exec.c vk_present_draw)
+                              // FSR off only (nvn/vulkan/fsr.c scale_to_stand, exec.c vk_present_draw). 1.0.2: or by
+                              // FSR 1 (UPSCALE_FSR1: EASU + RCAS, nvn/vulkan/exec.c vk_fsr1_scale), under the HUD only
     // The hunting aids (1.0.1, the owner's; runtime/hunt_aids.h, hle/huntaids.c, hunt_overlay.cpp; Graphics & Audio >
     // Screen and HUD), each off by default (0: nothing in CONFIG_DEFAULT_VALUES)
     int monsters_on_map;      // [Hunting Aids] MonstersOnMap: the large monsters on the game's maps from a quest's start, as
@@ -382,7 +385,8 @@ int config_live_pause_menu(void);       // [Application] PauseInMenu
 int config_live_shadows(void);          // [Performance] Shadows
 int config_live_bloom(void);            // [Performance] Bloom
 int config_live_frame_gen(void);        // [Graphics] FrameGen (nvn/vulkan/framegen.c)
-int config_live_upscale_sharp(void);    // [Display] UpscaleFilter: 1 Sharp (nvn/vulkan/fsr.c, exec.c)
+int config_live_upscale_sharp(void);    // [Display] UpscaleFilter: UPSCALE_* (nvn/vulkan/fsr.c, exec.c)
+float config_live_fsr1_sharpness(void); // [Display] FSR1Sharpness (nvn/vulkan/fsr.c)
 void config_upscale_test(int sharp);    // (tests: MHGU_CONTROL "upscale 0|1") as if saved, until the next save
 int config_live_grass(void);            // [Performance] Grass
 int config_live_effects(void);          // [Performance] Effects

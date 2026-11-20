@@ -6593,6 +6593,148 @@ void vk_ps1_dither(TexBackend *b) {
     gp_mark("  ps1 15-bit colour");
 }
 
+// [Display] UpscaleFilter FSR1 (1.0.2, gu-native's suggestion thread and 4U#68: AMD FidelityFX Super Resolution 1.0, MIT,
+// THIRD_PARTY_NOTICES; shaders.c fsr1_easu.frag and fsr1_rcas.frag): the 3D picture (H) scaled up into its stand-in at
+// the HUD's size (H', fsr.c hud_start) by EASU, then sharpened by RCAS, where the plain scaling's blit was. Two
+// full-screen draws in render passes of their own; EASU draws into fsr1_mid (dst's size), which RCAS reads, or straight
+// into dst with a sharpness of 0. Plain Vulkan 1.0 (a sampled image, textureGather): it runs on Vulkan 1.1 drivers, where
+// FSR 3.1 can't. Both read and write through UNORM views, as vk_ps1_dither: the game's gamma-encoded colours, FSR 1's
+// perceptual space. Its cost shows in the "[vk] the minute" line's GPU times
+static VkDescriptorSetLayout fsr1_set_layout;
+static VkPipelineLayout fsr1_layout;
+static TexBackend fsr1_mid;
+static VkPipeline fsr1_pipeline(VkRenderPass rp, bool rcas) {
+    static struct { VkRenderPass rp; bool rcas; VkPipeline p; } tab[8];
+    static int n;
+    for (int i = 0; i < n; i++) if (tab[i].rp == rp && tab[i].rcas == rcas) return tab[i].p;
+    if (!fsr1_layout) {
+        VkDescriptorSetLayoutBinding b = {0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
+        VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 1, .pBindings = &b};
+        VK_CHECK(vkCreateDescriptorSetLayout(g_vk.dev, &li, NULL, &fsr1_set_layout));
+        VkPushConstantRange pr = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 64};
+        VkPipelineLayoutCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1,
+                                         .pSetLayouts = &fsr1_set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &pr};
+        VK_CHECK(vkCreatePipelineLayout(g_vk.dev, &ci, NULL, &fsr1_layout));
+    }
+    VkPipelineShaderStageCreateInfo stages[2] = {
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
+         .module = vk_builtin_shader("resolve.vert"), .pName = "main"},
+        {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_FRAGMENT_BIT,
+         .module = vk_builtin_shader(rcas ? "fsr1_rcas.frag" : "fsr1_easu.frag"), .pName = "main"}};
+    VkPipelineVertexInputStateCreateInfo vi = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+    VkPipelineInputAssemblyStateCreateInfo ia = {.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+                                                 .topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST};
+    VkPipelineViewportStateCreateInfo vs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, .viewportCount = 1,
+                                            .scissorCount = 1};
+    VkPipelineRasterizationStateCreateInfo rs = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+                                                 .polygonMode = VK_POLYGON_MODE_FILL, .lineWidth = 1};
+    VkPipelineMultisampleStateCreateInfo ms = {.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                                               .rasterizationSamples = VK_SAMPLE_COUNT_1_BIT};
+    VkPipelineColorBlendAttachmentState att = {.colorWriteMask = 0xF};
+    VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+                                              .attachmentCount = 1, .pAttachments = &att};
+    VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkPipelineDynamicStateCreateInfo dy = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, .dynamicStateCount = 2,
+                                           .pDynamicStates = dyn};
+    VkGraphicsPipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = 2,
+                                       .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia,
+                                       .pViewportState = &vs, .pRasterizationState = &rs, .pMultisampleState = &ms,
+                                       .pColorBlendState = &cb, .pDynamicState = &dy, .layout = fsr1_layout, .renderPass = rp};
+    VkPipeline p = VK_NULL_HANDLE;
+    if (sync_pipeline(&pi, &p) != VK_SUCCESS) LOG("[fsr1] the %s pipeline failed\n", rcas ? "RCAS" : "EASU");
+    if (n < 8) tab[n].rp = rp, tab[n].rcas = rcas, tab[n++].p = p;
+    return p;
+}
+static VkFormat fsr1_unorm(VkFormat f) {
+    return f == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : f == VK_FORMAT_B8G8R8A8_SRGB ? VK_FORMAT_B8G8R8A8_UNORM : f;
+}
+// One full-screen draw of p into dst (w x h), reading src (linear: the sampler's filter) with the push constants
+static void fsr1_draw(VkCommandBuffer cb, VkPipeline p, VkRenderPass rp, VkImageView dst, uint32_t w, uint32_t h,
+                      VkImageView src, bool linear, const float *push, uint32_t push_size) {
+    VkDescriptorSet set = vk_alloc_set(fsr1_set_layout);
+    VkDescriptorImageInfo ii = {vk_default_sampler(linear), src, VK_IMAGE_LAYOUT_GENERAL};
+    VkWriteDescriptorSet wr = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = set, .dstBinding = 0, .descriptorCount = 1,
+                               .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii};
+    vkUpdateDescriptorSets(g_vk.dev, 1, &wr, 0, NULL);
+    VkRect2D area = {{0, 0}, {w, h}};
+    VkClearValue cv = {{{0, 0, 0, 0}}};
+    VkRenderPassBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO, .renderPass = rp,
+                                .framebuffer = vk_framebuffer(rp, &dst, 1, w, h), .renderArea = area,
+                                .clearValueCount = 1, .pClearValues = &cv};
+    vkCmdBeginRenderPass(cb, &bi, VK_SUBPASS_CONTENTS_INLINE);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, p);
+    vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, fsr1_layout, 0, 1, &set, 0, NULL);
+    vkCmdPushConstants(cb, fsr1_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, push_size, push);
+    VkViewport vp = {0, 0, (float)w, (float)h, 0, 1};
+    vkCmdSetViewport(cb, 0, 1, &vp);
+    vkCmdSetScissor(cb, 0, 1, &area);
+    vkCmdDraw(cb, 3, 1, 0, 0);
+    vkCmdEndRenderPass(cb);
+    vk_full_barrier(cb);
+}
+bool vk_fsr1_scale(TexBackend *s, TexBackend *d, float sharpness) {
+    if (!s || !d || !s->image || !d->image || s->samples != 1 || d->samples != 1 || s->aspect != VK_IMAGE_ASPECT_COLOR_BIT ||
+        d->aspect != VK_IMAGE_ASPECT_COLOR_BIT || (s->width >= d->width && s->height >= d->height))
+        return false;
+    if (fill.dst && (fill.dst == s || fill.src == s || fill.dst == d || fill.src == d)) fill_now();
+    if (in_pass) vk_end_pass(), st.rt_dirty = true;
+    vk_ms_resolve(s);
+    const VkFormat fs = fsr1_unorm(s->format), fd = fsr1_unorm(d->format);
+    const bool rcas = sharpness > 0.0f;
+    TexBackend *m = &fsr1_mid;
+    if (rcas && (!m->image || m->format != fd || m->width != d->width || m->height != d->height)) {
+        if (m->image) {
+            vk_views_forget(m);
+            vk_defer_image(m->image, m->mem);
+            m->image = VK_NULL_HANDLE;
+        }
+        VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fd,
+                                .extent = {d->width, d->height, 1}, .mipLevels = 1, .arrayLayers = 1,
+                                .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+                                .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                                .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+        if (vk_create_image(&ci, &m->image, &m->mem) != VK_SUCCESS) {
+            static int nlog;
+            if (nlog++ < 2) LOG("[fsr1] no %ux%u image for EASU's picture (format %d): scaled plainly\n", d->width, d->height, fd);
+            m->image = VK_NULL_HANDLE;
+            return false;
+        }
+        m->format = fd, m->base_type = VK_IMAGE_VIEW_TYPE_2D, m->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        m->width = d->width, m->height = d->height, m->depth = m->layers = m->levels = m->samples = 1;
+        m->gpu_owned = true;
+        vk_image_init_layout(vk_upload_cmd(), m->image, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+    VkRenderPass rp = render_pass(&fd, 1, VK_FORMAT_UNDEFINED, 1, 1);  // (cleared as it begins: every pixel is drawn)
+    VkPipeline pe = fsr1_pipeline(rp, false), pr = rcas ? fsr1_pipeline(rp, true) : VK_NULL_HANDLE;
+    static const VkComponentMapping id = {0};
+    VkImageView src = vk_image_view(s, VK_IMAGE_VIEW_TYPE_2D, fs, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageView dst = vk_image_view(d, VK_IMAGE_VIEW_TYPE_2D, fd, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
+    VkImageView mid = rcas ? vk_image_view(m, VK_IMAGE_VIEW_TYPE_2D, fd, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT) : VK_NULL_HANDLE;
+    if (!pe || !src || !dst || (rcas && (!pr || !mid))) return false;
+    // FsrEasuCon: the whole picture in, the whole target out
+    const float iw = (float)s->width, ih = (float)s->height, ow = (float)d->width, oh = (float)d->height;
+    const float easu[16] = {iw / ow, ih / oh, 0.5f * iw / ow - 0.5f, 0.5f * ih / oh - 0.5f,
+                            1.0f / iw, 1.0f / ih, 1.0f / iw, -1.0f / ih,
+                            -1.0f / iw, 2.0f / ih, 1.0f / iw, 2.0f / ih,
+                            0.0f, 4.0f / ih, 0.0f, 0.0f};
+    VkCommandBuffer cb = vk_cmd();
+    vk_full_barrier(cb);
+    fsr1_draw(cb, pe, rp, rcas ? mid : dst, d->width, d->height, src, true, easu, sizeof easu);
+    if (rcas) {  // FsrRcasCon: stops 2 - 2 x sharpness (FSR's Sharpness's), as a linear amount
+        float sh = sharpness > 1.0f ? 1.0f : sharpness;
+        const float con[4] = {exp2f(-(2.0f - 2.0f * sh)), 0, 0, 0};
+        fsr1_draw(cb, pr, rp, dst, d->width, d->height, mid, false, con, sizeof con);
+    }
+    ss_forget();  // (its own pipelines, sets and state: the next draw sets them all again)
+    d->ms_valid = false;
+    gp_mark("  fsr1 easu + rcas");
+    static int nlog;
+    if (nlog++ < 1)
+        LOG("[fsr1] the %ux%u 3D picture scaled up to %ux%u by FSR 1 (EASU%s)\n", s->width, s->height, d->width, d->height,
+            rcas ? ", then RCAS" : "");
+    return true;
+}
+
 // (FILL_CHECKING, its copies done) the blit's (or copy's) picture and the draw's: the same bytes
 static void fill_check(int kind) {
 #define fc fcs[kind]
@@ -7533,7 +7675,7 @@ void vk_present_draw(VkCommandBuffer cb, TexBackend *b, float vx, float vy, floa
     // ([Display] UpscaleFilter Sharp: a 3D picture smaller than the screen that is the game's own frame, its HUD in it - a
     // phone without Low-end mode, a smaller RenderResolution - scaled up by its nearest pixels. With the HUD's picture at
     // the screen's size over it, fsr.c's plain scaling did that and this stays linear; FSR: never)
-    const bool sharp = !g_fsr_on && g_scaled_3d && config_live_upscale_sharp();
+    const bool sharp = !g_fsr_on && g_scaled_3d && config_live_upscale_sharp() == UPSCALE_SHARP;
     VkDescriptorImageInfo ii = {vk_default_sampler(!sharp), raw_view(b), VK_IMAGE_LAYOUT_GENERAL};
     VkWriteDescriptorSet w = {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = ds, .dstBinding = 0, .descriptorCount = 1,
                               .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii};

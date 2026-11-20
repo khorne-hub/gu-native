@@ -1730,9 +1730,14 @@ static void hud_start(const char *why) {
     const bool ps1 = vk_ps1_on(PS1_COLOUR);
     if (ps1 && !frame_fsr) vk_ps1_dither(vk_tex(g_h, true));
     // ([Display] UpscaleFilter Sharp, FSR off: the nearest pixels, by the blit always - the draw that can stand in for it,
-    // MHGU_PERF_HUDSTART_FUSE, is the linear blit's, and its first comparison is made against that one)
-    const bool sharp = plain_only && config_live_upscale_sharp();
-    if (!frame_fsr && (sharp || !((hud_fuse & 2) && vk_color_fill_later(hs->backend, vk_tex(g_h, true), 0)))) {
+    // MHGU_PERF_HUDSTART_FUSE, is the linear blit's, and its first comparison is made against that one. 1.0.2, FSR1: FSR 1's
+    // EASU and RCAS instead, exec.c vk_fsr1_scale - never while FSR 3.1 runs, nor over the PS1 filter's blocks, nor for a
+    // picture as big as the HUD's or bigger; the blit where it can't run)
+    const int filter = plain_only ? config_live_upscale_sharp() : UPSCALE_SMOOTH;
+    const bool sharp = filter == UPSCALE_SHARP;
+    const bool fsr1 = !frame_fsr && filter == UPSCALE_FSR1 && !ps1 &&
+                      vk_fsr1_scale(vk_tex(g_h, true), hs->backend, config_live_fsr1_sharpness());
+    if (!frame_fsr && !fsr1 && (sharp || !((hud_fuse & 2) && vk_color_fill_later(hs->backend, vk_tex(g_h, true), 0)))) {
         scale_to_stand(g_h, hs, sharp ? VK_FILTER_NEAREST : VK_FILTER_LINEAR);
         if ((hud_fuse & 2) && !sharp) vk_color_fill_check(hs->backend, vk_tex(g_h, true), 0);  // (the first time: the draw compared with it)
     }
@@ -2032,7 +2037,8 @@ static void plain_fallback(const char *why) {
 
 void vk_fsr_init(void) {
 #ifdef __ANDROID__
-    if (!g_fsr_output[0] || (!g_config.fsr && !g_config.low_end && !g_fsr_unavailable)) return;
+    if (!g_fsr_output[0] || (!g_config.fsr && !g_config.low_end && !g_fsr_unavailable && g_config.upscale_sharp != UPSCALE_FSR1))
+        return;  // (1.0.2: UpscaleFilter FSR1's HUD at the screen's size, config.c fsr1_hud)
 #else  // (a desktop: config.c sets the output for plain scaling at any RenderScale below 100, Low-end mode or not)
     if (!g_fsr_output[0]) return;
 #endif

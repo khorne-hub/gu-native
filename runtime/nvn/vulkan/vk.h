@@ -175,6 +175,9 @@ VkSampler vk_sampler(NvnSamplerDesc *d);
 VkSampler vk_sampler_ps1(NvnSamplerDesc *d, int level);  // (pixelated textures: PS1 filter, Brick: textures.c)
 // (the PS1 filter's 15-bit colour: exec.c) the picture b in place, 5 bits a channel with a 4x4 ordered dither
 void vk_ps1_dither(TexBackend *b);
+// ([Display] UpscaleFilter FSR1, 1.0.2: exec.c) src scaled up into dst by FSR 1's EASU, then RCAS at sharpness (0..1,
+// 0: none); false (nothing drawn) when it can't run or src isn't smaller than dst: the caller scales it as before
+bool vk_fsr1_scale(TexBackend *src, TexBackend *dst, float sharpness);
 // The PS1 filter ([Graphics] PS1Filter) is on, with one of these parts (ps1.c; MHGU_PS1_PARTS=<mask> for tests)
 enum { PS1_TEXTURES = 1, PS1_COLOUR = 2, PS1_SCANLINES = 4, PS1_WOBBLE = 8, PS1_AFFINE = 16, PS1_ALL = 31 };
 bool vk_ps1_on(int parts);
