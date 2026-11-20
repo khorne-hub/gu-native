@@ -455,7 +455,8 @@ de un teléfono por el servidor y en la misma Wi-Fi; todavía no una misión com
 #### Juego cruzado con emuladores
 
 Los jugadores de esta app (teléfonos y PC) pueden jugar con jugadores de emuladores que corren el juego, en su juego en
-línea. En el engranaje, **Multijugador**, **Jugar con emuladores**, **Jugar en línea con**:
+línea. En el engranaje, **Multijugador**, **Jugar en línea con** (las filas de abajo quedan después en **Multijugador**,
+**Jugar con emuladores**):
 
 - **Salas de emuladores (Eden, Citron, Sudachi, yuzu)**: las salas multijugador de la familia de emuladores de yuzu.
   1. Elige una sala: **Salas públicas** lista las salas públicas donde se juega este juego (del lobby que usan esos

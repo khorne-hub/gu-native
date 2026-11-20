@@ -449,7 +449,7 @@ on the same Wi-Fi; a full quest together not yet.
 #### Crossplay with emulators
 
 Players of this app (phones and PCs) can play with players of emulators running the game, in their online play. Under the
-gear, **Multiplayer**, **Play with emulators**, **Play online with**:
+gear, **Multiplayer**, **Play online with** (the rows below are then in **Multiplayer**, **Play with emulators**):
 
 - **Emulator rooms (Eden, Citron, Sudachi, yuzu)**: the multiplayer rooms of the yuzu family of emulators.
   1. Choose a room: **Public rooms** lists the public rooms where the game is played (from the lobby those emulators use,
