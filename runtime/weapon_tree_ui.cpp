@@ -15,13 +15,28 @@
 // - weaponCreateWNN.wcd, the recipes that forge a base from scratch: +2 u16 the base.
 // - <lang>/table/weaponNNMsgData.wNNm: a u32 a base, its first string / 6 in weaponNNMsgData_<lang>.gmd, whose six
 //   strings a base are its name and text, its final level's name and text, and two more.
+// - the details (1.0.2, with Heavenfall's notes on these tables, core/equipment/mhgen/gear_weapons.py and
+//   gear_recipes.py, by popzol and BlitzWOLF, GPL-3.0: the facts, the code is this port's): a base's rarity - 1 at +11,
+//   its price u32 +12 (forging costs 3/2 of it, an upgrade into it the price, a level L the price x L, from the level
+//   at +16 on the price x (L + 9)); a level's sharpness row +6 (in table/kireajiData.kad: where each colour ends, seven
+//   u16) shown up to 150 + 25 x the byte +7, its defense +10 (a bow's or a bowgun's +8);
+//   weaponCreateWNN.wcd (38 bytes): u16 kind (1 the ordinary row), u16 base, u16, eight (u16 item, u8 count, u8 flag)
+//   from +6, the first five the materials; weaponProcessWNN.wpd (32 bytes): u16 base, u16 level, four (u16 item, u8
+//   count) from +4, a material category u16 and its value u16 at +16; the items' names: <lang>/table/itemData_<lang>.gmd
+//   (two strings an item), the categories': itemCategoryTypeData_<lang>.gmd.
+// - the classes' icons: <lang>/GUI/99_texture/HD_cmn_icon_GSM_NOMIP.tex, the game's grey icon sheet (RGBA8, 512 x 1024,
+//   the console's block-linear layout), which the game tints by rarity: its large icons from y 416, 48 pixels a cell, ten
+//   a row, the weapons' the cells 55 to 69 (the game's table, by class: 55 57 59 61 65 63 63 56 67 62 66 58 60 68 69).
+//   Read from the player's own copy of the game; none of it is in the port.
 // Checked against the trees players know (Iron Sword: Buster Sword at level 3, Ravager Blade at 4, Lagiacrus Blade
-// and Clero Blade at 5; Nargacuga's weapons with their affinity, Plesioth's water, Diablos' negative affinity).
+// and Clero Blade at 5; Nargacuga's weapons with their affinity, Plesioth's water, Diablos' negative affinity), and in
+// the game's Smithy (Petrified Blade level 2: 1700z and Ore value 4; the sharpness of three level 1 weapons).
 #include "weapon_tree.h"
 
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +54,9 @@
 #include "weapon_tree_panel.h"
 
 extern "C" const char *romfs_host_path(const char *rpath);  // (runtime/romfs.h, a C header)
+extern "C" uint32_t tegra_default_block_height_log2(uint32_t height_in_blocks);  // (runtime/nvn/tegra.h, a C header)
+extern "C" void tegra_deswizzle(const uint8_t *src, uint8_t *dst, uint32_t wb, uint32_t hb, uint32_t d, uint32_t bpb,
+                                uint32_t block_height_log2, uint32_t block_depth_log2);
 extern "C" SDL_Window *ui_window(void);                    // (runtime/rt.h)
 #define LOG(...) rt_logf(__VA_ARGS__)
 
@@ -51,6 +69,14 @@ const char *const CLASS_NAMES[15] = {"Great Sword", "Sword and Shield", "Hammer"
                                      "Light Bowgun", "Long Sword", "Switch Axe", "Gunlance", "Bow", "Dual Blades",
                                      "Hunting Horn", "Insect Glaive", "Charge Blade"};
 const char *const LANG_FOLDER[6] = {"eng", "eng", "fre", "spa", "ger", "ita"};  // (the font has Latin letters only)
+// the classes by table number in the panel's (its icons' order), and the word for a category's value in each language
+const int PANEL_CLASS[15] = {weapon_tree_panel::kGreatSword, weapon_tree_panel::kSwordAndShield, weapon_tree_panel::kHammer,
+                             weapon_tree_panel::kLance, weapon_tree_panel::kHeavyBowgun, -1, weapon_tree_panel::kLightBowgun,
+                             weapon_tree_panel::kLongSword, weapon_tree_panel::kSwitchAxe, weapon_tree_panel::kGunlance,
+                             weapon_tree_panel::kBow, weapon_tree_panel::kDualBlades, weapon_tree_panel::kHuntingHorn,
+                             weapon_tree_panel::kInsectGlaive, weapon_tree_panel::kChargeBlade};
+const int ICON_CELL[weapon_tree_panel::kWeaponClasses] = {55, 56, 57, 58, 59, 60, 61, 62, 63, 65, 66, 67, 68, 69};
+const char *const VALUE_WORD[6] = {"value", "value", "valeur", "valor", "Wert", "valore"};
 
 // ---- the tables
 std::string read_file(const char *rpath) {
@@ -99,20 +125,37 @@ int element(int e) {
 }
 
 struct Level {
-    int attack = 0, affinity = 0, element_value = 0, element2_value = 0, slots = 0;
+    int attack = 0, affinity = 0, element_value = 0, element2_value = 0, slots = 0, defense = 0;
+    int sharpness = -1, cut = 0;           // (melee) its sharpness row, shown up to `cut`
+    weapon_tree::Recipe recipe;            // the upgrade to it (level 1: into the base, from the one before)
 };
 struct Base {
     bool real = false, forge = false;
     std::string name, final_name;
     int element = 0, element2 = 0;
+    int rarity = 0, price = 0, change_level = 0;
     std::vector<std::pair<int, int>> kids;  // (level, base)
     std::vector<Level> levels;              // [level - 1]
+    weapon_tree::Recipe create;             // forged from scratch
 };
 struct Tables {
     int cls = -1, lang = -1;
     bool ok = false;
     std::vector<Base> bases;
+    std::vector<std::array<int, 7>> sharpness;  // table/kireajiData.kad
 };
+
+// A recipe's materials: `n` (u16 item, u8 count) from `at`, `step` bytes apart, named from the items' strings
+void materials(const uint8_t *r, int at, int n, int step, const std::vector<std::string> &items, weapon_tree::Recipe *out) {
+    for (int k = 0; k < n; k++) {
+        const int item = r[at + step * k] | r[at + step * k + 1] << 8, count = r[at + step * k + 2];
+        if (!item || !count) continue;
+        weapon_tree::Material m;
+        m.item = item, m.count = count;
+        if (2 * (size_t)item < items.size()) m.name = items[2 * item];
+        out->items.push_back(m);
+    }
+}
 
 Tables load_tables(int cls, int lang) {
     Tables t;
@@ -124,17 +167,30 @@ Tables load_tables(int cls, int lang) {
     std::string ld = read_file(p);
     snprintf(p, sizeof p, "nativeNX/table/weaponCreateW%02d.wcd", cls);
     std::string cd = read_file(p);
+    snprintf(p, sizeof p, "nativeNX/table/weaponProcessW%02d.wpd", cls);
+    std::string pd = read_file(p);
+    std::string kd = read_file("nativeNX/table/kireajiData.kad");
     const char *lf = LANG_FOLDER[lang >= 1 && lang <= 5 ? lang : 1];
     snprintf(p, sizeof p, "nativeNX/%s/table/weapon%02dMsgData.w%02dm", lf, cls, cls);
     std::string md = read_file(p);
     snprintf(p, sizeof p, "nativeNX/%s/table/weapon%02dMsgData_%s.gmd", lf, cls, lf);
     std::vector<std::string> names = gmd(read_file(p));
-    size_t nb, bs, nl, ls, nc = 0, cs = 0, nm, ms;
+    snprintf(p, sizeof p, "nativeNX/%s/table/itemData_%s.gmd", lf, lf);
+    std::vector<std::string> items = gmd(read_file(p));
+    snprintf(p, sizeof p, "nativeNX/%s/table/itemCategoryTypeData_%s.gmd", lf, lf);
+    std::vector<std::string> cats = gmd(read_file(p));
+    size_t nb, bs, nl, ls, nc = 0, cs = 0, np = 0, ps = 0, nk = 0, ks = 0, nm, ms;
     if (!records(bd, &nb, &bs) || bs < 32 || nb > 256 || !records(ld, &nl, &ls) || ls < 15) {
         LOG("[weapon tree] class %02d: its tables can't be read (%s)\n", cls, bd.empty() ? "missing" : "unknown sizes");
         return t;
     }
     records(cd, &nc, &cs);
+    if (!records(pd, &np, &ps) || ps < 20) np = 0;
+    if (records(kd, &nk, &ks) && ks == 14) {
+        t.sharpness.resize(nk);
+        for (size_t i = 0; i < nk; i++)
+            for (int k = 0; k < 7; k++) t.sharpness[i][k] = (uint8_t)kd[8 + 14 * i + 2 * k] | (uint8_t)kd[9 + 14 * i + 2 * k] << 8;
+    }
     const bool ranged = cls == 4 || cls == 6, bow = cls == 10;
     t.bases.resize(nb);
     for (size_t i = 0; i < nb; i++) {
@@ -142,6 +198,7 @@ Tables load_tables(int cls, int lang) {
         Base &b = t.bases[i];
         b.element = ranged ? 0 : r[17];
         b.element2 = cls == 11 ? r[18] : 0;
+        b.rarity = r[11] + 1, b.price = (int)u32(bd, 8 + i * bs + 12), b.change_level = r[16];
         for (int k = 0; k < 5; k++) {
             int lv = r[bs - 10 + 2 * k], kid = r[bs - 9 + 2 * k];
             if (kid > 0 && (size_t)kid < nb && lv > 0) b.kids.push_back({lv, kid});
@@ -157,17 +214,38 @@ Tables load_tables(int cls, int lang) {
         if ((int)b.levels.size() < lv) b.levels.resize(lv);
         Level &l = b.levels[lv - 1];
         if (ranged || bow) {
-            l.attack = r[6] | r[7] << 8, l.affinity = (int8_t)r[9], l.slots = r[bow ? 12 : 10];
+            l.attack = r[6] | r[7] << 8, l.affinity = (int8_t)r[9], l.slots = r[bow ? 12 : 10], l.defense = r[8];
             l.element_value = bow ? r[10] : 0;
         } else {
             l.attack = r[8] | r[9] << 8, l.affinity = (int8_t)r[11], l.element_value = r[12], l.slots = r[ls - 1];
             l.element2_value = cls == 11 && ls > 14 ? r[14] : 0;
+            l.defense = r[10], l.sharpness = r[6], l.cut = 150 + 25 * r[7];
         }
         if (l.slots > 3) l.slots = 3;
     }
-    for (size_t i = 0; cs >= 4 && i < nc; i++) {
-        size_t base = (uint8_t)cd[8 + i * cs + 2] | (uint8_t)cd[8 + i * cs + 3] << 8;
-        if (base < nb) t.bases[base].forge = true;
+    for (size_t i = 0; cs >= 26 && i < nc; i++) {  // (the create rows: kind 1 the ordinary one)
+        const uint8_t *r = (const uint8_t *)cd.data() + 8 + i * cs;
+        size_t base = r[2] | r[3] << 8;
+        if (base >= nb) continue;
+        Base &b = t.bases[base];
+        b.forge = true;
+        if ((r[0] | r[1] << 8) != 1 || !b.create.items.empty()) continue;
+        materials(r, 6, 5, 4, items, &b.create);
+        b.create.zenny = b.price * 3 / 2;
+    }
+    for (size_t i = 0; i < np; i++) {  // (the upgrade rows: to a base's level)
+        const uint8_t *r = (const uint8_t *)pd.data() + 8 + i * ps;
+        size_t base = r[0] | r[1] << 8;
+        int lv = r[2] | r[3] << 8;
+        if (base >= nb || lv < 1 || lv > (int)t.bases[base].levels.size()) continue;
+        Base &b = t.bases[base];
+        weapon_tree::Recipe &rc = b.levels[lv - 1].recipe;
+        materials(r, 4, 4, 3, items, &rc);
+        const int cat = r[16] | r[17] << 8, value = r[18] | r[19] << 8;
+        if (cat > 0 && value > 0 && (size_t)cat < cats.size())
+            rc.points = cats[cat] + " (" + VALUE_WORD[lang >= 1 && lang <= 5 ? lang : 1] + " " + std::to_string(value) + ")";
+        rc.level = lv;
+        rc.zenny = lv == 1 ? b.price : b.price * (!b.change_level || lv < b.change_level ? lv : lv + 9);
     }
     for (size_t i = 1; i < nb; i++) {
         Base &b = t.bases[i];
@@ -175,6 +253,41 @@ Tables load_tables(int cls, int lang) {
     }
     t.ok = true;
     return t;
+}
+
+// ---- the classes' icons: the game's sheet, its weapons' cells cut and made 96 pixels a side (whole pixels)
+weapon_tree_panel::Icons g_icons;
+int g_icons_lang = -1;
+
+void load_icons(int lang) {
+    if (g_icons_lang == lang) return;
+    g_icons_lang = lang;
+    char p[128];
+    snprintf(p, sizeof p, "nativeNX/%s/GUI/99_texture/HD_cmn_icon_GSM_NOMIP.tex", LANG_FOLDER[lang >= 1 && lang <= 5 ? lang : 1]);
+    const std::string d = read_file(p);
+    // TEX: +8 the levels (bits 0-5), the width (6-18) and the height (19-31), +12 the format (bits 8-15: 7 RGBA8)
+    const uint32_t b = u32(d, 8), c = u32(d, 12);
+    const int w = (b >> 6) & 0x1fff, h = (b >> 19) & 0x1fff;
+    if (d.size() < 0x18 || memcmp(d.data(), "TEX", 4) || ((c >> 8) & 0xff) != 7 || w < 256 || w % 256 || h != 2 * w ||
+        d.size() < 0x18 + (size_t)w * h * 4) {
+        LOG("[weapon tree] the game's icons can't be read (%s): drawn ones\n", d.empty() ? "no file" : "not the sheet known");
+        return;
+    }
+    std::vector<uint8_t> lin((size_t)w * h * 4);
+    tegra_deswizzle((const uint8_t *)d.data() + 0x18, lin.data(), w, h, 1, 4, tegra_default_block_height_log2(h), 0);
+    const int sc = w / 256, cell = 24 * sc, top = 208 * sc, out = 96, k = out / cell, n = weapon_tree_panel::kWeaponClasses;
+    weapon_tree_panel::Icons ic;
+    ic.cell = out;
+    ic.rgba.assign((size_t)out * out * n * 4, 0);
+    for (int j = 0; j < n; j++) {
+        const int cx = ICON_CELL[j] % 10 * cell, cy = top + ICON_CELL[j] / 10 * cell;
+        for (int y = 0; y < out; y++)
+            for (int x = 0; x < out; x++)
+                memcpy(&ic.rgba[((size_t)y * out * n + j * out + x) * 4], &lin[((size_t)(cy + y / k) * w + cx + x / k) * 4], 4);
+    }
+    ic.serial = g_icons.serial + 1;
+    g_icons = std::move(ic);
+    LOG("[weapon tree] the game's icons read (%dx%d sheet, %d pixel cells)\n", w, h, cell);
 }
 
 // ---- the state: the input thread asks (g_req), the game thread draws and loads (draw_frame)
@@ -233,8 +346,15 @@ bool load(const WtSmithy &s) {
         w.element = element(b.element), w.element_value = w.element ? l.element_value : 0;
         w.element2 = element(b.element2), w.element2_value = w.element2 ? l.element2_value : 0;
         w.forge = b.forge;
+        w.rarity = b.rarity, w.defense = l.defense;
+        if (l.sharpness >= 0 && (size_t)l.sharpness < g_tables.sharpness.size())
+            for (int k = 0; k < 7; k++) w.sharpness.push_back(std::min(g_tables.sharpness[l.sharpness][k], l.cut));
+        w.create = b.create, w.upgrade = b.levels[0].recipe;
+        if (level >= 1 && level < w.levels) w.next = b.levels[level].recipe;  // (its next level's, when it is had)
+        if (w.upgrade.level == 1) w.upgrade.level = 0;
         for (const auto &k : b.kids) w.children.push_back(k.second);
     }
+    cls.sharpness_full = 450;
     for (int i = 0; i < n; i++)  // (the level of its parent that upgrades into it)
         for (const auto &k : g_tables.bases[i].kids)
             if (k.second < n && !cls.weapons[k.second].from_level) cls.weapons[k.second].from_level = k.first;
@@ -246,6 +366,9 @@ bool load(const WtSmithy &s) {
     g_content.view = std::move(view);
     g_content.spanish = config_language() == 1;
     g_content.class_name = weapon_tree_panel::Words(CLASS_NAMES[s.cls], g_content.spanish);
+    g_content.weapon_class = PANEL_CLASS[s.cls];
+    load_icons(lang);
+    g_content.icons = &g_icons;
     if (!same) {
         g_state = weapon_tree_panel::State{};
         LOG("[weapon tree] class %02d base %d level %d (worn %d level %d): %d weapons shown\n%s", s.cls, s.base, s.level, worn,
