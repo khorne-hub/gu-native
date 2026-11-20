@@ -8,6 +8,10 @@
 
 #include <SDL3/SDL.h>
 
+#ifdef __cplusplus
+extern "C" {  // (runtime/touch.cpp reads a control profile's .zip too)
+#endif
+
 typedef struct {
     char *name;         // UTF-8 ('\' read as '/'; a name in the old DOS code page converted)
     bool dir;           // a folder: no data
@@ -40,3 +44,7 @@ void unzip_close(Unzip *z);  // (after any unzip_open, whatever it answered)
 // Entry i (not a folder) into the file `to`, created or replaced; on a failure it is removed again. progress(ud, n):
 // n more bytes were written (NULL: none).
 UnzipResult unzip_extract(Unzip *z, int i, const char *to, void (*progress)(void *ud, uint64_t n), void *ud);
+
+#ifdef __cplusplus
+}
+#endif
