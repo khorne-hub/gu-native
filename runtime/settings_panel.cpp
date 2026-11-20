@@ -5485,6 +5485,10 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             float top = font * .3f, who = r.who.empty() ? 0 : std::floor(size * .9f);  // (a chat line's sender over it)
             float bar = r.progress >= 0 ? std::floor(font * .55f) : 0, under = bar ? std::floor(font * .35f) : 0;
             ImGui::Dummy(ImVec2(width, ts.y + top * 2 + who + under + bar));
+            const bool strip = chat_window_view();  // (1.0.2, the owner's: the chat's lines on a dark strip each, over a light
+            if (strip)                              // game - grass, snow - in the see-through window; the text bright)
+                w->DrawList->AddRectFilled(ImVec2(p.x, p.y + top * .35f), ImVec2(p.x + width, p.y + ts.y + top * 1.65f + who + under + bar),
+                                           IM_COL32(10, 7, 5, 190), font * .25f);
             if (bar) {  // (a progress: a dark slot under the text, filled with the accent as the game's gauges)
                 ImVec2 a(p.x + indent, p.y + top + who + ts.y + under), b(p.x + indent + wrap, a.y + bar);
                 float round = std::min(bar * .5f, theme().rounding), x = a.x + (b.x - a.x) * std::clamp(r.progress, 0.f, 1.f);
@@ -5497,9 +5501,13 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             if (who)
                 shadow_text(w->DrawList, who, ImVec2(p.x + indent, p.y + top), r.who_mine ? theme().text_dim : theme().accent,
                             r.who.c_str());
-            w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top + who),
-                                 r.warn ? theme().warn : r.who.empty() && !r.bright ? theme().text_dim : theme().text, r.title.c_str(),
-                                 nullptr, wrap);
+            if (strip)
+                shadow_text(w->DrawList, size, ImVec2(p.x + indent, p.y + top + who), r.warn ? theme().warn : theme().text,
+                            r.title.c_str(), wrap);
+            else
+                w->DrawList->AddText(ImGui::GetFont(), size, ImVec2(p.x + indent, p.y + top + who),
+                                     r.warn ? theme().warn : r.who.empty() && !r.bright ? theme().text_dim : theme().text,
+                                     r.title.c_str(), nullptr, wrap);
             continue;
         }
         if (r.header) {  // (a section's title: accent-coloured, a little apart from the rows above it)
