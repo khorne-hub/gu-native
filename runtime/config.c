@@ -103,7 +103,9 @@ static const char DEFAULT_INI[] =
 #ifndef __ANDROID__  // (config_load: below 100, fsr.c's plain scaling with the HUD at the screen's size)
     "; Below 100 the HUD and the text stay sharp: they are drawn at the screen's full resolution over the 3D picture\n"
 #endif
-    "; Between 10 and 100 (any percent; the 3D picture is never smaller than 320x180)\n"
+    "; Between 10 and 200 (any percent; the 3D picture is never smaller than 320x180). Above 100 it is drawn bigger than\n"
+    "; the screen and scaled down to it: smoother edges, for much more GPU and memory; it can lower the FPS, heat the\n"
+    "; device or close the game, at your own risk. FSR and the upscale filter are not used above 100\n"
     "; Default: 100\n"
     "RenderScale = 100\n"
     "\n"
@@ -935,7 +937,7 @@ const ConfigSetting g_settings[] = {
      "Windowed|window,Fullscreen|exclusive|exclusivefullscreen,Borderless|borderless*", NULL, true, ERR_SIZE},
     {"Display", "Resolution", SET_SIZE, F(width), F(height), 0, 0, "Desktop|auto", NULL, true, ERR_SIZE},
     {"Display", "RenderResolution", SET_SIZE, F(render_w), F(render_h), 0, 0, "Auto", NULL, true, ERR_SIZE},
-    {"Display", "RenderScale", SET_INT, F(render_scale), 0, RENDER_SCALE_MIN, 100, NULL, NULL, true, ERR_SIZE},
+    {"Display", "RenderScale", SET_INT, F(render_scale), 0, RENDER_SCALE_MIN, RENDER_SCALE_MAX, NULL, NULL, true, ERR_SIZE},
     {"Display", "UpscaleFilter", SET_CHOICE, F(upscale_sharp), 0, 0, 0, "Smooth|linear|bilinear,Sharp|nearest|point,FSR1|easu", NULL,
      false, ERR_MISC},
     {"Display", "FSR1Sharpness", SET_FLOAT, F(fsr1_sharpness), 0, 0.0f, 1.0f, NULL, NULL, false, ERR_MISC},
@@ -1730,7 +1732,7 @@ void config_load(void) {
     if ((e = getenv("MHGU_GRASS"))) g_config.grass = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_EFFECTS"))) g_config.effects = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FPS_LIMIT")) && atoi(e) >= FPS_MIN && atoi(e) <= FPS_MAX) g_config.fps = atoi(e), config_live_test(&g_config);
-    if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= 100) g_config.render_scale = atoi(e);
+    if ((e = getenv("MHGU_SCALE")) && atoi(e) >= 10 && atoi(e) <= RENDER_SCALE_MAX) g_config.render_scale = atoi(e);
     if ((e = getenv("MHGU_SHADOWS"))) g_config.shadows = atoi(e) != 0, config_live_test(&g_config);
     if ((e = getenv("MHGU_FSR"))) g_config.fsr = atoi(e) != 0;  // (test runs: MHGU_FSR=0|1, MHGU_FSR_QUALITY=quality...)
 #ifdef __ANDROID__
@@ -1779,6 +1781,12 @@ void config_load(void) {
             LOG("[config] RenderScale %d%% would be below 320x180: using %d%%\n", g_config.render_scale, s);
         }
         fit_aspect(tw * s / 100, th * s / 100, aspect, &w, &h);
+        if (w > RENDER_SIDE_MAX || h > RENDER_SIDE_MAX) {  // (1.0.2: above 100%, never past what a GPU's images allow)
+            int sw = w, sh = h;
+            fit_aspect(w > h ? RENDER_SIDE_MAX : RENDER_SIDE_MAX * w / h, w > h ? RENDER_SIDE_MAX * h / w : RENDER_SIDE_MAX,
+                       aspect, &w, &h);
+            LOG("[config] RenderScale %d%% would be %dx%d, more than %d a side: using %dx%d\n", s, sw, sh, RENDER_SIDE_MAX, w, h);
+        }
 #ifdef __ANDROID__
         // (a 3D picture a few lines under 720 is 720 lines tall instead, the game's own HUD canvas height: 66% of a
         // 1080-line screen gave 1582x712, and an Adreno on a Vulkan 1.1 driver got AdrenoFix's 2x MSAA for those 8 lines
@@ -1791,6 +1799,9 @@ void config_load(void) {
         }
 #endif
         if (s < 100) LOG("[config] RenderScale %d%%: the 3D picture at %dx%d (screen %dx%d)\n", s, w, h, tw, th);
+        if (s > 100)  // (1.0.2, S11: the whole frame drawn bigger and scaled down as it is shown; no HUD of its own, FSR or filter)
+            LOG("[config] RenderScale %d%%: the picture at %dx%d, scaled down to the screen %dx%d as it is shown (above 100%%: "
+                "the player's own risk)\n", s, w, h, tw, th);
 #ifdef __ANDROID__
         if (g_config.low_end && !g_config.fsr && s < 100) lowend_hud(h, tw, th, aspect);
         else if (g_config.upscale_sharp == UPSCALE_FSR1 && !g_config.fsr && s < 100) fsr1_hud(w, h, tw, th, aspect);
@@ -1814,9 +1825,13 @@ void config_load(void) {
     } else {
         int rw = g_config.render_w, rh = g_config.render_h;
 #ifdef __ANDROID__
-        // (a phone's exact size, the menu's 3D resolution "Exact size": 320x180 to the screen's own)
-        rw = rw < 320 ? 320 : rw > tw ? tw : rw;
-        rh = rh < 180 ? 180 : rh > th ? th : rh;
+        // (a phone's exact size, the menu's 3D resolution "Exact size": 320x180 to the screen's own; 1.0.2, S11: to twice it,
+        // RenderScale's 200%)
+        int mw = tw * RENDER_SCALE_MAX / 100, mh = th * RENDER_SCALE_MAX / 100;
+        if (mw > RENDER_SIDE_MAX) mw = RENDER_SIDE_MAX;
+        if (mh > RENDER_SIDE_MAX) mh = RENDER_SIDE_MAX;
+        rw = rw < 320 ? 320 : rw > mw ? mw : rw;
+        rh = rh < 180 ? 180 : rh > mh ? mh : rh;
 #endif
         fit_aspect(rw, rh, aspect, &w, &h);
         if (w != g_config.render_w || h != g_config.render_h)

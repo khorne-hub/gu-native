@@ -2381,7 +2381,17 @@ void mods_rows(std::vector<Row> &r) {
 // Render resolution. Any percent from RENDER_SCALE_MIN to 100: left / right one percent, a tap the usual ones (gu-native
 // #204, 4u-native #51: 20 %, 55-60 %); a phone's list also has an exact size (RenderResolution, its Width and Height rows
 // under this one; a desktop has them as Render resolution Custom). A percent not among them, as the file may have it, shows
-// as it is
+// as it is. 1.0.2 (S11, TheKillerZombies550's suggestion; the MH4U port goes to 8x): up to RENDER_SCALE_MAX, the value in
+// red above 100 and a note under the row that it is at the player's own risk
+const char *scale_risk() {
+#ifdef __ANDROID__
+    return en_es("Above 100%: more GPU and memory. It can lower the FPS, heat the phone or close the game; at your own risk.",
+                 "Más de 100%: más GPU y memoria. Puede bajar los FPS, calentar el teléfono o cerrar el juego; bajo tu responsabilidad.");
+#else
+    return en_es("Above 100%: more GPU and memory. It can lower the FPS, heat the PC or close the game; at your own risk.",
+                 "Más de 100%: más GPU y memoria. Puede bajar los FPS, calentar la PC o cerrar el juego; bajo tu responsabilidad.");
+#endif
+}
 void scale_row(std::vector<Row> &r) {
     Config &c = s.draft;
     if (c.fsr && !c.low_end)
@@ -2390,7 +2400,7 @@ void scale_row(std::vector<Row> &r) {
     if (c.render_w)
         return;
 #endif
-    static const int presets[] = {100, 90, 80, 75, 66, 60, 55, 50, 40, 33, 25, 20};
+    static const int presets[] = {200, 175, 150, 125, 100, 90, 80, 75, 66, 60, 55, 50, 40, 33, 25, 20};
     const int n = (int)std::size(presets);
     // (the screen held landscape: the size a percent comes to, about, before the picture's shape; config.c has the exact one)
     const int sw = std::max(g_config.width, g_config.height), sh = std::min(g_config.width, g_config.height);
@@ -2402,10 +2412,11 @@ void scale_row(std::vector<Row> &r) {
         row.value = std::string(en_es("Exact", "Exacta")) + " (" + std::to_string(c.render_w) + "x" + std::to_string(c.render_h) + ")";
     } else {
         row.value = std::to_string(c.render_scale) + "%";
-        if (sw > 0 && c.render_scale < 100)
+        if (sw > 0 && c.render_scale != 100)
             row.value += " (" + std::to_string(sw * c.render_scale / 100 & ~1) + "x" + std::to_string(sh * c.render_scale / 100 & ~1) + ")";
         row.number = true;
-        row.adjust = [](int d) { s.draft.render_scale = std::clamp(s.draft.render_scale + d, RENDER_SCALE_MIN, 100); };
+        row.adjust = [](int d) { s.draft.render_scale = std::clamp(s.draft.render_scale + d, RENDER_SCALE_MIN, RENDER_SCALE_MAX); };
+        row.warn = c.render_scale > 100;
     }
     Row copy = row;
     row.menu = true;
@@ -2441,30 +2452,46 @@ void scale_row(std::vector<Row> &r) {
         "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a tap offers "
         "the usual ones and an exact size. Lower is faster and softer. The HUD and the text are drawn at this size too, so "
         "they soften with it, unless Low-end mode or FSR is on: drawing them at the screen's full size over a smaller 3D "
-        "picture costs a weak phone's GPU more than it gains.",
+        "picture costs a weak phone's GPU more than it gains. Above 100% (up to 200%) the picture is drawn bigger than the "
+        "screen and scaled down to it: smoother edges, for much more GPU and memory, at your own risk; FSR and the upscale "
+        "filter are not used there.",
         "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un toque "
         "ofrece los habituales y un tamaño exacto. Más bajo es más rápido y más suave. El HUD y los textos se dibujan a este "
         "tamaño también, así que se suavizan con él, salvo con el modo gama baja o FSR: dibujarlos al tamaño completo de la "
-        "pantalla sobre una imagen 3D más chica le cuesta a la GPU de un teléfono débil más de lo que gana.");
+        "pantalla sobre una imagen 3D más chica le cuesta a la GPU de un teléfono débil más de lo que gana. Por encima de "
+        "100% (hasta 200%) la imagen se dibuja más grande que la pantalla y se achica hasta ella: bordes más suaves, por "
+        "mucha más GPU y memoria, bajo tu responsabilidad; ahí no se usan FSR ni el filtro de escalado.");
 #else  // (config.c: below 100, the HUD at the screen's size over the smaller picture, fsr.c's plain scaling; the menus'
        // models drawn after its start get none of the anti-aliasing, as with FSR: nvn/vulkan/exec.c models_aa)
     row.help = en_es(
         "The size of the 3D picture, in percent of the screen's: left and right change it one percent at a time, a click "
         "offers the usual ones (Render resolution Custom sets an exact size). Lower is faster and softer; the HUD and the "
         "text stay sharp at full resolution. On a weak GPU this is what speeds the game up the most. Below 100%, the 3D "
-        "models in the menus get no anti-aliasing.",
+        "models in the menus get no anti-aliasing. Above 100% (up to 200%) the picture, HUD included, is drawn bigger than "
+        "the screen and scaled down to it: smoother edges, for much more GPU and memory, at your own risk; FSR and the "
+        "upscale filter are not used there.",
         "El tamaño de la imagen 3D, en porcentaje del de la pantalla: izquierda y derecha lo cambian de a un punto, un clic "
         "ofrece los habituales (Resolución de renderizado Personalizada fija un tamaño exacto). Más bajo es más rápido y más "
         "suave; el HUD y los textos siguen nítidos a resolución completa. En una GPU débil es lo que más acelera el juego. "
-        "Por debajo de 100%, los modelos 3D de los menús no tienen antialiasing.");
+        "Por debajo de 100%, los modelos 3D de los menús no tienen antialiasing. Por encima de 100% (hasta 200%) la "
+        "imagen, con el HUD, se dibuja más grande que la pantalla y se achica hasta ella: bordes más suaves, por mucha más "
+        "GPU y memoria, bajo tu responsabilidad; ahí no se usan FSR ni el filtro de escalado.");
 #endif
     r.push_back(std::move(row));
 #ifdef __ANDROID__
-    if (c.render_w) {  // (RenderResolution: config.c fits it to the picture's shape, at most the screen's)
-        number(r, "render.width", en_es("Width", "Ancho"), &c.render_w, 320, std::max(320, sw), 16, ini("RenderResolution"));
-        number(r, "render.height", en_es("Height", "Alto"), &c.render_h, 180, std::max(180, sh), 8, ini("RenderResolution"));
+    if (c.render_w) {  // (RenderResolution: config.c fits it to the picture's shape, at most twice the screen's: 1.0.2, S11)
+        const int mw = std::min(RENDER_SIDE_MAX, std::max(320, sw) * RENDER_SCALE_MAX / 100);
+        const int mh = std::min(RENDER_SIDE_MAX, std::max(180, sh) * RENDER_SCALE_MAX / 100);
+        number(r, "render.width", en_es("Width", "Ancho"), &c.render_w, 320, mw, 16, ini("RenderResolution"));
+        r.back().warn = sw > 0 && c.render_w > sw;
+        number(r, "render.height", en_es("Height", "Alto"), &c.render_h, 180, mh, 8, ini("RenderResolution"));
+        r.back().warn = sh > 0 && c.render_h > sh;
     }
+    if ((c.render_w && sw > 0 && (c.render_w > sw || c.render_h > sh)) || (!c.render_w && c.render_scale > 100))
+#else
+    if (c.render_scale > 100)
 #endif
+        note(r, "render.risk", scale_risk());
 }
 // S46 (group build): the game code made on the phone (android/.../BuilderActivity.java); 1.0.1, on a desktop, by MHGU.exe
 // itself (runtime/pc_builder.c, its page in runtime/launcher.cpp: asked first, the game closes into it). Its row, its

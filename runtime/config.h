@@ -244,6 +244,10 @@ void config_combo_text(uint32_t mask, char *out, size_t size);  // and back
 #define LDN_SERVERS {LDN_DEFAULT_SERVER}
 #define RENDER_SCALE_MIN 10  // [Display] RenderScale's least: any percent from it to 100 (the menu's 3D resolution; config.c
                              // keeps the 3D picture 320x180 at least)
+#define RENDER_SCALE_MAX 200  // ...and its most (1.0.2, S11): above 100 the 3D picture, its HUD in it, is drawn bigger than
+                              // the screen and scaled down to it as it is shown (supersampling), at the player's own risk:
+                              // GPU and memory 4 times 100%'s at 200. Never more than RENDER_SIDE_MAX a side (config.c)
+#define RENDER_SIDE_MAX 8192
 #define LOW_END_SCALE 40  // what the menu's Low-end mode sets: RenderScale, FPS
 #define LOW_END_FPS 30
 // [Performance] FPS: the most a phone takes; a desktop also takes more, up to FPS_UNLIMITED ("Unlimited" in the file
