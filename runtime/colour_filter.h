@@ -23,6 +23,8 @@
 #pragma once
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct ColourAdjust {
@@ -40,6 +42,33 @@ typedef struct ColourAdjust {
 
 static inline bool colour_neutral(const ColourAdjust *a) {
     return !a->hue && !a->temperature && !a->tint && !a->brightness && !a->contrast && !a->saturation && !a->gamma;
+}
+
+// [Colour] Preset1..3 (1.0.2, 4U#68: the menu's Colour page keeps three, Use / Save the current colour here / Clear): the
+// seven controls as "hue,temperature,tint,brightness,contrast,saturation,gamma", whole numbers with their sign, spaces
+// allowed. False for text that isn't seven of them; one out of its range is brought into it. The MH4U port's the same.
+static inline bool colour_preset_parse(const char *text, ColourAdjust *out) {
+    int v[7];
+    const char *p = text;
+    for (int i = 0; i < 7; i++) {
+        char *end;
+        while (*p == ' ' || *p == '\t') p++;
+        long x = strtol(p, &end, 10);
+        if (end == p) return false;
+        p = end;
+        while (*p == ' ' || *p == '\t') p++;
+        if (i < 6 ? *p != ',' : *p != 0) return false;
+        if (i < 6) p++;
+        long lim = i ? COLOUR_MAX : COLOUR_HUE_MAX;
+        v[i] = (int)(x < -lim ? -lim : x > lim ? lim : x);
+    }
+    ColourAdjust a = {v[0], v[1], v[2], v[3], v[4], v[5], v[6]};
+    *out = a;
+    return true;
+}
+static inline void colour_preset_format(const ColourAdjust *a, char *buf, size_t size) {
+    snprintf(buf, size, "%d,%d,%d,%d,%d,%d,%d", a->hue, a->temperature, a->tint, a->brightness, a->contrast,
+             a->saturation, a->gamma);
 }
 
 // The filter as the shader runs it: out = clamp(rows * vec4(pow(c, gamma), 1), 0, 1)
