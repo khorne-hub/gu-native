@@ -115,6 +115,8 @@ struct State {
     int overlay = OVERLAY_HUB_FRIENDS;
     std::set<std::string> flags;
     float bx = 0, by = 0, bsize = 1;
+    bool has_window = false;  // (1.0.2: the chat window's place and size, fractions of the screen)
+    float wx = 0, wy = 0, ww = 1, wh = 1;
     // people: friends, pending codes ("code:XXXX"), requests, mutes and blocks, by id
     std::map<std::string, Person> people;
     std::map<std::string, Online> online;
@@ -170,6 +172,7 @@ void save_locked() {
     fprintf(f, "relays\t%s\n", rl.c_str());
     if (g.has_bubble) fprintf(f, "bubble\t%.4f %.4f %.3f\n", g.bx, g.by, g.bsize);
     fprintf(f, "bubbleshown\t%d\n", (int)g.bubble_shown);
+    if (g.has_window) fprintf(f, "window\t%.4f %.4f %.4f %.4f\n", g.wx, g.wy, g.ww, g.wh);
     for (auto &fl : g.flags) fprintf(f, "flag\t%s\n", fl.c_str());
     for (auto &kv : g.people) {
         const Person &p = kv.second;
@@ -238,6 +241,9 @@ void load_locked() {
             } else if (k == "bubble") {
                 if (sscanf(v.c_str(), "%f %f %f", &g.bx, &g.by, &g.bsize) == 3) g.has_bubble = true;
             } else if (k == "bubbleshown") g.bubble_shown = v != "0";
+            else if (k == "window") {
+                if (sscanf(v.c_str(), "%f %f %f %f", &g.wx, &g.wy, &g.ww, &g.wh) == 4 && g.ww > 0 && g.wh > 0) g.has_window = true;
+            }
             else if (k == "flag" && !v.empty()) g.flags.insert(v);
             else if (k == "friend" && v.size() == 64) {
                 Person &q = person_locked(lower(v));
@@ -781,6 +787,21 @@ bool bubble(float *x, float *y, float *size) {
 void set_bubble(float x, float y, float size) {
     std::lock_guard<std::mutex> l(g.mu);
     g.bx = x, g.by = y, g.bsize = size, g.has_bubble = true;
+    save_locked();
+}
+bool window(float *x, float *y, float *w, float *h) {
+    std::lock_guard<std::mutex> l(g.mu);
+    *x = g.wx, *y = g.wy, *w = g.ww, *h = g.wh;
+    return g.has_window;
+}
+void set_window(float x, float y, float w, float h) {
+    std::lock_guard<std::mutex> l(g.mu);
+    g.wx = x, g.wy = y, g.ww = w, g.wh = h, g.has_window = true;
+    save_locked();
+}
+void reset_window() {
+    std::lock_guard<std::mutex> l(g.mu);
+    g.has_window = false;
     save_locked();
 }
 bool bubble_shown() { std::lock_guard<std::mutex> l(g.mu); return g.bubble_shown; }

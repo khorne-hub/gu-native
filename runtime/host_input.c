@@ -347,7 +347,7 @@ static void control_poll(void) {
             }
             if (!strcmp(cmd, "hudsize")) {  // hudsize <percent>: [Display] HUDSize from the next frame, as if saved in the
                 int v = atoi(arg);          // menu (tests, 1.0.2: the same hunt at several sizes)
-                g_config.hud_shrink = v >= 60 && v <= 100 ? (100 - v) / 5 * 5 : 0;
+                config_hud_test(v >= 60 && v <= 100 ? (100 - v) / 5 * 5 : 0);
                 continue;
             }
             if (!strcmp(cmd, "textoutline")) {  // textoutline 0|1: [Graphics] TextOutline from the next frame (tests, as ps1)

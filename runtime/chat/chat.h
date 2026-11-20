@@ -98,6 +98,11 @@ bool bubble(float *x, float *y, float *size);  // the chat button's place (fract
 void set_bubble(float x, float y, float size);
 bool bubble_shown();
 void set_bubble_shown(bool on);
+// (1.0.2) the chat window (the menu's chat page on a phone): its place and size, fractions of the screen (x, y its top
+// left); false: none saved, the menu's own. reset_window: the menu's own again
+bool window(float *x, float *y, float *w, float *h);
+void set_window(float x, float y, float w, float h);
+void reset_window();
 bool flag(const std::string &name);  // the port's own marks kept in chat.txt (a notice seen...)
 void set_flag(const std::string &name);
 

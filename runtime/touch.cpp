@@ -3746,6 +3746,7 @@ extern "C" void touch_game_held(bool on) { g_held_ns = on ? SDL_GetTicksNS() : 0
 // (hle/mousecam.c, each update of the hunter: the degrees the aim's slide turns the aim up by, taken)
 extern "C" float touch_aim_pitch(void) { return g_aim_pitch_deg.exchange(0.0f); }
 
+extern "C" void touch_hud_step(void) { g_part_moved_ns = SDL_GetTicksNS(); }
 extern "C" bool touch_editor_step(void) {
     const uint64_t EDIT_STEP = 100 * MS, now = SDL_GetTicksNS();
     if (g_part_moved_ns.load() <= g_step_ns.load() || now - g_step_ns.load() < EDIT_STEP) return false;

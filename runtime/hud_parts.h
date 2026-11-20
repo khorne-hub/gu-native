@@ -94,7 +94,7 @@ typedef struct {
 // toward its corner (hud_anchor_game), so the parts of a corner shrink together and keep their places to one another; the
 // size of each piece's art with it (exec.c part_k). After Heavenfall's smaller HUD for MH4U, the MH4U port's the same
 static inline float hud_global(void) {
-    int shrink = g_config.hud_shrink;
+    int shrink = config_live_hud_shrink();  // (live: the saved size, or the settings menu's row while it is open)
     return shrink > 0 && shrink <= 40 ? (float)(100 - shrink) / 100.0f : 1.0f;
 }
 // A part's corner, in the game's canvas (the point hud_place_base takes to the corner of the part where it is): the status's
