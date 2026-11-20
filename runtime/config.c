@@ -752,6 +752,13 @@ static const char DEFAULT_INI[] =
     "; Default: On\n"
     "Reverb = On\n"
     "\n"
+#ifdef __ANDROID__
+    "; The phone's screen recorder records the game's sound too: the sound goes through the phone's usual path instead of\n"
+    "; its fastest one, so it may come a little later. From the next start\n"
+    "; Default: Off\n"
+    "ScreenRecording = Off\n"
+    "\n"
+#endif
     "[Application]\n"
     "; The game stops while the app is in the background (a phone: another app or the home screen; a PC: its window\n"
     "; minimized), so it uses no battery there; it goes on where it was when you come back\n"
@@ -1091,6 +1098,7 @@ const ConfigSetting g_settings[] = {
     {"Audio", "Volume", SET_INT, F(volume), 0, 0, 100, NULL, NULL, false, ERR_MISC},
     ON_OFF("Audio", "MuteInBackground", mute_in_background, false),
     ON_OFF("Audio", "Reverb", reverb, false),
+    ON_OFF("Audio", "ScreenRecording", rec_audio, false),
     ON_OFF("Application", "PauseInBackground", pause_background, false),
     ON_OFF("Application", "PauseInMenu", pause_menu, false),
     ON_OFF("Application", "ConfirmExit", confirm_exit, false),

@@ -221,6 +221,9 @@ typedef struct {
                               // 15-bit colour with a 4x4 ordered dither under the HUD (ps1.c, exec.c vk_ps1_dither), and
                               // over the game's picture, never the overlay, faint scanlines that flicker as an interlaced
                               // screen's (exec.c vk_present_draw, shaders.c present.color)
+    int rec_audio;            // [Audio] ScreenRecording (1.0.2, Android; off by default, 0: nothing in CONFIG_DEFAULT_VALUES;
+                              // from the next start): the sound without SDL's low-latency mode, whose MMAP path a phone's
+                              // screen recorder doesn't hear (services/audio.c rec_audio_hint)
 } Config;
 // The crossplay settings as the network threads read them (config_live_crossplay)
 typedef struct {

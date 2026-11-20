@@ -507,6 +507,7 @@ static inline const char *settings_text(int language, const char *english) {
         {"Bloom and depth of field", "Bloom y desenfoque de profundidad"},
         {"Frame generation", "Generación de cuadros"},
         {"Reverb", "Reverberación"},
+        {"Sound in screen recordings", "Sonido en las grabaciones de pantalla"},
         {"Toaster", "Tostadora"},
         {"On (FSR)", "Sí (FSR)"},
         {"Adreno fix", "Corrección de Adreno"},
