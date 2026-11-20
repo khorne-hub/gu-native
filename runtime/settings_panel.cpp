@@ -928,7 +928,6 @@ bool equal(const Config &a, const Config &b) {
     SAME(fsr_upscaler);
     SAME(fsr_quality);
     SAME(fsr_sharpness);
-    SAME(full_textures);
     SAME(fsr_objmotion);
     SAME(fsr_reactive);
     SAME(fsr_animsurf);
@@ -937,6 +936,7 @@ bool equal(const Config &a, const Config &b) {
     SAME(draw_distance);
     SAME(smooth_gradients);
     SAME(frame_gen);
+    SAME(full_textures);
     SAME(upscale_sharp);
     SAME(msaa);
     SAME(fxaa);
