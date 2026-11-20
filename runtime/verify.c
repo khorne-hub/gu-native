@@ -43,6 +43,7 @@
 #include "gamelib.h"
 #include "modorder.h"
 #include "overlay.h"
+#include "romfs.h"
 #include "rt.h"
 #include "settings_locale.h"
 
@@ -792,6 +793,7 @@ static void *quick_run(void *arg) {
     for (int i = 0; i < q_n; i++) free(q_rel[i]), free(q_host[i]);
     free(q_rel), free(q_host), free(q_size);
     q_rel = q_host = NULL, q_size = NULL, q_n = 0;
+    if (cut) romfs_list_forget(true, "a file cut short");  // (a copy repaired over it: listed anew)
     q_cut = cut, q_empty = empty;
     snprintf(q_first, sizeof q_first, "%s", first);
     atomic_store(&q_state, 2);
@@ -820,6 +822,7 @@ int verify_quick_cut(int *empty, char *first, size_t size) {
 
 void verify_start(void) {
     if (atomic_exchange(&g_running, 1)) return;
+    romfs_list_forget(false, "Verify game files");
     atomic_store(&g_cancel, 0);
     pthread_mutex_lock(&g_lock);
     memset(&g_state, 0, sizeof g_state);

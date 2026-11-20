@@ -906,6 +906,13 @@ static inline const char *settings_text(int language, const char *english) {
         // (a desktop: the notice at the start until the menu has been opened once, runtime/overlay.cpp menu_hint)
         {"F1: settings", "F1: opciones"},
         {"Game files incomplete", "Archivos del juego incompletos"},
+        // (1.0.2: the game folder slow to list, runtime/overlay.cpp romfs_list_notice)
+        {"Slow game folder", "Carpeta del juego lenta"},
+        {"Listing the game's files took %d s: the game folder is on slow storage (an SD card?). The next starts use the list kept now and open faster. On the internal storage the game starts much faster still.",
+         "Leer la lista de archivos del juego tardó %d s: la carpeta del juego está en una memoria lenta (¿una tarjeta SD?). Los próximos inicios usan la lista guardada ahora y abren más rápido. En la memoria interna el juego arranca mucho más rápido todavía."},
+        {"Game files changed", "Archivos del juego cambiados"},
+        {"The game's files changed since the last start (%s). Close the game and open it again.",
+         "Los archivos del juego cambiaron desde el último inicio (%s). Cierra el juego y vuelve a abrirlo."},
         {"The romfs folder holds %s GB of the game's 12.3 GB: some files were cut short when they were copied. If the game closes or shows black, copy the romfs folder to the device again.",
          "La carpeta romfs tiene %s GB de los 12,3 GB del juego: algunos archivos se cortaron al copiarlos. Si el juego se cierra o se ve en negro, vuelve a copiar la carpeta romfs al dispositivo."},
         {"One of the game's files is smaller than it should be (%s): it was cut short when it was copied. If the game closes or shows black, copy the romfs folder to the device again.",

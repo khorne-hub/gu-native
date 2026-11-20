@@ -3,11 +3,20 @@
 // host files when the game reads that part of the image.
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 // main.c's count of the game's files as the game starts: base_dir scanned now (Android and Linux: by several threads)
 // and its tree kept for romfs_open of that same folder, which then doesn't list it again. The regular files in it.
 int romfs_prescan(const char *base_dir);
+// (1.0.2) The game's file list kept between starts when listing the folder is slow (a phone's SD card; romfs.c):
+// dropped, so the next start lists the folder again (only_if_taken: only if this start took it; why: for the log).
+// verify.c: Verify game files, and a file found cut short.
+void romfs_list_forget(bool only_if_taken, const char *why);
+// (the overlay's notices) How long listing the game folder took in this start (0: the kept list was taken), and
+// whether a file the game opened has a size other than the kept list's (file: its RomFS path)
+double romfs_list_slow_ms(void);
+bool romfs_list_changed(char *file, size_t size);
 // Builds the image from base_dir and the given overlay folders (later ones win; files they add are added).
 bool romfs_open(const char *base_dir, const char *const *overlays, int noverlays);
 uint64_t romfs_size(void);
