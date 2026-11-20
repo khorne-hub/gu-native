@@ -1,5 +1,9 @@
 // The Vulkan driver: the system's, as always, unless the player picked one of their own (Settings, Graphics, GPU driver:
-// android/.../DriverActivity.java), for an Adreno, at their own risk.
+// android/.../DriverActivity.java), for any GPU (1.0.2, S12: up to 1.0.1.1 an Adreno's only), at their own risk.
+//
+// libadrenotools does the loading for any GPU: only its hook of the dlopen of Android's Vulkan HAL ("vulkan.*.so") is
+// used (ADRENOTOOLS_DRIVER_CUSTOM), which is the same on a Mali or a PowerVR; its Adreno-only parts (KGSL memory
+// import, file redirection) are never asked for.
 //
 // The renderer's vk* are function pointers (third_party/volk, force-included by native/CMakeLists.txt), filled from the
 // vkGetInstanceProcAddr given here. With the system's driver that is the one of the system's libvulkan.so: every call
@@ -26,10 +30,12 @@
 
 static bool g_custom;
 static char g_name[128];
+static char g_shown[160];  // (its driver.txt's first line: meta.json's name and version, as DriverActivity shows it)
 static char g_dir[600];  // ("/gpu_drivers/<folder>/": gpu_driver_check)
 
 bool gpu_driver_custom(void) { return g_custom; }
 const char *gpu_driver_name(void) { return g_name; }
+const char *gpu_driver_shown(void) { return g_shown[0] ? g_shown : g_name; }
 
 static void chomp(char *s) { s[strcspn(s, "\r\n")] = 0; }
 
@@ -68,7 +74,16 @@ PFN_vkGetInstanceProcAddr gpu_driver_loader(void) {
                 g_custom = true;
                 snprintf(g_name, sizeof g_name, "%s", folder);
                 snprintf(g_dir, sizeof g_dir, "/gpu_drivers/%s/", folder);
-                LOG("[gpu] driver of the player's: %s (%s)\n", folder, file);
+                char txt[700];
+                snprintf(txt, sizeof txt, "%sdriver.txt", dir);
+                FILE *d = fopen(txt, "r");
+                if (d) {
+                    if (!fgets(g_shown, sizeof g_shown, d)) g_shown[0] = 0;
+                    chomp(g_shown);
+                    fclose(d);
+                }
+                LOG("[gpu] driver of the player's: %s (%s, folder %s): at their own risk, any GPU\n", gpu_driver_shown(),
+                    file, folder);
             } else {
                 LOG("[gpu] driver %s could not be opened: %s; the system's instead\n", folder, dlerror());
                 rename(selected, failed);
@@ -93,7 +108,7 @@ static int found_in_dir(struct dl_phdr_info *info, size_t size, void *data) {
 
 void gpu_driver_check(void) {
     if (!g_custom || dl_iterate_phdr(found_in_dir, g_dir)) return;
-    LOG("[gpu] driver %s did not load (no library from %s is running): the system's driver runs instead\n", g_name, g_dir);
+    LOG("[gpu] driver %s did not load (no library from %s is running): the system's driver runs instead\n", gpu_driver_shown(), g_dir);
     char root[400], selected[512], failed[512], trial[512];
     snprintf(root, sizeof root, "%s/gpu_drivers", SDL_GetAndroidInternalStoragePath());
     snprintf(selected, sizeof selected, "%s/selected", root);
@@ -101,7 +116,7 @@ void gpu_driver_check(void) {
     snprintf(trial, sizeof trial, "%s/trial", root);
     rename(selected, failed);
     unlink(trial);
-    g_custom = false, g_name[0] = 0;
+    g_custom = false, g_name[0] = 0, g_shown[0] = 0;
 }
 
 // Frames have been drawn with it

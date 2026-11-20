@@ -55,6 +55,24 @@ public class LogShareActivity extends Activity {
         return (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, v, getResources().getDisplayMetrics());
     }
 
+    /** The player's own GPU driver in use (files/gpu_drivers/selected), as DriverActivity shows it; null: the system's. */
+    private String ownDriver() {
+        File root = new File(getFilesDir(), "gpu_drivers");
+        String folder = firstLine(new File(root, "selected"));
+        if (folder == null || folder.isEmpty()) return null;
+        String shown = firstLine(new File(new File(root, folder), "driver.txt"));
+        return shown != null && !shown.isEmpty() ? shown : folder;
+    }
+
+    private static String firstLine(File f) {
+        try (BufferedReader r = new BufferedReader(new FileReader(f))) {
+            String s = r.readLine();
+            return s == null ? null : s.trim();
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     private TextView text(String s, int size, int color, boolean bold) {
         TextView t = new TextView(this);
         t.setText(s);
@@ -111,6 +129,17 @@ public class LogShareActivity extends Activity {
                                 : "One of the game's files is shorter than it should be, or damaged: it was cut short when it "
                                   + "was copied. Copy the romfs folder to the device again. In the game, System › Your game › "
                                   + "Verify game files names it.", 15, GOLD, false), gap);
+        // (1.0.2, S12: a driver of the player's own, any GPU, files/gpu_drivers/selected: named, with its version, so the
+        // reports made with one are known; DriverActivity's driver.txt has the name it shows)
+        if (crash) {
+            String driver = ownDriver();
+            box.addView(text(driver == null ? (es ? "Driver de GPU: el del sistema." : "GPU driver: the system's.")
+                                            : (es ? "Driver de GPU: " + driver + " (uno tuyo, no el del sistema). Si el juego "
+                                                    + "no arranca con él, la app vuelve sola al del sistema."
+                                                  : "GPU driver: " + driver + " (one of your own, not the system's). If the "
+                                                    + "game doesn't start with it, the app goes back to the system's by itself."),
+                             14, driver == null ? CREAM : GOLD, false), gap);
+        }
         box.addView(text(es ? "El registro explica qué pasó y en qué teléfono: el modelo y su sistema, la memoria, la batería y "
                               + "la temperatura, el tipo de red (Wi-Fi o datos, nunca su nombre), los ajustes y los mods de "
                               + "la app, y las últimas sesiones. Puedes enviarlo a quien te esté ayudando: se abre la lista "
