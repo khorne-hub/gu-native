@@ -168,8 +168,9 @@ void chat_status_row(std::vector<Row> &r) {
     if (chat::enabled())  // (the phone shows the switch alone: the relays' state under it)
         note(r, "chat.state", chat::status_text(st, up, total) + (st == chat::ONLINE ? fmt(", %d %s", chat::online_count(), cs("online", "en línea")) : std::string()));
 }
-// The chat page: which chat, Say something, its last lines (the sender's name over each, as tabarong's panel), the people
-// in it (a tap: add as a friend, mute, block), and the chat's options
+// The chat page: which chat, Say something, its last lines, the newest first right under Say something so a new one is seen
+// without scrolling (the sender's name over each, as tabarong's panel), the people in it (a tap: add as a friend, mute,
+// block), and the chat's options
 void chat_page_rows(std::vector<Row> &r) {
     cs("", "");  // (the language)
     std::vector<chat::Person> people = chat::people();
@@ -234,7 +235,8 @@ void chat_page_rows(std::vector<Row> &r) {
     chat::mark_read(g_chat, g_chat_peer);
     if (lines.empty() && can) note(r, "chat.none", cs("Nothing has been said yet.", "Todavía no se dijo nada."));
     std::vector<std::pair<std::string, std::string>> senders;  // (the people in the lines: id, name)
-    for (const chat::Line &l : lines) {
+    for (auto it = lines.rbegin(); it != lines.rend(); ++it) {  // (the newest first: under Say something, in sight)
+        const chat::Line &l = *it;
         note(r, "chat.line." + std::to_string(l.serial), chat::line_text(l));
         Row &n = r.back();
         if (!l.system) {
