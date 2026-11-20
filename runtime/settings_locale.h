@@ -1137,6 +1137,8 @@ static inline const char *settings_text(int language, const char *english) {
         {"Profile %d couldn't be saved. Is the save folder there?", "No se pudo guardar el perfil %d. ¿Está la carpeta de partidas?"},
         {"Saved in profile %d, which the editor edits now: its Save plays with it",
          "Guardado en el perfil %d, que el editor edita ahora: su Guardar juega con él"},
+        {"Profile %d has changes you haven't saved: tap again to leave them",
+         "El perfil %d tiene cambios sin guardar: toca otra vez para dejarlos"},
         {"Profile %d holds a layout: tap New again to start it over",
          "El perfil %d tiene un diseño: toca Nuevo otra vez para empezarlo de cero"},
         {"A new layout in profile %d: Save keeps it and plays with it",

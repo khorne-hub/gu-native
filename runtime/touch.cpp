@@ -1401,6 +1401,7 @@ struct State {
     bool preview;                        // a model in a menu of the game's turns with the sticks: they are the game's there
     float w, h;              // the screen, pixels
     Layout layout, saved;
+    Layout base;  // (an editor: its layout as it was last loaded, saved or made new - what differs is not saved yet)
     bool loaded, touched, auto_wait;
     float smooth_x, smooth_y;  // a drag's turn not given to the camera yet, counts ([Touch] CameraSmoothing: touch_input)
     uint64_t smooth_ns;        // ...and the pass that gave the last of it
@@ -1995,19 +1996,46 @@ bool profile_store(const Layout &l) {
     if (!make_folder(dir)) return false;
     return save_layout_file(profile_path(l.profile).c_str(), l, nullptr);
 }
+// Two layouts the same, as their files would be (an editor's changes not saved yet: same_layout(s.layout, s.base) false)
+bool same_hud(const HudVals &a, const HudVals &b) {
+    return a.dx == b.dx && a.dy == b.dy && a.k == b.k && a.alpha == b.alpha && a.hidden == b.hidden;
+}
+bool same_layout(const Layout &a, const Layout &b) {
+    if (memcmp(a.x, b.x, sizeof a.x) || memcmp(a.y, b.y, sizeof a.y) || memcmp(a.scale, b.scale, sizeof a.scale)) return false;
+    if (a.style != b.style || a.kind != b.kind || a.off != b.off || a.hold != b.hold || a.fps_x != b.fps_x ||
+        a.fps_y != b.fps_y || a.bars_x != b.bars_x || a.bars_y != b.bars_y || a.bars_k != b.bars_k)
+        return false;
+    for (int p = 0; p < HUD_PROFILES; p++)
+        for (int k = 0; k < HP_COUNT; k++)
+            if (!same_hud(a.hud[p][k], b.hud[p][k])) return false;
+    return !memcmp(a.image, b.image, sizeof a.image) && !strcmp(a.knob, b.knob);
+}
+// (T39, 1.0.2) The profile in use is about to be left (another one used or made new, from the settings or the editor):
+// one whose file was never written - a new install's profile 1, a layout from before the profiles - gets it now, the
+// layout in use as it is, so that going back to it finds it and not an empty slot (that New would make the defaults)
+void keep_in_use(const Layout &in_use) {
+    if (is_file(profile_path(in_use.profile))) return;
+    Layout l = in_use;
+    l.profile_line = true;
+    if (profile_store(l))
+        rt_logf("[touch] profiles: profile %d had no file: the layout in use written into it before leaving it\n", l.profile);
+    else
+        rt_logf("[touch] profiles: profile %d had no file and it couldn't be written (%s)\n", l.profile, profiles_dir().c_str());
+}
 
 void edit_begin(State &s) {
     s.edit = true, s.edit_request = false, s.sel = -1, s.pinch = false;
     g_edit_set = g_ranged.load() != 0;  // (the layout in use; the panel's button changes it)
     s.edit_prof = config_live_touch_hud() ? HUD_TOUCH : HUD_PLAIN;  // (the HUD in use with the touch controls)
     g_hud_edit_prof = s.edit_prof;
-    s.saved = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
+    s.saved = s.base = s.layout, s.epanel_open = s.epanel, s.rep_btn = -1;
     s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     drop_fingers(s);
     rt_logf("[touch] layout editor (profile %d)\n", s.layout.profile);
 }
 void edit_end(State &s, bool keep) {
     if (keep) {  // (the layout in use, and its profile's file: a save folder that can't be reached keeps only the first)
+        if (s.layout.profile != s.saved.profile) keep_in_use(s.saved);  // (another profile in use from now: T39)
         s.layout.profile_line = true;
         save_layout(s.layout, s.epanel), s.saved = s.layout;
         if (!profile_store(s.layout)) {
@@ -2073,9 +2101,12 @@ void prof_action(State &s, int a) {
         Layout l;
         if (!used) prof_say(s, "Profile %d is empty: New makes a layout in it", n);
         else if (n == s.layout.profile) prof_say(s, "You are editing profile %d already", n);
+        else if (!same_layout(s.layout, s.base) && !again)  // (T39: the editor's changes, lost without a word before)
+            s.prof_arm = a, prof_say(s, "Profile %d has changes you haven't saved: tap again to leave them", s.layout.profile);
         else if (!load_layout_file(profile_path(n).c_str(), &l, nullptr)) prof_say(s, "Profile %d can't be read. Is the save folder there?", n);
         else {
-            slot_into_editor(s, n, l), s.prof_open = false;
+            keep_in_use(s.saved);
+            slot_into_editor(s, n, l), s.prof_open = false, s.base = s.layout;
             char t[200];
             snprintf(t, sizeof t, T("Profile %d loaded: Save plays with it, Cancel goes back"), n);
             edit_note(s, t);
@@ -2090,11 +2121,13 @@ void prof_action(State &s, int a) {
         }
         Layout l = s.layout;
         l.profile = n, l.profile_line = true;
+        if (n != s.saved.profile) keep_in_use(s.saved);
         if (!make_folder(profiles_dir()) || !save_layout_file(profile_path(n).c_str(), l, nullptr)) {
             prof_say(s, "Profile %d couldn't be saved. Is the save folder there?", n);
             break;
         }
         s.layout.profile = n, s.layout.profile_line = true;
+        s.base = s.layout;
         prof_refresh(s);
         rt_logf("[touch] profiles: the editor's layout saved in profile %d\n", n);
         prof_say(s, "Saved in profile %d, which the editor edits now: its Save plays with it", n);
@@ -2107,8 +2140,14 @@ void prof_action(State &s, int a) {
             prof_say(s, "Profile %d holds a layout: tap New again to start it over", n);
             break;
         }
+        if (!same_layout(s.layout, s.base) && !again) {  // (T39)
+            s.prof_arm = a;
+            prof_say(s, "Profile %d has changes you haven't saved: tap again to leave them", s.layout.profile);
+            break;
+        }
+        keep_in_use(s.saved);
         Layout l = defaults(a == PA_NEW_EMU ? KIND_EMU : KIND_OURS);
-        slot_into_editor(s, n, l), s.prof_open = false;
+        slot_into_editor(s, n, l), s.prof_open = false, s.base = s.layout;
         char t[200];
         snprintf(t, sizeof t, T("A new layout in profile %d: Save keeps it and plays with it"), n);
         edit_note(s, t);
@@ -2569,7 +2608,7 @@ void hud_edit_begin(State &s) {
     s.open_slot = s.layout.profile, s.prof_open = s.img_open = false, s.note_until = 0;
     // (the HUD without the touch controls, shown live as it is edited: part_size and part_pickup go by edit_prof)
     s.edit_prof = HUD_PLAIN, g_hud_edit_prof = HUD_PLAIN;
-    s.saved = s.layout;
+    s.saved = s.base = s.layout;
     drop_fingers(s);
     s.hud_px = s.hud_py = -1e9f;  // (where the pointer is: the button under it lights at once)
     SDL_Window *win = ui_window();
@@ -2585,6 +2624,7 @@ void hud_edit_begin(State &s) {
 }
 void hud_edit_end(State &s, bool keep) {
     if (keep) {  // (the layout in use and its profile, as the touch layout editor's Save)
+        if (s.layout.profile != s.saved.profile) keep_in_use(s.saved);  // (another profile in use from now: T39)
         s.layout.profile_line = true;
         save_layout(s.layout, s.epanel), s.saved = s.layout;
         if (!profile_store(s.layout)) {
@@ -5783,6 +5823,7 @@ extern "C" bool touch_profile_use(int n) {
     Layout l;
     if (n < 1 || n > PROFILES_N || editing(s) || !load_layout_file(profile_path(n).c_str(), &l, nullptr)) return false;
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     profile_in_use(s, l, "the settings' Use");
     return true;
 }
@@ -5793,6 +5834,7 @@ extern "C" bool touch_profile_store(int n) {
     if (n < 1 || n > PROFILES_N || editing(s)) return false;
     Layout l = s.layout;
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     if (!profile_store(l)) return false;
     profile_in_use(s, l, "the settings' Save the current layout here");
     return true;
@@ -5804,6 +5846,7 @@ extern "C" bool touch_profile_new(int n, int kind) {
     if (n < 1 || n > PROFILES_N || editing(s)) return false;
     Layout l = defaults(kind == KIND_EMU ? KIND_EMU : KIND_OURS);
     l.profile = n;
+    if (n != s.layout.profile) keep_in_use(s.layout);  // (T39)
     if (!profile_store(l)) return false;
     profile_in_use(s, l, "the settings' New");
     return true;
