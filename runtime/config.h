@@ -241,6 +241,8 @@ typedef struct {
     int number_style;         // [Hunting Aids] DamageNumberStyle (1.0.2): 0 Classic (the default), 1 Outlined, 2 Compact,
                               // 3 Burst
     int monster_bars;         // [Hunting Aids] MonsterHealthBars: a health bar a large monster at the top in a quest
+    int text_outline;         // [Graphics] TextOutline (1.0.2, GU#243): a dark outline round the letters of the dialogue and
+                              // help boxes (the bottom left), the red words most (nvn/vulkan/exec.c text_outline); off (0)
     int ps1_filter;           // [Graphics] PS1Filter (1.0.1.1, the owner's after a suggestion; off by default, 0: nothing in
                               // CONFIG_DEFAULT_VALUES; live): the look of the 3D games of the late 90s, style only (no
                               // setting changes): the 3D world's textures by their nearest texels, a mip level or two
@@ -430,7 +432,9 @@ int config_live_reverb(void);           // [Audio] Reverb
 int config_live_send_all_rewards(void); // [Quest Rewards] SendAllRewards (runtime/hle/rewards.c)
 int config_live_gather_all(void);       // [Gathering] GatherAll (runtime/hle/gather.c)
 int config_live_ps1_filter(void);       // [Graphics] PS1Filter (nvn/vulkan/exec.c, ps1.c, fsr.c)
+int config_live_text_outline(void);     // [Graphics] TextOutline (nvn/vulkan/exec.c)
 void config_ps1_test(int on);           // (tests: MHGU_CONTROL "ps1 0|1") as if saved, until the next save
+void config_text_outline_test(int on);  // (tests: MHGU_CONTROL "textoutline 0|1") as if saved, until the next save
 // [Colour] (runtime/colour_filter.h ColourAdjust; the window image's pass, nvn/vulkan/exec.c): the saved values, or while
 // the settings menu is open the ones being adjusted there (config_colour_preview), so the picture shows them at once
 struct ColourAdjust;

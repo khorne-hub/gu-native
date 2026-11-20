@@ -350,6 +350,10 @@ static void control_poll(void) {
                 g_config.hud_shrink = v >= 60 && v <= 100 ? (100 - v) / 5 * 5 : 0;
                 continue;
             }
+            if (!strcmp(cmd, "textoutline")) {  // textoutline 0|1: [Graphics] TextOutline from the next frame (tests, as ps1)
+                config_text_outline_test(atoi(arg));
+                continue;
+            }
             if (!strcmp(cmd, "ps1")) {  // ps1 0|1: [Graphics] PS1Filter from the next frame, as if saved in the menu (tests:
                 config_ps1_test(atoi(arg));  // the same scene both ways)
                 continue;
