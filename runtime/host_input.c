@@ -50,6 +50,7 @@
 #include "settings_panel.h"
 #include "textinput.h"
 #include "touch.h"
+#include "weapon_tree.h"
 #ifdef __ANDROID__
 #include <jni.h>
 static void report_soon(void);  // (the input report: a device came or went)
@@ -1122,6 +1123,7 @@ void host_input_event(const SDL_Event *e) {
     if (e->type == SDL_EVENT_FINGER_UP && textinput_active()) textinput_tap();  // (the screen keyboard, if hidden)
     if (e->type == SDL_EVENT_FINGER_DOWN || e->type == SDL_EVENT_MOUSE_BUTTON_DOWN)
         settings_panel_credits_tap();  // (the credits shown at the start close at a tap: runtime/settings_panel.cpp)
+    if (weapon_tree_event(e)) return;  // (1.0.2: the Smithy's weapon tree open: Back, Esc, the fingers, the mouse)
     if (touch_event(e)) return;  // (fingers: the touch controls, or the settings menu's mouse: runtime/touch.cpp)
     if (overlay_event(e)) return;  // (Forge's menu open: keyboard and mouse are its)
 #ifndef __ANDROID__
@@ -1802,12 +1804,18 @@ void host_input_update(void) {
     if (rstick_hold && plat_now_ns() >= rstick_hold) touch_lock_toggle(), rstick_hold = 0;
     rstick_was = rstick;
     if (rstick && !r3_targets) b &= ~B(BTN_RSTICK);
+    // (1.0.2) in the Smithy, with a weapon shown, the right stick's click opens its weapon tree and closes it; while the
+    // tree is open the controller and the keys are its own, and the game gets nothing (runtime/weapon_tree_ui.cpp)
+    if (!overlay_menu_open()) {
+        b = weapon_tree_buttons(b, lx, ly);
+        if (weapon_tree_is_open()) lx = ly = rx = ry = 0, mouse_moved = false;
+    }
     b |= touch_lock_buttons(b, mouse_moved || (int64_t)rx * rx + (int64_t)ry * ry > 12000LL * 12000);  // (round: as the game's)
     // (with the lock-on on, a bowgun's shot is aimed first, whatever fires it: runtime/touch.cpp; standing still, no stick
     // past a quarter, as 0.1.8 aimed it)
     b = touch_lock_shot(b, (int64_t)lx * lx + (int64_t)ly * ly < 8192LL * 8192);
     // (the touch controls' menu pad: what it alone presses the game reads only while a menu takes input, hle/input.c)
-    uint64_t menu_only = touch_menu_buttons() & ~b;
+    uint64_t menu_only = weapon_tree_is_open() ? 0 : touch_menu_buttons() & ~b;
     b |= menu_only;
 
     // A controller can reach host settings without needing a keyboard.

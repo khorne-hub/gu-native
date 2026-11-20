@@ -52,7 +52,8 @@ set(FSR_CXX ${FSR}/src/ffx_vk_fsr3_portable.cpp ${FSR}/src/ffx_fsr3_shaderblobs.
             ${FFX}/src/backends/vk/ffx_vk.cpp ${FFX}/src/backends/shared/ffx_shader_blobs.cpp)
 
 set(RT_ALL ${RT_SRC} ${S}/runtime/overlay.cpp ${S}/runtime/settings_panel.cpp ${S}/runtime/touch.cpp
-           ${S}/runtime/perfstats.cpp ${S}/runtime/hunt_overlay.cpp ${IMGUI_SRC} ${S}/runtime/nvn/vulkan/vma.cpp ${FSR_C} ${FSR_CXX})
+           ${S}/runtime/perfstats.cpp ${S}/runtime/hunt_overlay.cpp ${S}/runtime/weapon_tree_ui.cpp ${S}/runtime/weapon_tree_panel.cpp
+           ${IMGUI_SRC} ${S}/runtime/nvn/vulkan/vma.cpp ${FSR_C} ${FSR_CXX})
 # The port's chat (runtime/chat, the same files as the MH4U port's app_native/chat; runtime/chat_port.cpp is MHGU's side of
 # it): its keys and signatures with libsecp256k1 (third_party/secp256k1, MIT), its relays through the system's TLS
 set(CHAT_DIR ${S}/runtime/chat)
@@ -127,7 +128,7 @@ if(MHGU_DEV)  # (test builds: files/env.txt, files/control.txt; a public build r
 endif()
 # Dear ImGui / FSR: as the Makefile's IMGUIFLAGS / FSRFLAGS
 set_source_files_properties(${IMGUI_SRC} ${S}/runtime/overlay.cpp ${S}/runtime/settings_panel.cpp ${S}/runtime/touch.cpp
-  ${S}/runtime/perfstats.cpp ${S}/runtime/hunt_overlay.cpp PROPERTIES
+  ${S}/runtime/perfstats.cpp ${S}/runtime/hunt_overlay.cpp ${S}/runtime/weapon_tree_ui.cpp ${S}/runtime/weapon_tree_panel.cpp PROPERTIES
   COMPILE_OPTIONS "-O2;-fvisibility=hidden;-w")
 set_source_files_properties(${S}/runtime/nvn/vulkan/vma.cpp PROPERTIES COMPILE_OPTIONS "-O2;-w")
 set_source_files_properties(${FSR_C} PROPERTIES COMPILE_OPTIONS "-O2;-w;-std=c11")

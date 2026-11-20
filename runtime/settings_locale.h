@@ -1286,6 +1286,10 @@ static inline const char *settings_text(int language, const char *english) {
          "Copia imágenes tuyas (PNG, JPG o WebP) para ponerlas en los controles táctiles, y después elige una en el editor de diseño con Imagen: se dibuja en lugar del control, tal cual (sus partes transparentes quedan transparentes), y más oscura al apretarla. Lo que agregues es tu responsabilidad."},
         // (1.0.1: the long press that hides the controls, the camera's smoothing and shake: touch.cpp, hle/mousecam.c)
         {"Long press hides the controls", "Pulsación larga oculta los controles"},
+        {"Weapon tree button", "Botón del árbol de armas"},  // (1.0.2: runtime/weapon_tree.h)
+        {"Weapon tree", "Árbol de armas"},  // (its name in the layout editor)
+        {"The weapon tree's button, in the Smithy while it shows a weapon: a tap opens that weapon's tree (what you have, the weapons before it, the next ones as ?). The right stick's click opens it too. It is the port's own, not one of the game's buttons",
+         "El botón del árbol de armas, en la herrería mientras muestra un arma: un toque abre el árbol de esa arma (las que tienes, las anteriores, las siguientes como ?). El clic de la palanca derecha también lo abre. Es propio del port, no uno de los botones del juego"},
         {"On: hold your finger still for a moment where no control is and the touch controls hide, to watch a cutscene or the scenery; another long press anywhere shows them again. A drag still turns the camera.",
          "Activado: mantén el dedo quieto un momento donde no hay ningún control y los controles táctiles se ocultan, para mirar una escena o el paisaje; otra pulsación larga en cualquier lugar los vuelve a mostrar. Arrastrar sigue girando la cámara."},
         {"Long-press an empty spot to show the controls", "Mantén presionado un lugar vacío para mostrar los controles"},

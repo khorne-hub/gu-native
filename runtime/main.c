@@ -21,6 +21,7 @@
 #include "cache_clear.h"
 #include "diag.h"
 #include "romfs.h"
+#include "weapon_tree.h"
 #ifdef __ANDROID__
 static void game_lib_failed(const char *why);
 #endif
@@ -94,6 +95,7 @@ static void boot(const char *root) {
     mousecam_init();  // (mouse look on the hunt camera's angles: runtime/hle/mousecam.c)
     itembar_init();  // (the mouse wheel on the item bar: runtime/hle/itembar.c)
     mousemenu_init();  // (the mouse in the game's menus, a desktop's: runtime/hle/mousemenu.c)
+    weapontree_init();  // (1.0.2: the Smithy's weapon tree, what the Smithy shows: runtime/hle/weapontree.c)
     emtrace_init();  // (debug, MHGU_EMTRACE: runtime/hle/emtrace.c)
     kotrace_init();  // (debug, MHGU_KOTRACE: runtime/hle/kotrace.c)
     cheats_init();  // (cheat codes from cheats/: runtime/cheats.c)
