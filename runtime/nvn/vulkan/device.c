@@ -1207,13 +1207,16 @@ static int swapchain_vsync = -1;
 static int configured_msaa = -1;
 static bool swapchain_paced;  // FIFO, its presents timed to the display's vsyncs (Android: present_pacing.c)
 #ifdef __ANDROID__
-// Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on, the FPS limit a whole fraction
-// of the display's rate; never with MHGU_VK_PRESENT or MHGU_VSYNC given)
+// Should the swapchain be the timed one now? (MHGU_PERF_PRESENT_TIME, the settings' VSync on - or Frame generation on, which
+// needs the timed presents whatever VSync says -, the FPS limit a whole fraction of the display's rate; never with
+// MHGU_VK_PRESENT or MHGU_VSYNC given). (1.0.2) With VSync off, FrameGen made no picture at all: the plain swapchain's
+// cadence is 1, "not half the refresh rate" (GU#262: 30 FPS on 60 Hz, VSync off, FIFO all the same, its driver having no
+// immediate mode)
 static bool paced_held;  // (paced_change: the plain swapchain for the rest of the session)
 static bool paced_wanted(void) {
     static int env = -1;
     if (env < 0) env = getenv("MHGU_VK_PRESENT") || getenv("MHGU_VSYNC");
-    return !env && !paced_held && config_live_vsync() && vk_pacing_fifo();
+    return !env && !paced_held && (config_live_vsync() || config_live_frame_gen()) && vk_pacing_fifo();
 }
 // (frame_begin) the swapchain made again because the timed one is wanted or no longer: a driver whose rate keeps changing
 // (a POCO X3 NFC said 120 Hz for one swapchain and 50 for the next, gu-native #203) made it again every 2 s. The fourth
