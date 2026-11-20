@@ -252,6 +252,19 @@ int main(int argc, char **argv) {
         else if (!gamefolder_find(data, sizeof data)) return 0;
 #endif
         g_game_dir = data;
+#ifdef __ANDROID__
+        {  // (1.0.2) .nomedia in the game folder: the phone's gallery leaves out the pictures and videos in it and below it
+           // (the game's movies showed in the gallery, gu-native #256; a mod's pictures). Made once, where the app can
+           // write; the game's files are not touched.
+            char nomedia[1200];
+            struct stat nst;
+            snprintf(nomedia, sizeof nomedia, "%s/.nomedia", data);
+            if (stat(nomedia, &nst) != 0) {
+                FILE *nf = fopen(nomedia, "w");
+                if (nf) fclose(nf), fprintf(stderr, "[main] a .nomedia in the game folder now: the gallery leaves its movies out\n");
+            }
+        }
+#endif
         mods_make_dir();
         cheats_make_dir();
         static char save[1024];
