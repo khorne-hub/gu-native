@@ -483,9 +483,13 @@ three chats, and private messages with your friends:
 - **General:** everyone in the online chat who plays MHGU, on Android and PC.
 - **Global:** everyone in the online chat of both ports, MHGU and MH4U.
 
-On the **Chat** page the newest line comes first, right under **Say something**, so you don't have to scroll to read it.
+The **Chat** page opens as a chat window over the game, see-through: the chat picked and **Say something** at its top,
+the newest line right under them (no need to scroll to read it), and the switches, **Friends** and the options under
+the lines. Drag its top to move it and its bottom right corner to make it larger or smaller; it stays where you leave
+it, and **Options**, **Chat window back in its place** puts it back. While your phone's keyboard is up for **Say
+something**, what you type shows at the window's top with the chat's lines under it, above the keyboard.
 
-**Both chats start off.** Until you turn one on, at the top of the **Chat** page, nothing of the chat shows over the game:
+**Both chats start off.** Until you turn one on, on the **Chat** page (under the lines), nothing of the chat shows over the game:
 **Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
 
 A round chat button shows over the game while the online chat is on, or the hub chat is on and you are in a hub. A tap opens
@@ -493,8 +497,8 @@ the chat, a drag moves it, and the number on it counts the lines you haven't rea
 **Chat button size** changes its size. New lines show for a few seconds beside it: **Lines over the game** picks **Off**,
 **Hub and friends** (the default) or **All**.
 
-**The online chat** (Global, General and friends) is off until you turn it on with **Online chat**, at the top of the
-**Chat** page. The first time, a question explains it:
+**The online chat** (Global, General and friends) is off until you turn it on with **Online chat**, on the **Chat**
+page. The first time, a question explains it:
 
 - It connects to public Nostr relays: `relay.damus.io`, `nos.lol` and `relay.primal.net`, or others you choose under
   **Relays**. Like any server on the internet, they see your IP address.
