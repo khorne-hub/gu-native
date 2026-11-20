@@ -36,6 +36,7 @@ void hpscale_init(void);  // large monster HP by the number of hunters (runtime/
 void villagehub_init(void);  // Village quests at the Hub / Pub counter (runtime/hle/villagehub.c)
 void gather_init(void);   // [Gathering] GatherAll: a gathering point's every item at once (runtime/hle/gather.c)
 void rewards_init(void);  // [Quest Rewards] SendAllRewards: every quest reward to the item box at once (runtime/hle/rewards.c)
+void supplybox_init(void);  // the Supply Box without the wait between items (runtime/hle/supplybox.c)
 void mashrate_init(void);  // mashing out of a stun at the Switch's rate at high frame rates (runtime/hle/mashrate.c)
 void grass_init(void);  // [Performance] Grass: the game's grass unit (uGrass2) not drawn while Off (runtime/hle/grass.c)
 void effects_init(void);  // [Performance] Effects: the game's particle effects not drawn while Off (runtime/hle/effects.c)
