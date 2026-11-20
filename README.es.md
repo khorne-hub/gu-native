@@ -494,11 +494,12 @@ chats, y mensajes privados con tus amigos:
 La página **Chat** se abre como una ventana de chat sobre el juego, más chica y que deja ver lo de atrás, solo con el
 chat: su encabezado dice cuál chat es (la flecha de al lado elige otro), el engranaje abre las opciones del chat (los
 interruptores, **Amigos**, las líneas sobre el juego, el botón del chat...) y la X la cierra; debajo, el texto para
-escribir y **Enviar**, y las líneas, la más nueva primero. Arrastra su parte de arriba para moverla y su esquina de
-abajo a la derecha para agrandarla o achicarla; queda donde la dejes (opciones del chat: **Ventana del chat a su
-lugar**). Mientras el teclado del teléfono está abierto, la ventana sube arriba de todo de la pantalla y usa el alto que
-deja el teclado: el texto, **Enviar** y las últimas líneas quedan a la vista. El botón del chat se mueve y se cambia de
-tamaño en **Personalizar controles y HUD**, como cualquier botón, y queda guardado con el perfil de controles.
+escribir y **Enviar**, y las líneas, la más nueva primero, cada una sobre una tira oscura para que se lea sobre pasto o
+nieve. Arrastra su parte de arriba para moverla y su esquina de abajo a la derecha para agrandarla o achicarla; queda
+donde la dejes (opciones del chat: **Ventana del chat a su lugar**). Mientras el teclado del teléfono está abierto, la
+ventana sube arriba de todo de la pantalla y usa el alto que deja el teclado: el texto, **Enviar** y las últimas líneas
+quedan a la vista. El botón del chat se mueve y se cambia de tamaño en **Personalizar controles y HUD**, como cualquier
+botón, y queda guardado con el perfil de controles.
 
 **Los dos chats empiezan apagados.** Hasta que actives uno, en la página **Chat** (debajo de las líneas), no se ve nada del chat sobre el
 juego: **Chat de la sala** activa el de la sala (sin relés, nada sale de la sala) y **Chat en línea** Global, General y
