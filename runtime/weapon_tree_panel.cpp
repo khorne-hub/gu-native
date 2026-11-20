@@ -611,7 +611,9 @@ void Details(ImDrawList* dl, const ImRect& box, const Content& c, State& s, floa
     // (its name in one line, or two a little smaller)
     float ts = .04f * H;
     std::vector<std::string> name = TwoLines(k.title, ts, Named(w, node.id, es), tw);
-    if (name.size() > 1) ts = .034f * H, name = TwoLines(k.title, ts, Named(w, node.id, es), tw);
+    for (int k2 = 0; k2 < 4 && name.size() > 1 && (ts > .034f * H || (name.back().size() >= 3 &&
+                                                     name.back().compare(name.back().size() - 3, 3, "...") == 0)); ++k2)
+        ts = std::min(ts * .9f, .034f * H), name = TwoLines(k.title, ts, Named(w, node.id, es), tw);
     float ty = k.y + .002f * H;
     for (const std::string& l : name) Text(dl, k.title, ts, ImVec2(tx, ty), RarityColour(w.rarity), l.c_str()), ty += ts * 1.12f;
     ty += ts * .18f;
