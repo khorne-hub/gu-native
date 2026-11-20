@@ -7737,10 +7737,25 @@ void settings_panel(bool *open) {
         break;
     default: break;
     }
-    // (afloat, a menu of the game's open - a shop, the quest counter -: hidden until it closes, typing stopped; the touch
-    // controls are the game's meanwhile)
-    g_chat_hidden = false;
-    if (touch_ui() && chat_floating() && touch_game_menu()) {
+    // (afloat, a menu of the game's opening under it - a shop, the quest counter -: hidden until that menu closes, typing
+    // stopped; the touch controls are the game's meanwhile. Opened while one is already open - the title, a shop -, it
+    // shows: the chat button was tapped for it)
+    {
+        static bool afloat_was, menu_was, hide;
+        static int seen_frame = -10;  // (a frame missed - the menu was closed meanwhile -: afloat again from now)
+        if (ImGui::GetFrameCount() != seen_frame + 1) afloat_was = false;
+        seen_frame = ImGui::GetFrameCount();
+        const bool afloat = touch_ui() && chat_floating(), menu = afloat && touch_game_menu();
+        if (!afloat || !afloat_was)
+            hide = false;
+        else if (menu && !menu_was)
+            hide = true;
+        if (!menu)
+            hide = false;
+        afloat_was = afloat, menu_was = menu;
+        g_chat_hidden = hide;
+    }
+    if (g_chat_hidden) {
         if (s.view == View::Keyboard)
             pop();
         g_chat_hidden = true;
