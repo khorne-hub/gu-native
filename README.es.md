@@ -507,6 +507,8 @@ los controles de la ventana toman el dedo, y tocar su parte vacía mueve la pala
 tocar fuera de la ventana la cierra junto con el teclado. Un menú del juego la esconde hasta que se cierra, el botón
 de ajustes va al menú y el botón del chat la cierra. En las opciones del chat, **Fondo de la ventana**, **Fondo de
 los mensajes** y **Fondo del campo de escribir** van de 0 a 100 %; el texto queda siempre sólido.
+En PC la ventana del chat flota igual, con el mouse: un clic en sus controles es de la ventana, en cualquier otro lado
+del juego; las teclas son del juego salvo mientras escribes en ella, y **F1** va al menú.
 
 **Los dos chats empiezan apagados.** Hasta que actives uno, en la página **Chat** (debajo de las líneas), no se ve nada del chat sobre el
 juego: **Chat de la sala** activa el de la sala (sin relés, nada sale de la sala) y **Chat en línea** Global, General y

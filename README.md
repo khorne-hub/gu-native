@@ -498,6 +498,8 @@ window's own controls take your finger, and a tap on its blank part is the stick
 a tap away from the window closes it and the keyboard. A menu of the game's hides it until it closes, the settings
 button goes to the menu, and the chat button closes it. In the chat's options, **Window background**, **Message
 background** and **Typing field background** go from 0 to 100 %; the text is always solid.
+On PC the chat window floats the same way, worked with the mouse: a click on its controls is the window's, anywhere
+else the game's; the keys are the game's except while you type in it, and **F1** goes to the menu.
 
 **Both chats start off.** Until you turn one on, on the **Chat** page (under the lines), nothing of the chat shows over the game:
 **Hub chat** turns on the hub's (no relay, nothing leaves the hub) and **Online chat** Global, General and friends.
