@@ -4,6 +4,7 @@
 // the chat opens.
 #pragma once
 #include <functional>
+#include <string>
 
 namespace chat {
 
@@ -15,8 +16,15 @@ struct OverlayPort {
     // and its radius, a fraction of the screen's height): false when the port has none. With one, the button is placed
     // and sized in the editor alone (a drag on it does nothing; a tap opens the chat)
     std::function<bool(float *x, float *y, float *r)> place;
+    // (1.0.2) no lines beside the button now (those up go at once): a menu of the game's is open, or the chat window is up
+    // (its lines are in it); the button stays. Unset: only the port's menu (menu_open) hides them
+    std::function<bool()> lines_hidden;
     std::function<void(const char *)> log;
 };
+// (1.0.2, after tabarong's floating chat) a colour of its own for each player's name, the same name always the same one
+// (the lines beside the button, the chat window's), none of them the chats' own colours; RGBA as Dear ImGui's IM_COL32
+unsigned name_ink(const std::string &name);
+unsigned channel_ink(int channel);  // (the chats' own: the hub's light blue, General green, Global gold, a friend pink)
 void overlay_setup(const OverlayPort &port);
 bool overlay_frame();                 // each frame: true while something is to be drawn (never while both chats are off)
 void overlay_draw(float w, float h);  // then, over the touch controls (the foreground list)

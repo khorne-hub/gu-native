@@ -174,7 +174,7 @@ void chat_status_row(std::vector<Row> &r) {
 // (1.0.2, the owner's) The chat window played by touch: its first row is the text to say and Send beside it, drawn by
 // touch_panel (a tap there types: chat_say_open), the chat's lines under it and the rest at the end. With a controller,
 // or in a desktop's menu, Say something stays a row
-bool chat_strip() { return touch_ui(); }  // (a handheld with buttons too: the rows say, chat_page_rows)
+bool chat_strip() { return true; }  // (a handheld with buttons too: the rows say, chat_page_rows; 1.0.2: a desktop's too, afloat)
 // The chat's options (the switches, Friends, the lines over the game, the button...): a page of their own, the same view
 // with s.at "chat/options", opened by the window's gear (chat_options_open); Back goes back to the chat
 bool chat_options() { return s.view == View::Chat && s.at == "chat/options"; }
@@ -200,18 +200,60 @@ int chat_channel_lists(std::vector<std::string> &names, std::vector<std::pair<in
         }
     return at;
 }
-void chat_channel_pick() {  // (the window's header: which chat, a picker)
-    std::vector<std::string> names;
-    std::vector<std::pair<int, std::string>> to;
-    int at = chat_channel_lists(names, to);
-    Row row;
-    row.id = "chat.channel", row.title = cs("Chat", "Chat");
-    choices(row, names, at, [to](int i) {
-        if (i >= 0 && i < (int)to.size()) g_chat = to[i].first, g_chat_peer = to[i].second;
-    });
+// The chat window's tabs (1.0.2, after tabarong's floating chat, in place of the picker): the chats there are now - the
+// hub's while its chat is on and a hub is up, General, Global and Friends while the online chat is on -, each with its
+// lines not read. Friends: one friend's private talk at a time, the arrows under the tabs go to the others
+struct ChatTab {
+    int channel;
+    std::string name;
+    int unread;
+};
+std::vector<ChatTab> chat_tabs() {
+    std::vector<ChatTab> t;
+    if (chat::hub_chat() && chat::hub_up())
+        t.push_back({chat::HUB, chat::channel_name(chat::HUB), chat::unread(chat::HUB)});
+    if (chat::enabled()) {
+        t.push_back({chat::GENERAL, chat::channel_name(chat::GENERAL), chat::unread(chat::GENERAL)});
+        t.push_back({chat::GLOBAL, chat::channel_name(chat::GLOBAL), chat::unread(chat::GLOBAL)});
+        t.push_back({chat::FRIEND, cs("Friends", "Amigos"), chat::unread(chat::FRIEND)});
+    }
+    return t;
+}
+std::vector<chat::Person> chat_friends() {
+    std::vector<chat::Person> f;
+    for (const chat::Person &p : chat::people())
+        if (p.is_friend && !p.blocked) f.push_back(p);
+    return f;
+}
+std::string g_friend_last;  // (the friend talked with last: the Friends tab goes back to them)
+void chat_pick_tab(int channel) {
+    if (channel != chat::FRIEND) {
+        g_chat = channel, g_chat_peer.clear();
+        return;
+    }
+    if (g_chat == chat::FRIEND)
+        return;
+    const std::vector<chat::Person> friends = chat_friends();
+    std::string pick;  // (a friend with lines not read, or the one talked with last, or the first)
+    for (const chat::Person &p : friends)
+        if (pick.empty() && chat::unread(chat::FRIEND, p.id)) pick = p.id;
+    for (const chat::Person &p : friends)
+        if (pick.empty() && p.id == g_friend_last) pick = p.id;
+    if (pick.empty() && !friends.empty()) pick = friends[0].id;
+    g_chat = chat::FRIEND, g_chat_peer = pick;
+}
+void chat_step_friend(int by) {  // (the friend row's arrows)
+    const std::vector<chat::Person> friends = chat_friends();
+    if (friends.empty()) return;
+    int at = 0;
+    for (size_t i = 0; i < friends.size(); i++)
+        if (friends[i].id == g_chat_peer) at = (int)i;
+    at = (at + by + (int)friends.size()) % (int)friends.size();
+    g_chat = chat::FRIEND, g_chat_peer = friends[at].id;
 }
 bool chat_can_say() {
     if (g_chat == chat::HUB) return chat::hub_chat() && chat::hub_up();
+    if (g_chat == chat::FRIEND && g_chat_peer.empty()) return false;  // (the Friends tab with no friend yet)
     return chat::enabled();
 }
 std::string chat_title() {  // (the window's header: which chat it is)
@@ -243,10 +285,17 @@ void chat_page_rows(std::vector<Row> &r) {
         if (hub_now && !hub_was_up && !chat::enabled() && (g_chat == chat::GLOBAL || g_chat == chat::GENERAL)) g_chat = chat::HUB;
         hub_was_up = hub_now;
     }
-    bool found = g_chat != chat::FRIEND;
+    bool found = g_chat != chat::FRIEND || (g_chat_peer.empty() && chat_friends().empty());  // (the Friends tab, none yet)
     for (const chat::Person &p : people)
         if (g_chat == chat::FRIEND && p.id == g_chat_peer && p.is_friend) found = true;
     if (!found) g_chat = chat::GLOBAL, g_chat_peer.clear();
+    if (g_chat == chat::FRIEND && !g_chat_peer.empty())
+        g_friend_last = g_chat_peer;
+    if (chat_strip() && !chat_options()) {  // (1.0.2: the tabs - a chat no longer there, the first one there is)
+        const std::vector<ChatTab> tabs = chat_tabs();
+        if (!tabs.empty() && std::none_of(tabs.begin(), tabs.end(), [](const ChatTab &t) { return t.channel == g_chat; }))
+            chat_pick_tab(tabs[0].channel);
+    }
     // (1.0.2, the owner's: the chat as a chat window - the text and Send at its top, the lines under them, so the phone's
     // keyboard leaves them in sight; the chat picked, the switches, Friends and the options at the end. With a controller
     // the chat picked and Say something stay first, as rows)
@@ -262,7 +311,11 @@ void chat_page_rows(std::vector<Row> &r) {
     };
     const bool hub_on = chat::hub_chat(), can = chat_can_say();
     // (a controller in hand, a handheld's buttons: Say something and the chat's options as rows too, the buttons reach them)
+#ifdef __ANDROID__
     const bool pad = host_input_real_pad();
+#else
+    const bool pad = false;  // (1.0.2: a desktop's chat window floats, worked with the mouse: settings_panel.cpp chat_floating)
+#endif
     if (chat_alone && pad)
         action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
     if (!strip) {
@@ -272,7 +325,10 @@ void chat_page_rows(std::vector<Row> &r) {
     }
     if (options)
         channel_row();
-    if (!can && !options)
+    if (!can && !options && g_chat == chat::FRIEND && g_chat_peer.empty() && chat::enabled())
+        note(r, "chat.why", cs("No friends yet: add one by their friend code in the chat's options (the gear above), Friends.",
+                               "Todavía no tienes amigos: agrega uno con su código de amigo en las opciones del chat (el engranaje de arriba), Amigos."));
+    else if (!can && !options)
         note(r, "chat.why", g_chat != chat::HUB ? (strip ? cs("Turn on the online chat in the chat's options (the gear above) to read and write here.",
                                                               "Activa el chat en línea en las opciones del chat (el engranaje de arriba) para leer y escribir acá.")
                                                         : cs("Turn on the online chat below to read and write here.",
@@ -283,7 +339,8 @@ void chat_page_rows(std::vector<Row> &r) {
                                                           "Activa el chat de la sala abajo para leer y escribir acá."))
                                             : cs("Not in a hub: in the game, go to the Gathering Hall and create or join one.",
                                                  "No estás en una sala: en el juego, ve al Salón de reuniones y crea o únete a una."));
-    std::vector<chat::Line> lines = options ? std::vector<chat::Line>() : chat::lines(g_chat, g_chat_peer, 30);
+    std::vector<chat::Line> lines = options || (g_chat == chat::FRIEND && g_chat_peer.empty()) ? std::vector<chat::Line>()
+                                                                                              : chat::lines(g_chat, g_chat_peer, 30);
     if (!options)
         chat::mark_read(g_chat, g_chat_peer);
     if (lines.empty() && can && !options) note(r, "chat.none", cs("Nothing has been said yet.", "Todavía no se dijo nada."));
@@ -296,6 +353,7 @@ void chat_page_rows(std::vector<Row> &r) {
             n.who = l.mine ? std::string(cs("You", "Tú")) : l.name;
             if (g_chat == chat::GLOBAL && !l.game.empty()) n.who += l.game == "mh4u" ? "  (MH4U)" : "  (MHGU)";
             n.who_mine = l.mine;
+            n.who_ink = l.mine ? 0 : chat::name_ink(l.name);  // (1.0.2: each name its own colour, as beside the button)
         }
         if (l.share == chat::SHARE_KEY && !l.mine) {
             chat::Line copy = l;
@@ -361,8 +419,12 @@ void chat_page_rows(std::vector<Row> &r) {
     add_choice(r, "chat.overlay", cs("Lines over the game", "Líneas sobre el juego"), chat::overlay(),
                {cs("Off", "Apagado"), cs("Hub and friends", "Sala y amigos"), cs("All", "Todos")},
                [](int i) { chat::set_overlay(i); });
-    r.back().help = cs("New lines show for a few seconds over the game, beside the chat button.",
-                       "Las líneas nuevas se ven unos segundos sobre el juego, junto al botón del chat.");
+    r.back().help = cs("New lines show for 8 seconds beside the chat button, up to four, each chat in its colour (the hub's "
+                       "light blue, General green, Global gold, a friend pink) and each player's name in its own. Not yours; "
+                       "they go when a menu opens.",
+                       "Las líneas nuevas se ven 8 segundos junto al botón del chat, hasta cuatro, cada chat con su color (la "
+                       "sala celeste, General verde, Global dorado, un amigo rosa) y el nombre de cada jugador con el suyo. "
+                       "Las tuyas no; se van al abrirse un menú.");
 #ifdef __ANDROID__
     {
         Row row;
@@ -385,14 +447,43 @@ void chat_page_rows(std::vector<Row> &r) {
                            "then Save. It is kept with the control profile.",
                            "Personalizar controles y HUD: arrastra el botón del chat adonde quieras, pellizca o usa - / + para su "
                            "tamaño, y Guardar. Queda guardado con el perfil de controles.");
-        // (1.0.2: the chat window, moved by its header and sized by its corner: the menu's place and size again)
+    }
+#endif
+    {  // (1.0.2: the chat window, a desktop's too - moved by its header and sized by its corner: the menu's place and size again)
+        // (1.0.2, after tabarong's floating chat) how solid the window's background, its lines' strips and the field to type
+        // in are: 0 to 100 %, in steps of 5; the text always solid. Kept in chat.txt at once
+        const struct {
+            int which;
+            const char *id, *en, *es, *help_en, *help_es;
+        } solid[] = {
+            {chat::OPACITY_WINDOW, "chat.solid.window", "Window background", "Fondo de la ventana",
+             "How solid the chat window's background is. 0 %: the game shows through it; the text stays solid.",
+             "Qué tan sólido es el fondo de la ventana del chat. 0 %: el juego se ve a través; el texto queda sólido."},
+            {chat::OPACITY_LINES, "chat.solid.lines", "Message background", "Fondo de los mensajes",
+             "How solid the dark strip under each message is. 0 %: no strip; the text stays solid.",
+             "Qué tan sólida es la tira oscura de cada mensaje. 0 %: sin tira; el texto queda sólido."},
+            {chat::OPACITY_FIELD, "chat.solid.field", "Typing field background", "Fondo del campo de escribir",
+             "How solid the background of the field you type in is. 0 %: see-through; the text stays solid.",
+             "Qué tan sólido es el fondo del campo donde escribes. 0 %: transparente; el texto queda sólido."},
+        };
+        for (const auto &o : solid) {
+            Row row;
+            const int which = o.which, now = chat::opacity(which);
+            row.id = o.id, row.title = cs(o.en, o.es), row.value = fmt("%d %%", now), row.help = cs(o.help_en, o.help_es);
+            row.number = true, row.progress = now / 100.f;
+            row.adjust = [which](int d) { chat::set_opacity(which, chat::opacity(which) + d * 5); };
+            row.slide = [which](float at) {  // (a drag: chat.txt written only as the value changes)
+                const int v = (int)std::lround(at * 20) * 5;
+                if (v != chat::opacity(which)) chat::set_opacity(which, v);
+            };
+            r.push_back(std::move(row));
+        }
         action(r, "chat.window.reset", cs("Chat window back in its place", "Ventana del chat a su lugar"), []() { chat::reset_window(); });
         r.back().help = cs("The chat opens in a window of its own: drag its top to move it and its bottom right corner to make "
                            "it larger or smaller. It stays where you leave it. This puts it back as it came.",
                            "El chat se abre en una ventana propia: arrastra su parte de arriba para moverla y su esquina de "
                            "abajo a la derecha para agrandarla o achicarla. Queda donde la dejes. Esto la deja como venía.");
     }
-#endif
     {
         Row row;
         row.id = "chat.name", row.title = cs("Your name in the chat", "Tu nombre en el chat");
@@ -457,6 +548,7 @@ void chat_typing_rows(std::vector<Row> &r) {
             n.who = l.mine ? std::string(cs("You", "Tú")) : l.name;
             if (g_chat == chat::GLOBAL && !l.game.empty()) n.who += l.game == "mh4u" ? "  (MH4U)" : "  (MHGU)";
             n.who_mine = l.mine;
+            n.who_ink = l.mine ? 0 : chat::name_ink(l.name);
         }
     }
 }

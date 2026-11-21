@@ -8,6 +8,7 @@
 #include "chat/chat.h"
 #include "chat/chat_crypto.h"
 #include "chat/chat_text.h"
+#include "chat/chat_overlay.h"  // (1.0.2: the chats' and the names' colours)
 #include "chat_port.h"
 #include "cache_clear.h"
 #include "cheats.h"
@@ -76,6 +77,9 @@ struct Row {
     bool bright = false;                   // (a note) in the text's colour, not the dimmer one (a check that passed)
     std::string who;                       // (a note) a chat line's sender, over its text; who_mine: this player's
     bool who_mine = false;
+    unsigned who_ink = 0;                  // (1.0.2) the sender's own colour (chat::name_ink); 0: the theme's
+    std::function<void(float)> slide;      // (1.0.2, the phone) a number with a bar under it, progress its fill: a tap or
+                                           // a drag on the bar sets it there (0 to 1), as - and + step it
     bool menu = false;                     // Confirm opens a dropdown of its choices
     int toggle = -1;                       // On / Off (1 / 0; -1: not a switch): the phone draws a switch
     bool number = false;                   // a number: left / right step it (the phone: - and + buttons on the row)
@@ -185,6 +189,14 @@ struct State {
 } s;
 std::atomic<bool> request_exit, request_back, is_dirty, is_confirming, is_capturing, capture_mouse, capture_wheel;
 std::atomic<int> request_view;  // (SETTINGS_VIEW_*: a desktop's dialog answered, settings_panel_request_view)
+// (1.0.2, after tabarong's floating chat) the chat window afloat as the frame ended (chat_floating, settings_panel.h), and
+// typed in, for the other threads; what they asked of it (SETTINGS_CHAT_*); its controls' places this frame and the last
+// (fractions of the screen: a finger there is the window's, settings_panel_chat_claims)
+std::atomic<bool> g_chat_afloat{false}, g_chat_typed{false};
+std::atomic<int> request_chat{0};
+bool g_chat_hidden;  // (game frame: afloat, hidden this frame by a menu of the game's)
+std::mutex g_claim_lock;
+std::vector<ImRect> g_claims, g_claims_next;
 // (the key pressed while a key is being chosen, or KEY_MOUSE + a mouse button; -1: none yet)
 std::atomic<int> captured_key{-1};
 // (the draft's language while the menu edits it; before the menu first opens - the credits at the start - the saved one:
@@ -1160,6 +1172,9 @@ void ask_close(bool *open) {
 // (1.0.2) Say something in the chat window with the phone's keyboard up: the text at the window's top and the chat's lines
 // under it, where the keys were (they are under the phone's keyboard); Back puts the phone's keyboard away, the keys again
 bool chat_typing() { return s.view == View::Keyboard && s.keyboard.chat && s.keyboard.phone; }
+// (1.0.2) Say something in the chat window with the chat's lines under the text, not the view's keys: the phone's keyboard
+// up (chat_typing), or a desktop's own keyboard (MHGU for PC: no phone keyboard; the window stays where it is)
+bool chat_typing_lines() { return s.view == View::Keyboard && s.keyboard.chat && (s.keyboard.phone || !touch_ui()); }
 // The chat window (1.0.2, the owner's): the chat page and its Say something, played by touch, in a window of their own
 // over the game, a little see-through; its header moves it and its corner sizes it (chat.txt keeps both: chat::window)
 bool chat_window_view() { return s.view == View::Chat || (s.view == View::Keyboard && s.keyboard.chat); }
@@ -1437,6 +1452,29 @@ void reopen_picker(std::vector<Row> &rows) {
         focus("choice." + std::to_string(std::clamp(s.reopen_at, 0, (int)s.dropdown.names.size() - 1)));
 }
 #include "settings_chat.inc"  // (S32, S35: the chat's pages, the key's generator)
+// (1.0.2, after tabarong's floating chat) The chat window afloat: played by touch with no controller in hand, on the chat's
+// lines or its Say something (not its options, a picker or a question), it floats over the game, which goes on - the menu
+// doesn't hold it - with the touch controls drawn and working round it (overlay.cpp, touch.cpp). A finger is the window's
+// only on its controls (chat_claim: the header with the tabs, the text and Send, a friend's arrows, the corner's grip, a
+// row that does something, the list's scroll strip); anywhere else, the blank part of the window too, it is the game's -
+// the stick, the camera -, and while typing such a tap closes the window and the phone's keyboard. A menu of the game's
+// hides it until it closes (typing stops); the settings button leaves it for the menu. On a phone with a controller in
+// hand (a handheld's buttons) the window stays a menu, as before: its buttons work it. On a desktop it floats always,
+// worked with the mouse: a controller's presses are the game's meanwhile (overlay.cpp chat_route)
+bool chat_floating() {
+#ifdef __ANDROID__
+    const bool by_hand = !host_input_real_pad();
+#else
+    const bool by_hand = true;
+#endif
+    return by_hand && chat_window_view() && chat_strip() && !chat_options() && !s.dropdown.open;
+}
+void chat_claim(ImRect r) {
+    const ImVec2 d = ImGui::GetIO().DisplaySize;
+    if (d.x <= 0 || d.y <= 0 || r.GetWidth() <= 0 || r.GetHeight() <= 0)
+        return;
+    g_claims_next.push_back(ImRect(r.Min.x / d.x, r.Min.y / d.y, r.Max.x / d.x, r.Max.y / d.y));
+}
 void server_row(std::vector<Row> &rows) {
     static const char *const presets[] = LDN_SERVERS;
     const std::vector<std::string> used = remembered(true);
@@ -2545,13 +2583,6 @@ void game_code_rows(std::vector<Row>& r) {
 #endif
 }
 // ...and its credit, among Credits & Licenses' notes (about).
-void builder_credit_rows(std::vector<Row>& r) {
-#ifdef __ANDROID__
-    note(r, "about.builder", tr("Building the game code on the phone was Klark231's idea (github.com/klark231/mh4u-builder)."));
-#else
-    (void)r;
-#endif
-}
 MENU_ENTRY("system/code", 10, game_code_rows);
 // Clear shader cache (runtime/cache_clear.c, 1.0's S30): a tap leaves the mark the next start deletes the shader cache
 // by, before anything reads it; another tap takes it back. Nothing to Save: the mark is the setting. The size is read
@@ -4181,15 +4212,14 @@ MENU_ENTRY("system/game", 10, rows_system_game_10);
 
 // ---- Credits & Licenses: who made it, where the official one is, the licences and the legal notice: shown, as in the
 // MH4U port, not in a help
-// 1.0's credits (MENU.md 3.7: one note each, under who made it): tabarong's designs (the layout and chat groups), the
-// builder's idea (builder_credit_rows, Android), Alfonso's (the qol group)
+// The credits (1.0.2, the owner's: those who contributed to the port, by name - not which idea each gave). The same names
+// in the MH4U port's
 void credits_10_rows(std::vector<Row> &r) {
-    note(r, "about.tabarong",
-         en_es("The control profiles, the chat, the friends and the room keys follow the designs of tabarong (Discord; GitHub: oliveaglien).",
-               "Los perfiles de controles, el chat, los amigos y las claves de sala siguen los diseños de tabarong (Discord; GitHub: oliveaglien)."));
-    builder_credit_rows(r);
-    note(r, "about.alfonso", en_es("Sending all the rewards to the box at once: Alfonso's idea.",
-                                   "Mandar todas las recompensas a la caja de una vez: idea de Alfonso."));
+    note(r, "about.thanks", en_es("Contributed to development:", "Aportaron al desarrollo:"));
+    for (const char *name : {"tabarong", "Klark231", "Alfonso Matador", "popzol", "BlitzWOLF"}) {
+        note(r, std::string("about.thanks.") + name, name);
+        r.back().bright = true;
+    }
 }
 void rows_about_10(std::vector<Row> &r) {
     header(r, "about.head", std::string(app_title()) + " " + MHGU_VERSION);
@@ -4769,7 +4799,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
     if (s.view == View::Verify) { verify_rows(r); return r; }
-    if (chat_typing()) {  // (the chat window's: Send, the keys, and the chat's lines - settings_chat.inc)
+    if (chat_typing_lines()) {  // (the chat window's: Send, the keys, and the chat's lines - settings_chat.inc)
         chat_typing_rows(r);
         return r;
     }
@@ -5265,10 +5295,10 @@ float forget_side() { return std::min(s.m.row * .72f, ImGui::GetFontSize() * 2.f
 // are draw_rows' buttons, room their width), or the value, marked when a tap lists its choices. plated: a key or a
 // dialog's button, a plate with its title in the middle
 void touch_row(ImDrawList *dl, const Row &r, const ImRect &rect, bool lit, bool held, bool plated, ImVec2 label,
-               float wrap, float room, bool toggle, bool stepper) {
+               float wrap, float room, bool toggle, bool stepper, float mid = -1) {  // (mid: its title's height, if not the middle)
     const Theme &t = theme();
     const Look k = touch_look();
-    float font = ImGui::GetFontSize(), line = s.m.line, cy = rect.GetCenter().y;
+    float font = ImGui::GetFontSize(), line = s.m.line, cy = mid >= 0 ? mid : rect.GetCenter().y;
     if (plated && !lit)
         plate(dl, rect, line * .8f, held, r.enabled);
     if (lit) {
@@ -5439,11 +5469,11 @@ void help_box(ImGuiWindow *w, const Row &r, float width) {
 // are more: the Phone keyboard key), a dialog's choices as plates
 void draw_rows(std::vector<Row> &rows, bool list = false) {
     auto *w = ImGui::GetCurrentWindow();
-    bool touch = touch_ui();
+    bool touch = touch_ui() || chat_window_view();  // (1.0.2: the chat window's rows as a phone's on a desktop too: - + and bars)
     float font = ImGui::GetFontSize(), width = ImGui::GetContentRegionAvail().x;
     if (touch)
         width -= s.m.line * 3;  // (room for the scroll mark at the list's right: scroll_mark)
-    bool keyboard_view = s.view == View::Keyboard && !list && !chat_typing();  // (the chat window's: a list)
+    bool keyboard_view = s.view == View::Keyboard && !list && !chat_typing_lines();  // (the chat window's: a list)
     bool passive = s.dropdown.open && !list;
     bool plated = touch && !list && (confirmation() || s.view == View::KeyCapture || s.view == View::PadCapture || s.view == View::Move);
     float gap = ImGui::GetStyle().ItemSpacing.x;
@@ -5486,9 +5516,10 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             float bar = r.progress >= 0 ? std::floor(font * .55f) : 0, under = bar ? std::floor(font * .35f) : 0;
             ImGui::Dummy(ImVec2(width, ts.y + top * 2 + who + under + bar));
             const bool strip = chat_window_view();  // (1.0.2, the owner's: the chat's lines on a dark strip each, over a light
-            if (strip)                              // game - grass, snow - in the see-through window; the text bright)
-                w->DrawList->AddRectFilled(ImVec2(p.x, p.y + top * .35f), ImVec2(p.x + width, p.y + ts.y + top * 1.65f + who + under + bar),
-                                           IM_COL32(10, 7, 5, 190), font * .25f);
+            if (strip)                              // game - grass, snow - in the see-through window; the text bright. How
+                w->DrawList->AddRectFilled(         // solid: the chat's options, Message background)
+                    ImVec2(p.x, p.y + top * .35f), ImVec2(p.x + width, p.y + ts.y + top * 1.65f + who + under + bar),
+                    IM_COL32(10, 7, 5, (int)std::lround(2.55f * chat::opacity(chat::OPACITY_LINES))), font * .25f);
             if (bar) {  // (a progress: a dark slot under the text, filled with the accent as the game's gauges)
                 ImVec2 a(p.x + indent, p.y + top + who + ts.y + under), b(p.x + indent + wrap, a.y + bar);
                 float round = std::min(bar * .5f, theme().rounding), x = a.x + (b.x - a.x) * std::clamp(r.progress, 0.f, 1.f);
@@ -5499,8 +5530,8 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
             diamond(w->DrawList, ImVec2(p.x + font * .6f, p.y + top + (who ? who * .55f : size * .55f)), size * .18f,
                     r.warn ? theme().warn : theme().accent);
             if (who)
-                shadow_text(w->DrawList, who, ImVec2(p.x + indent, p.y + top), r.who_mine ? theme().text_dim : theme().accent,
-                            r.who.c_str());
+                shadow_text(w->DrawList, who, ImVec2(p.x + indent, p.y + top),
+                            r.who_mine ? theme().text_dim : r.who_ink ? (ImU32)r.who_ink : theme().accent, r.who.c_str());
             if (strip)
                 shadow_text(w->DrawList, size, ImVec2(p.x + indent, p.y + top + who), r.warn ? theme().warn : theme().text,
                             r.title.c_str(), wrap);
@@ -5577,6 +5608,9 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         float h = touch ? grid ? s.m.row : std::max(s.m.row, label.y + font * .9f)
                   : grid ? font * 2
                          : std::max(font * 2.1f, label.y + font * .8f);
+        const bool slider = stepper && r.slide && r.progress >= 0;  // (1.0.2: its bar under the title, the row taller)
+        if (slider)
+            h += font * .9f;
         ImGui::PushID(r.id.c_str());
         ImGuiID id = w->GetID("row");
         ImRect rect(p, ImVec2(p.x + rw, p.y + h));
@@ -5610,11 +5644,37 @@ void draw_rows(std::vector<Row> &rows, bool list = false) {
         if (touch) {
             if (selected && r.enabled && !passive)
                 own_focus(w, id, rect);
-            touch_row(w->DrawList, r, rect, selected && r.enabled, held, grid || plated, label, wrap, room, toggle,
-                      stepper);
+            touch_row(w->DrawList, r, rect, selected && r.enabled, held, grid || plated, label, wrap, room, toggle, stepper,
+                      slider ? rect.Min.y + (h - font * .9f) * .5f : -1.f);
+            if (chat_floating())  // (1.0.2: the chat window afloat, a row that does something - a key, Chat options)
+                chat_claim(ImRect(ImMax(rect.Min, w->InnerClipRect.Min), ImMin(rect.Max, w->InnerClipRect.Max)));
+            if (slider) {  // (1.0.2) the bar: a dark slot filled with the accent; a tap or a drag on it sets the value there
+                static ImGuiID sliding;
+                const ImGuiID me = w->GetID("slide");
+                const float bh = std::floor(font * .36f), x0 = p.x + font * .6f, x1 = rect.Max.x - font * .6f - room - font * .4f;
+                const ImRect bar(x0, rect.Max.y - font * .55f - bh, std::max(x0 + font, x1), rect.Max.y - font * .55f);
+                const ImRect grab(bar.Min.x - font * .4f, bar.Min.y - font * .5f, bar.Max.x + font * .4f, rect.Max.y);
+                ImGuiIO &io = ImGui::GetIO();
+                if (r.enabled && !passive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && grab.Contains(io.MousePos) &&
+                    w->InnerClipRect.Contains(io.MousePos))
+                    sliding = me;
+                if (sliding == me) {
+                    if (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !(s.drag.window == s.list && s.drag.moving)) {
+                        r.slide(std::clamp((io.MousePos.x - bar.Min.x) / bar.GetWidth(), 0.f, 1.f));
+                        focus(r.id);
+                    } else
+                        sliding = 0;
+                }
+                const float round = std::min(bh * .5f, theme().rounding), fill = bar.Min.x + bar.GetWidth() * std::clamp(r.progress, 0.f, 1.f);
+                w->DrawList->AddRectFilled(bar.Min, bar.Max, IM_COL32(0, 0, 0, 140), round);
+                if (fill > bar.Min.x + 1)
+                    w->DrawList->AddRectFilled(bar.Min, ImVec2(fill, bar.Max.y), sliding == me ? touch_look().glow : theme().accent, round);
+                w->DrawList->AddRect(bar.Min, bar.Max, fade(theme().accent, .55f), round, 0, std::max(1.f, s.m.line * .5f));
+                w->DrawList->AddCircleFilled(ImVec2(fill, bar.GetCenter().y), bh * .95f, sliding == me ? touch_look().glow : touch_look().ink, 16);
+            }
             if (stepper) {  // - and + (held: they repeat)
                 ImVec2 next = ImGui::GetCursorScreenPos();
-                float right = rect.Max.x - font * .6f, cy = rect.GetCenter().y;
+                float right = rect.Max.x - font * .6f, cy = slider ? rect.Min.y + (h - font * .9f) * .5f : rect.GetCenter().y;
                 for (int d = -1; d <= 1; d += 2) {
                     float x = d < 0 ? right - room : right - bs;
                     ImRect b(x, cy - bs * .5f, x + bs, cy + bs * .5f);
@@ -6239,7 +6299,8 @@ void touch_picker(std::vector<Row> &options, float scale) {
 }
 // (1.0.2, the owner's) The chat window (chat_window_view): the menu's place and size until the player moves it by its
 // header or sizes it by its bottom right corner; chat.txt keeps them (chat::window, fractions of the screen). On the
-// screen, at least CHAT_MIN_W by CHAT_MIN_H screen heights; its body see-through to CHAT_SEE. While the phone's keyboard is
+// screen, at least CHAT_MIN_W by CHAT_MIN_H screen heights; its body as solid as the chat's options say (Window background,
+// chat::opacity: 60 % as it comes). While the phone's keyboard is
 // up for Say something (chat_typing) the window goes to the screen's top for the moment, as tall as the keyboard leaves
 // (keyboard_top: on a Galaxy in landscape it takes 57 % of the screen, and a window that only rose still had Send and every
 // line under it), with the text and Send at its top and the chat's lines under them; the same in the MH4U port
@@ -6253,7 +6314,10 @@ bool hud_peek() { return g_hud_peek_ns && SDL_GetTicksNS() - g_hud_peek_ns < HUD
 void fade_drawn(ImDrawList *dl, float a) {
     for (ImDrawVert &v : dl->VtxBuffer) v.col = fade(v.col, a);
 }
-const float CHAT_SEE = .6f, CHAT_MIN_W = .95f, CHAT_MIN_H = .5f;
+const float CHAT_MIN_W = .95f, CHAT_MIN_H = .5f;
+float chat_solid(int which) { return chat::opacity(which) / 100.f; }
+// (the window's background: the chat's options page at least as solid as the window came, so it reads whatever it is set to)
+float chat_window_solid() { return chat_options() ? std::max(.6f, chat_solid(chat::OPACITY_WINDOW)) : chat_solid(chat::OPACITY_WINDOW); }  // (1.0.2: the chat's options, 0 to 1)
 struct ChatDrag {
     int mode = 0;            // 1: moved by its header, 2: sized by its corner
     ImVec2 grab, pos, size;  // where the finger landed, and the window then
@@ -6332,6 +6396,7 @@ void chat_window_handles(ImGuiWindow *win, const ImGuiViewport *vp, const ImRect
     const float H = vp->WorkSize.y, g = std::max(.05f * H, line * 10);
     const ImVec2 c(win->Pos.x + win->Size.x - frame - line, win->Pos.y + win->Size.y - frame - line);
     const ImRect corner(c.x - g * 1.25f, c.y - g * 1.25f, c.x + frame + line, c.y + frame + line);  // (a thumb's room)
+    chat_claim(corner);  // (afloat: the grip is the window's)
     ChatDrag &d = g_chat_drag;
     ImGuiIO &io = ImGui::GetIO();
     if (!d.mode && !busy && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
@@ -6377,7 +6442,7 @@ void touch_panel(bool *open, const Config &before) {
         g_chat_drag.mode = 0;
     ImGui::SetNextWindowPos(at, ImGuiCond_Always);
     ImGui::SetNextWindowSize(panel, ImGuiCond_Always);
-    ImGui::PushStyleColor(ImGuiCol_WindowBg, vec(chat_win ? fade(look.panel, CHAT_SEE) : look.panel));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, vec(chat_win ? fade(look.panel, chat_window_solid()) : look.panel));
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0, 0, 0, 0));
     ImGui::PushStyleColor(ImGuiCol_Text, vec(look.text));
     ImGui::PushStyleColor(ImGuiCol_Border, vec(look.edge));
@@ -6419,7 +6484,9 @@ void touch_panel(bool *open, const Config &before) {
     const bool chat_head = chat_win && s.view == View::Chat && !chat_options() && chat_strip();
     float band = chat_win ? std::max(.075f * H, f * 2.1f) : std::max(.11f * H, f * 2.9f), side = band * .8f,
           by = y0 + (band - side) * .5f + line * .5f;
-    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), k.band);
+    dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y0 + band), chat_win ? fade(k.band, chat_window_solid()) : k.band);
+    if (chat_win)  // (afloat: the header is the window's - its buttons, its tabs, the rest moves it)
+        chat_claim(ImRect(x0, y0, x1, y0 + band + line * 2));
     if (look.game) {  // (the game's red and green rules under it)
         dl->AddRectFilled(ImVec2(x0, y0 + band), ImVec2(x1, y0 + band + line), IM_COL32(176, 34, 30, 255));
         dl->AddRectFilled(ImVec2(x0, y0 + band + line), ImVec2(x1, y0 + band + line * 1.7f),
@@ -6451,24 +6518,74 @@ void touch_panel(bool *open, const Config &before) {
             dl->AddCircle(c, gr, col, 20, th);
             dl->AddCircle(c, gr * .4f, col, 12, th * .8f);
         }
-        ImRect pk(g.Min.x - pad - side, by, g.Min.x - pad, by + side);  // (which chat: a picker)
-        bool hp = false;
-        if (touch_button("###chatpick", pk, true, &hp))
-            later = []() { chat_channel_pick(); };
-        plate(dl, pk, line, hp, true);
-        {
-            const ImVec2 c = pk.GetCenter();
-            const float tr_ = side * .16f;
-            dl->AddTriangleFilled(ImVec2(c.x - tr_, c.y - tr_ * .5f), ImVec2(c.x + tr_, c.y - tr_ * .5f), ImVec2(c.x, c.y + tr_ * .7f),
-                                  hp ? k.glow : k.ink);
+        right = g.Min.x - pad;
+        // (1.0.2, after tabarong's floating chat) the tabs in place of the picker: the chats there are now (chat_tabs), the
+        // one shown lit, each with its chat's colour under it and its lines not read in a red seal (up to 99). What they
+        // leave of the header moves the window: a grip of dots there. None (both chats off): "Chat", as before
+        const std::vector<ChatTab> tabs = chat_tabs();
+        const float cy = by + side * .5f;
+        if (tabs.empty()) {
+            const char *name = cs("Chat", "Chat");
+            const float size = std::floor(f * 1.05f);
+            ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, name);
+            shadow_text(dl, size, ImVec2(title_x, cy - ts.y * .5f), k.glow, name);
+            title_x += ts.x + pad;
+        } else {
+            const float size = std::floor(f * .95f), gap = pad * .6f, seal = side * .3f;
+            std::vector<float> wide(tabs.size());
+            float total = gap * (float)(tabs.size() - 1);
+            for (size_t i = 0; i < tabs.size(); i++)
+                total += wide[i] = font->CalcTextSizeA(size, FLT_MAX, 0, tabs[i].name.c_str()).x + f * 1.3f +
+                                   (tabs[i].unread ? seal * 2 + f * .3f : 0.f);
+            const float room = std::max(f * 4, right - title_x - side * 1.4f);  // (a handle's room left at their right)
+            const float q = total > room ? std::max(.55f, room / total) : 1.f;  // (narrower: all of them smaller)
+            float x = title_x;
+            for (size_t i = 0; i < tabs.size(); i++) {
+                const ChatTab &t = tabs[i];
+                const ImRect tb(x, by, x + wide[i] * q, by + side);
+                const bool on = g_chat == t.channel;
+                bool ht = false;
+                ImGui::PushID((int)i);
+                if (touch_button("###chattab", tb, true, &ht)) {
+                    const int c = t.channel;
+                    later = [c]() { chat_pick_tab(c); };
+                }
+                ImGui::PopID();
+                if (on) {  // (lit as the menu's picked section)
+                    dl->AddRectFilledMultiColor(tb.Min, tb.Max, k.bar0, k.bar1, k.bar1, k.bar0);
+                    dl->AddRect(tb.Min, tb.Max, fade(k.glow, .9f), 0, 0, line * .7f);
+                } else
+                    plate(dl, tb, line * .8f, ht, true);
+                dl->AddRectFilled(ImVec2(tb.Min.x + line * 1.5f, tb.Max.y - line * 1.6f), ImVec2(tb.Max.x - line * 1.5f, tb.Max.y - line * .5f),
+                                  on ? (ImU32)chat::channel_ink(t.channel) : fade((ImU32)chat::channel_ink(t.channel), .55f));
+                dl->PushClipRect(tb.Min, tb.Max, true);
+                const float ls = std::floor(size * q), sr = seal * q;
+                const ImVec2 ts = font->CalcTextSizeA(ls, FLT_MAX, 0, t.name.c_str());
+                const float inner = ts.x + (t.unread ? sr * 2 + f * .3f * q : 0.f);
+                float tx = tb.GetCenter().x - inner * .5f;
+                shadow_text(dl, ls, ImVec2(tx, cy - ts.y * .5f - line * .3f), on ? IM_COL32(255, 248, 232, 255) : ht ? k.glow : k.dim,
+                            t.name.c_str());
+                if (t.unread) {  // (the lines not read: a red seal, as on the chat button)
+                    char n[8];
+                    snprintf(n, sizeof n, "%d", std::min(t.unread, 99));
+                    const ImVec2 sc(tx + ts.x + f * .3f * q + sr, cy - line * .3f);
+                    dl->AddCircleFilled(sc, sr, IM_COL32(176, 34, 30, 255), 20);
+                    dl->AddCircle(sc, sr, k.rule, 20, std::max(1.f, line * .5f));
+                    const float ns = std::floor(sr * (n[1] ? 1.1f : 1.3f));
+                    const ImVec2 nz = font->CalcTextSizeA(ns, FLT_MAX, 0, n);
+                    dl->AddText(font, ns, ImVec2(sc.x - nz.x * .5f, sc.y - nz.y * .5f), IM_COL32(255, 243, 214, 255), n);
+                }
+                dl->PopClipRect();
+                x = tb.Max.x + gap;
+            }
+            title_x = x + pad * .4f;  // (the handle: from here to the gear)
         }
-        right = pk.Min.x - pad;
-        const std::string name = chat_title();
-        const float size = std::floor(f * 1.05f);
-        ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0, name.c_str());
-        dl->PushClipRect(ImVec2(x0, y0), ImVec2(std::max(title_x, right), y0 + band), true);
-        shadow_text(dl, size, ImVec2(title_x, by + side * .5f - ts.y * .5f), k.glow, name.c_str());
-        dl->PopClipRect();
+        if (right - title_x > side * .7f) {  // (the handle's grip: two rows of dots in its middle)
+            const float gx = (title_x + right) * .5f, d = std::max(1.5f, line * .7f), sp = d * 3.2f;
+            for (int row = 0; row < 2; row++)
+                for (int col = -2; col <= 2; col++)
+                    dl->AddCircleFilled(ImVec2(gx + col * sp, cy + (row ? .5f : -.5f) * sp), d, fade(k.rule, .7f), 8);
+        }
     } else {
         if (s.view != View::Main) {  // (a submenu or a dialog: a step back)
             ImRect r(x0 + pad, by, x0 + pad + side, by + side);
@@ -6559,10 +6676,12 @@ void touch_panel(bool *open, const Config &before) {
     // beside it, and Keys (the keys on the screen instead of the phone's keyboard, or the phone's again) where they fit.
     // Typing (keys): the text is the view's own (the caller draws it in the width this gives). Returns the row's height,
     // or with keys the text's width
-    auto chat_first_row = [&](bool can, bool keys) -> float {
-        const float rt = y0 + band + line * 2 + pad, rh = f * 2.3f, rl = x0 + pad, re = x1 - pad;
+    auto chat_first_row = [&](bool can, bool keys, float rt) -> float {
+        const float rh = f * 2.3f, rl = x0 + pad, re = x1 - pad;
+        chat_claim(ImRect(x0, rt - pad * .5f, x1, rt + rh + pad * .5f));  // (afloat: the text, Send and Keys are the window's)
         const char *send_t = cs("Send", "Enviar");
-        const char *keys_t = !keys ? nullptr : s.keyboard.phone ? cs("Keys", "Teclas") : cs("Phone keyboard", "Teclado del teléfono");
+        const char *keys_t = !keys || !touch_ui() ? nullptr  // (a desktop's own keyboard: no phone keyboard to change to)
+                             : s.keyboard.phone ? cs("Keys", "Teclas") : cs("Phone keyboard", "Teclado del teléfono");
         const float sw = std::max(f * 5.f, ImGui::CalcTextSize(send_t).x + f * 1.8f);
         const float kw = keys_t ? std::max(f * 5.f, ImGui::CalcTextSize(keys_t).x + f * 1.8f) : 0.f;
         const bool keys_fit = keys_t && re - rl - sw - kw - pad * 2 > f * 8;
@@ -6595,7 +6714,8 @@ void touch_panel(bool *open, const Config &before) {
         bool hf = false;
         if (touch_button("###chatfield", field, can, &hf))
             later = []() { chat_say_open(); };
-        dl->AddRectFilled(field.Min, field.Max, IM_COL32(14, 10, 8, can ? 235 : 150));
+        dl->AddRectFilled(field.Min, field.Max,  // (1.0.2: as solid as the chat's options say, Typing field background)
+                          IM_COL32(14, 10, 8, (int)std::lround(chat_solid(chat::OPACITY_FIELD) * (can ? 255 : 165))));
         dl->AddRect(field.Min, field.Max, hf ? k.glow : k.rule, 0, 0, line * .7f);
         const char *hint = cs("Say something", "Decir algo");
         ImVec2 hs = ImGui::CalcTextSize(hint);
@@ -6665,7 +6785,56 @@ void touch_panel(bool *open, const Config &before) {
         float y = top + error_text(top, lx, end - lx);
         list_rect = ImRect(lx, y, end, bottom);
     } else if (s.view == View::Chat && chat_strip() && !chat_options()) {  // (1.0.2: the text and Send in the window's first row, the lines under)
-        float y = top + chat_first_row(chat_can_say(), false) + pad;
+        float y = top;
+        if (g_chat == chat::FRIEND) {  // (1.0.2, after tabarong's floating chat: which friend, the arrows to the others)
+            const std::vector<chat::Person> friends = chat_friends();
+            const float rh = f * 1.9f;
+            const ImRect fr(left, y, end, y + rh);
+            chat_claim(ImRect(x0, y, x1, y + rh));
+            dl->AddRectFilled(fr.Min, fr.Max, IM_COL32(10, 7, 5, (int)std::lround(chat_solid(chat::OPACITY_LINES) * 255)), f * .25f);
+            dl->AddRectFilled(fr.Min, ImVec2(fr.Min.x + line * 1.5f, fr.Max.y), (ImU32)chat::channel_ink(chat::FRIEND));
+            if (friends.size() > 1)
+                for (int d = -1; d <= 1; d += 2) {
+                    const ImRect a = d < 0 ? ImRect(fr.Min.x + line * 2, fr.Min.y, fr.Min.x + line * 2 + rh * 1.2f, fr.Max.y)
+                                           : ImRect(fr.Max.x - rh * 1.2f, fr.Min.y, fr.Max.x, fr.Max.y);
+                    bool ha = false;
+                    ImGui::PushID(d);
+                    if (touch_button("###friendstep", a, true, &ha))
+                        later = [d]() { chat_step_friend(d); };
+                    ImGui::PopID();
+                    plate(dl, a, line * .8f, ha, true);
+                    chevron(dl, a.GetCenter(), rh * .17f, d, ha ? k.glow : k.ink, std::max(2.f, line * 1.4f));
+                }
+            std::string who = cs("No friends yet", "Todavía no tienes amigos"), count;
+            bool online = false;
+            int others = 0;  // (the other friends' lines not read)
+            for (size_t i = 0; i < friends.size(); i++) {
+                if (friends[i].id == g_chat_peer) {
+                    who = friends[i].name.empty() ? chatc::show_code(friends[i].code) : friends[i].name;
+                    online = friends[i].online && friends[i].mutual;
+                    count = fmt("%d/%d", (int)i + 1, (int)friends.size());
+                } else
+                    others += chat::unread(chat::FRIEND, friends[i].id);
+            }
+            const float tx = fr.Min.x + (friends.size() > 1 ? rh * 1.2f + line * 2 + pad : pad), cy = fr.GetCenter().y;
+            if (!g_chat_peer.empty()) {  // (online: a green dot, else a grey one)
+                dl->AddCircleFilled(ImVec2(tx + f * .3f, cy), f * .22f, online ? IM_COL32(110, 214, 96, 255) : IM_COL32(120, 110, 100, 255), 12);
+            }
+            const float nx = tx + (g_chat_peer.empty() ? 0.f : f * .9f);
+            const ImVec2 ns = font->CalcTextSizeA(f, FLT_MAX, 0, who.c_str());
+            dl->PushClipRect(ImVec2(nx, fr.Min.y), ImVec2(fr.Max.x - (friends.size() > 1 ? rh * 1.2f : 0.f) - f * 3.5f, fr.Max.y), true);
+            shadow_text(dl, f, ImVec2(nx, cy - ns.y * .5f), g_chat_peer.empty() ? k.dim : (ImU32)chat::name_ink(who), who.c_str());
+            dl->PopClipRect();
+            std::string tail = count + (others ? fmt("  +%d", std::min(others, 99)) : std::string());
+            if (!tail.empty()) {
+                const float small = std::floor(f * .8f);
+                const ImVec2 cs_ = font->CalcTextSizeA(small, FLT_MAX, 0, tail.c_str());
+                const float cx = fr.Max.x - (friends.size() > 1 ? rh * 1.2f + pad : pad) - cs_.x;
+                dl->AddText(font, small, ImVec2(cx, cy - cs_.y * .5f), others ? IM_COL32(255, 132, 112, 255) : k.dim, tail.c_str());
+            }
+            y += rh + pad * .6f;
+        }
+        y += chat_first_row(chat_can_say(), false, y) + pad;
         y += error_text(y, left, end - left);
         list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::TouchButtons || s.view == View::Profiles || s.view == View::ProfileSlot || s.view == View::Chat ||
@@ -6674,9 +6843,11 @@ void touch_panel(bool *open, const Config &before) {
         list_rect = ImRect(left, y, end, bottom);
     } else if (s.view == View::Keyboard) {  // (the text typed so far, the keys under it)
         ImRect field(left, top, end, top + f * 2.3f);
-        if (s.keyboard.chat && chat_strip())  // (the chat window's: Send and Keys beside the text, the chat's lines under)
-            field.Max.x = left + chat_first_row(true, true);
-        dl->AddRectFilled(field.Min, field.Max, IM_COL32(14, 10, 8, 235));
+        const bool chat_field = s.keyboard.chat && chat_strip();
+        if (chat_field)  // (the chat window's: Send and Keys beside the text, the chat's lines under)
+            field.Max.x = left + chat_first_row(true, true, top);
+        dl->AddRectFilled(field.Min, field.Max,  // (1.0.2, the chat's: as solid as its options say)
+                          IM_COL32(14, 10, 8, chat_field ? (int)std::lround(chat_solid(chat::OPACITY_FIELD) * 255) : 235));
         dl->AddRect(field.Min, field.Max, k.rule, 0, 0, line * .7f);
         std::string text = s.keyboard.buffer;
         text.insert(s.keyboard.cursor, "|");
@@ -6728,7 +6899,7 @@ void touch_panel(bool *open, const Config &before) {
             say(saved_text(), k.glow);
         if (std::any_of(rows.begin(), rows.end(), [](const Row &row) { return row.cold; }))  // (only where a row has the *)
             say(tr("* Restart required"), k.dim);
-        if (pad_guides && !dialog && s.view != View::Keyboard) {
+        if (pad_guides && !dialog && s.view != View::Keyboard && !chat_floating()) {  // (afloat: the game has the controller)
             struct Item {
                 int physical;  // (-1 the d-pad, -2 the shoulders)
                 const char *label;
@@ -6784,6 +6955,13 @@ void touch_panel(bool *open, const Config &before) {
         licenses_text(look);
     ImGui::Dummy(ImVec2(1, pad));
     finger_scroll(list);
+    if (chat_win && list->ScrollMax.y >= 1) {  // (1.0.2, afloat: the lines' scroll strip at the list's right is the window's -
+        const float sw = std::max(f * 1.3f, .04f * H);  // a finger drags the lines there; on the lines it is the game's)
+        const ImRect strip(list->Pos.x + list->Size.x - sw, list->Pos.y, list->Pos.x + list->Size.x, list->Pos.y + list->Size.y);
+        chat_claim(strip);
+        if (chat_floating())
+            list->DrawList->AddRectFilled(strip.Min, strip.Max, fade(k.band, .35f), f * .3f);
+    }
     scroll_mark(list);
     if (picking)  // (a window of its own, drawn over the menu's: dimmed on its own)
         list->DrawList->AddRectFilled(list->Pos, ImVec2(list->Pos.x + list->Size.x, list->Pos.y + list->Size.y),
@@ -6816,6 +6994,17 @@ void touch_panel(bool *open, const Config &before) {
 }
 // What the other threads read of the menu, as its frame ends
 void report(bool *open) {
+    {  // (1.0.2, after tabarong's floating chat: the chat window afloat and its controls' places, for the fingers' thread)
+        const bool afloat = *open && chat_floating();
+        std::lock_guard<std::mutex> l(g_claim_lock);
+        if (afloat && !g_chat_hidden)
+            g_claims.swap(g_claims_next);
+        else
+            g_claims.clear();
+        g_chat_afloat = afloat;
+        g_chat_typed = afloat && !g_chat_hidden && s.view == View::Keyboard;
+    }
+    g_claims_next.clear();
     is_dirty = *open && (dirty() || pending_text());
     is_confirming = *open && confirmation();
     is_capturing = *open && s.view == View::KeyCapture;
@@ -7345,6 +7534,18 @@ bool settings_panel_fading() {
 void settings_panel_request_close() { request_exit.store(true); }
 extern "C" void settings_panel_request_view(int view) { request_view.store(view); }
 void settings_panel_request_back() { request_back.store(true); }
+bool settings_panel_chat_floating() { return g_chat_afloat.load(); }
+bool settings_panel_chat_typing() { return g_chat_typed.load(); }
+void settings_panel_chat_request(int what) { request_chat.store(what); }
+bool settings_panel_chat_claims(float fx, float fy) {
+    std::lock_guard<std::mutex> l(g_claim_lock);
+    if (!g_chat_afloat.load())
+        return false;
+    for (const ImRect &r : g_claims)
+        if (r.Contains(ImVec2(fx, fy)))
+            return true;
+    return false;
+}
 bool settings_panel_dirty() { return is_dirty.load(); }
 int settings_panel_theme() { return s.editing ? s.draft.menu_theme : config_editable().menu_theme; }
 bool settings_panel_confirming() { return is_confirming.load() || request_exit.load(); }
@@ -7516,6 +7717,57 @@ void settings_panel(bool *open) {
         break;
     default: break;
     }
+    // (1.0.2, after tabarong's floating chat) what the fingers' thread asked of the chat window afloat (touch.cpp, the chat
+    // button: settings_panel_chat_request)
+    switch (request_chat.exchange(0)) {
+    case SETTINGS_CHAT_CLOSE:  // (a tap away from it while typing, the chat button again: it closes, the keyboard with it)
+        if (chat_window_view()) {
+            if (s.view == View::Keyboard)
+                pop();  // (what was being typed is let go)
+            fprintf(stderr, "[chat] the chat window closed by a tap away from it or the chat button\n");
+            ask_close(open);
+            if (!*open) {
+                report(open);
+                return;
+            }
+        }
+        break;
+    case SETTINGS_CHAT_TO_MENU:  // (the settings button: the menu in its place, typing stopped)
+        if (chat_window_view()) {
+            while (chat_window_view() && !s.origins.empty())
+                pop();
+            if (chat_window_view())
+                first_page(0);
+            fprintf(stderr, "[chat] the settings button: from the chat window to the menu\n");
+        }
+        break;
+    default: break;
+    }
+    // (afloat, a menu of the game's opening under it - a shop, the quest counter -: hidden until that menu closes, typing
+    // stopped; the touch controls are the game's meanwhile. Opened while one is already open - the title, a shop -, it
+    // shows: the chat button was tapped for it)
+    {
+        static bool afloat_was, menu_was, hide;
+        static int seen_frame = -10;  // (a frame missed - the menu was closed meanwhile -: afloat again from now)
+        if (ImGui::GetFrameCount() != seen_frame + 1) afloat_was = false;
+        seen_frame = ImGui::GetFrameCount();
+        const bool afloat = chat_floating(), menu = afloat && touch_game_menu();
+        if (!afloat || !afloat_was)
+            hide = false;
+        else if (menu && !menu_was)
+            hide = true;
+        if (!menu)
+            hide = false;
+        afloat_was = afloat, menu_was = menu;
+        g_chat_hidden = hide;
+    }
+    if (g_chat_hidden) {
+        if (s.view == View::Keyboard)
+            pop();
+        g_chat_hidden = true;
+        report(open);
+        return;
+    }
     if (g_close_now) {  // (the game's text entry's view left)
         g_close_now = false;
         if (s.view == View::Main && !dirty()) {
@@ -7529,7 +7781,7 @@ void settings_panel(bool *open) {
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))  // tells went to what it pressed, in the layout it was made on)
         s.touch_next = ImGui::GetIO().MouseSource == ImGuiMouseSource_TouchScreen;
 #endif
-    if (touch_ui()) {
+    if (touch_ui() || chat_window_view()) {  // (1.0.2: the chat window, a desktop's too - afloat, worked with the mouse)
         touch_panel(open, before);
         report(open);
         return;
