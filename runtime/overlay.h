@@ -19,6 +19,7 @@ bool overlay_menu_open(void);
 // (1.0.2, after tabarong's floating chat) the menu is up as the chat window afloat over the game (settings_panel.h): the
 // game goes on and the touch controls are played round it; its controls alone take a finger
 bool overlay_chat_floating(void);
+bool overlay_chat_typing(void);  // (...and Say something is typed in it: the keys are its text, not the game's)
 // Forge's menu from the settings' Mods tab (any thread): it opens once the settings menu closes; opened by touch, it is
 // bigger and scrolls by dragging. overlay_forge_typing: one of its fields takes text now (the phone's keyboard).
 void overlay_open_forge(void);

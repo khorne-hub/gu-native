@@ -215,6 +215,54 @@ void overlay_toggle_settings(void) {
 // A finger as the menus' mouse: SDL's own mouse events made from a touch, or runtime/touch.cpp's (to_menu), which it
 // makes by hand and gives no time
 static bool finger_mouse(SDL_MouseID which, Uint64 timestamp) { return which == SDL_TOUCH_MOUSEID || !timestamp; }
+// (1.0.2, after tabarong's floating chat) The chat window afloat over the game, worked with a desktop's mouse and keyboard
+// (a finger's: touch.cpp). A mouse button pressed on its controls (settings_panel_chat_claims: its header and tabs, the
+// text and Send, the grip, a row that does something, the lines' scroll strip) is the window's until it lets go, and so
+// are the pointer's moves meanwhile; pressed anywhere else it is the game's, and while Say something is typed it closes
+// the window first. The pointer's other moves go to both (the window lights what it is over). The keys and the text are
+// the game's - it goes on under the window -, but while Say something is typed in it; a key's release goes to both, so
+// nothing stays held
+enum { CHAT_ROUTE_MENU, CHAT_ROUTE_GAME, CHAT_ROUTE_BOTH };
+static bool g_chat_mouse;  // (a press on the window's controls, not let go yet)
+static int chat_route(const SDL_Event *e) {
+    SDL_Window *win = ui_window();
+    int ww = 0, wh = 0;
+    if (win) SDL_GetWindowSize(win, &ww, &wh);
+    auto on_window = [&](float x, float y) { return ww > 0 && wh > 0 && settings_panel_chat_claims(x / ww, y / wh); };
+    switch (e->type) {
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        if (finger_mouse(e->button.which, e->button.timestamp)) return CHAT_ROUTE_MENU;  // (touch.cpp chose it)
+        if (on_window(e->button.x, e->button.y)) {
+            g_chat_mouse = true;
+            return CHAT_ROUTE_MENU;
+        }
+        if (settings_panel_chat_typing()) {
+            settings_panel_chat_request(SETTINGS_CHAT_CLOSE);
+            LOG("[overlay] a click away from the chat window while typing: it closes\n");
+        }
+        return CHAT_ROUTE_GAME;
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+        if (finger_mouse(e->button.which, e->button.timestamp)) return CHAT_ROUTE_MENU;
+        if (g_chat_mouse) {
+            g_chat_mouse = false;
+            return CHAT_ROUTE_MENU;
+        }
+        return CHAT_ROUTE_BOTH;
+    case SDL_EVENT_MOUSE_MOTION:
+        return g_chat_mouse || finger_mouse(e->motion.which, e->motion.timestamp) ? CHAT_ROUTE_MENU : CHAT_ROUTE_BOTH;
+    case SDL_EVENT_MOUSE_WHEEL:
+        return on_window(e->wheel.mouse_x, e->wheel.mouse_y) ? CHAT_ROUTE_MENU : CHAT_ROUTE_GAME;
+#ifndef __ANDROID__  // (a phone's keys - Back, its keyboard's - stay the menu's, as before)
+    case SDL_EVENT_KEY_DOWN:
+    case SDL_EVENT_TEXT_INPUT:
+        return settings_panel_chat_typing() ? CHAT_ROUTE_MENU : CHAT_ROUTE_GAME;
+    case SDL_EVENT_KEY_UP:
+        return settings_panel_chat_typing() ? CHAT_ROUTE_MENU : CHAT_ROUTE_BOTH;
+#endif
+    default:
+        return CHAT_ROUTE_MENU;
+    }
+}
 bool overlay_event(const SDL_Event *e) {
     if (!g_enabled) return false;
     if (e->type == SDL_EVENT_KEY_DOWN && !e->key.repeat && settings_panel_key((int)e->key.scancode)) return true;
@@ -242,6 +290,10 @@ bool overlay_event(const SDL_Event *e) {
         return true;
     }
     if (!g_open) return false;
+    // (1.0.2, after tabarong's floating chat) the chat window afloat (settings_panel.h), a desktop's mouse and keyboard:
+    // chat_route says whose each event is (the window's, the game's, or both)
+    const int route = overlay_chat_floating() ? chat_route(e) : CHAT_ROUTE_MENU;
+    if (route == CHAT_ROUTE_GAME) return false;
     SDL_Window *w = ui_window();
     float density = w ? SDL_GetWindowPixelDensity(w) : 1.0f;  // (ImGui works in the image's pixels)
     Ev v = {};
@@ -269,7 +321,7 @@ bool overlay_event(const SDL_Event *e) {
         bool port_key = (e->key.scancode >= SDL_SCANCODE_F1 && e->key.scancode <= SDL_SCANCODE_F12) ||
                         ((e->key.scancode == SDL_SCANCODE_RETURN || e->key.scancode == SDL_SCANCODE_KP_ENTER) &&
                          (e->key.mod & SDL_KMOD_ALT));
-        return !port_key;
+        return !port_key && route != CHAT_ROUTE_BOTH;
     }
     case SDL_EVENT_TEXT_INPUT:
         v.kind = Ev::TEXT;
@@ -283,7 +335,7 @@ bool overlay_event(const SDL_Event *e) {
         return false;
     }
     queue(v);
-    return true;
+    return route != CHAT_ROUTE_BOTH;
 }
 
 void overlay_pad(const OverlayPad *p) {
@@ -294,6 +346,7 @@ void overlay_pad(const OverlayPad *p) {
 bool overlay_enabled(void) { return g_enabled; }
 bool overlay_menu_open(void) { return g_open; }
 bool overlay_chat_floating(void) { return g_settings_open && settings_panel_chat_floating(); }
+bool overlay_chat_typing(void) { return overlay_chat_floating() && settings_panel_chat_typing(); }
 void overlay_open_forge(void) { g_forge_pending = true; }
 bool overlay_forge_typing(void) { return g_forge_typing.load(std::memory_order_relaxed); }
 

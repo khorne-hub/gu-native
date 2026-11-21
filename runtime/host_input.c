@@ -1589,6 +1589,11 @@ void host_input_update(void) {
         typing = !typing;
         memset(keys, 0, sizeof keys);  // (keys held when the entry opened are typing now, or released)
     }
+    static bool chat_typing;  // (1.0.2: typing in the chat window afloat - the keys its text: none held for the game)
+    if (overlay_chat_typing() != chat_typing) {
+        chat_typing = !chat_typing;
+        memset(keys, 0, sizeof keys);
+    }
 
 #ifndef __ANDROID__
     mouse_a = mouse_a_ok();

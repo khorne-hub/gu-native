@@ -1172,6 +1172,9 @@ void ask_close(bool *open) {
 // (1.0.2) Say something in the chat window with the phone's keyboard up: the text at the window's top and the chat's lines
 // under it, where the keys were (they are under the phone's keyboard); Back puts the phone's keyboard away, the keys again
 bool chat_typing() { return s.view == View::Keyboard && s.keyboard.chat && s.keyboard.phone; }
+// (1.0.2) Say something in the chat window with the chat's lines under the text, not the view's keys: the phone's keyboard
+// up (chat_typing), or a desktop's own keyboard (MHGU for PC: no phone keyboard; the window stays where it is)
+bool chat_typing_lines() { return s.view == View::Keyboard && s.keyboard.chat && (s.keyboard.phone || !touch_ui()); }
 // The chat window (1.0.2, the owner's): the chat page and its Say something, played by touch, in a window of their own
 // over the game, a little see-through; its header moves it and its corner sizes it (chat.txt keeps both: chat::window)
 bool chat_window_view() { return s.view == View::Chat || (s.view == View::Keyboard && s.keyboard.chat); }
@@ -1455,14 +1458,16 @@ void reopen_picker(std::vector<Row> &rows) {
 // only on its controls (chat_claim: the header with the tabs, the text and Send, a friend's arrows, the corner's grip, a
 // row that does something, the list's scroll strip); anywhere else, the blank part of the window too, it is the game's -
 // the stick, the camera -, and while typing such a tap closes the window and the phone's keyboard. A menu of the game's
-// hides it until it closes (typing stops); the settings button leaves it for the menu. With a controller in hand (a
-// handheld's buttons) the window stays a menu, as before: its buttons work it
+// hides it until it closes (typing stops); the settings button leaves it for the menu. On a phone with a controller in
+// hand (a handheld's buttons) the window stays a menu, as before: its buttons work it. On a desktop it floats always,
+// worked with the mouse: a controller's presses are the game's meanwhile (overlay.cpp chat_route)
 bool chat_floating() {
 #ifdef __ANDROID__
-    return chat_window_view() && chat_strip() && !chat_options() && !host_input_real_pad() && !s.dropdown.open;
+    const bool by_hand = !host_input_real_pad();
 #else
-    return false;
+    const bool by_hand = true;
 #endif
+    return by_hand && chat_window_view() && chat_strip() && !chat_options() && !s.dropdown.open;
 }
 void chat_claim(ImRect r) {
     const ImVec2 d = ImGui::GetIO().DisplaySize;
@@ -4794,7 +4799,7 @@ std::vector<Row> rows_for_view(bool *open) {
     if (s.view == View::PadList) { pad_list_rows(r); return r; }
     if (s.view == View::PadMap) { pad_map_rows(r); return r; }
     if (s.view == View::Verify) { verify_rows(r); return r; }
-    if (chat_typing()) {  // (the chat window's: Send, the keys, and the chat's lines - settings_chat.inc)
+    if (chat_typing_lines()) {  // (the chat window's: Send, the keys, and the chat's lines - settings_chat.inc)
         chat_typing_rows(r);
         return r;
     }
@@ -5464,11 +5469,11 @@ void help_box(ImGuiWindow *w, const Row &r, float width) {
 // are more: the Phone keyboard key), a dialog's choices as plates
 void draw_rows(std::vector<Row> &rows, bool list = false) {
     auto *w = ImGui::GetCurrentWindow();
-    bool touch = touch_ui();
+    bool touch = touch_ui() || chat_window_view();  // (1.0.2: the chat window's rows as a phone's on a desktop too: - + and bars)
     float font = ImGui::GetFontSize(), width = ImGui::GetContentRegionAvail().x;
     if (touch)
         width -= s.m.line * 3;  // (room for the scroll mark at the list's right: scroll_mark)
-    bool keyboard_view = s.view == View::Keyboard && !list && !chat_typing();  // (the chat window's: a list)
+    bool keyboard_view = s.view == View::Keyboard && !list && !chat_typing_lines();  // (the chat window's: a list)
     bool passive = s.dropdown.open && !list;
     bool plated = touch && !list && (confirmation() || s.view == View::KeyCapture || s.view == View::PadCapture || s.view == View::Move);
     float gap = ImGui::GetStyle().ItemSpacing.x;
@@ -6675,7 +6680,8 @@ void touch_panel(bool *open, const Config &before) {
         const float rh = f * 2.3f, rl = x0 + pad, re = x1 - pad;
         chat_claim(ImRect(x0, rt - pad * .5f, x1, rt + rh + pad * .5f));  // (afloat: the text, Send and Keys are the window's)
         const char *send_t = cs("Send", "Enviar");
-        const char *keys_t = !keys ? nullptr : s.keyboard.phone ? cs("Keys", "Teclas") : cs("Phone keyboard", "Teclado del teléfono");
+        const char *keys_t = !keys || !touch_ui() ? nullptr  // (a desktop's own keyboard: no phone keyboard to change to)
+                             : s.keyboard.phone ? cs("Keys", "Teclas") : cs("Phone keyboard", "Teclado del teléfono");
         const float sw = std::max(f * 5.f, ImGui::CalcTextSize(send_t).x + f * 1.8f);
         const float kw = keys_t ? std::max(f * 5.f, ImGui::CalcTextSize(keys_t).x + f * 1.8f) : 0.f;
         const bool keys_fit = keys_t && re - rl - sw - kw - pad * 2 > f * 8;
@@ -6893,7 +6899,7 @@ void touch_panel(bool *open, const Config &before) {
             say(saved_text(), k.glow);
         if (std::any_of(rows.begin(), rows.end(), [](const Row &row) { return row.cold; }))  // (only where a row has the *)
             say(tr("* Restart required"), k.dim);
-        if (pad_guides && !dialog && s.view != View::Keyboard) {
+        if (pad_guides && !dialog && s.view != View::Keyboard && !chat_floating()) {  // (afloat: the game has the controller)
             struct Item {
                 int physical;  // (-1 the d-pad, -2 the shoulders)
                 const char *label;
@@ -7745,7 +7751,7 @@ void settings_panel(bool *open) {
         static int seen_frame = -10;  // (a frame missed - the menu was closed meanwhile -: afloat again from now)
         if (ImGui::GetFrameCount() != seen_frame + 1) afloat_was = false;
         seen_frame = ImGui::GetFrameCount();
-        const bool afloat = touch_ui() && chat_floating(), menu = afloat && touch_game_menu();
+        const bool afloat = chat_floating(), menu = afloat && touch_game_menu();
         if (!afloat || !afloat_was)
             hide = false;
         else if (menu && !menu_was)
@@ -7775,7 +7781,7 @@ void settings_panel(bool *open) {
     if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))  // tells went to what it pressed, in the layout it was made on)
         s.touch_next = ImGui::GetIO().MouseSource == ImGuiMouseSource_TouchScreen;
 #endif
-    if (touch_ui()) {
+    if (touch_ui() || chat_window_view()) {  // (1.0.2: the chat window, a desktop's too - afloat, worked with the mouse)
         touch_panel(open, before);
         report(open);
         return;

@@ -174,7 +174,7 @@ void chat_status_row(std::vector<Row> &r) {
 // (1.0.2, the owner's) The chat window played by touch: its first row is the text to say and Send beside it, drawn by
 // touch_panel (a tap there types: chat_say_open), the chat's lines under it and the rest at the end. With a controller,
 // or in a desktop's menu, Say something stays a row
-bool chat_strip() { return touch_ui(); }  // (a handheld with buttons too: the rows say, chat_page_rows)
+bool chat_strip() { return true; }  // (a handheld with buttons too: the rows say, chat_page_rows; 1.0.2: a desktop's too, afloat)
 // The chat's options (the switches, Friends, the lines over the game, the button...): a page of their own, the same view
 // with s.at "chat/options", opened by the window's gear (chat_options_open); Back goes back to the chat
 bool chat_options() { return s.view == View::Chat && s.at == "chat/options"; }
@@ -311,7 +311,11 @@ void chat_page_rows(std::vector<Row> &r) {
     };
     const bool hub_on = chat::hub_chat(), can = chat_can_say();
     // (a controller in hand, a handheld's buttons: Say something and the chat's options as rows too, the buttons reach them)
+#ifdef __ANDROID__
     const bool pad = host_input_real_pad();
+#else
+    const bool pad = false;  // (1.0.2: a desktop's chat window floats, worked with the mouse: settings_panel.cpp chat_floating)
+#endif
     if (chat_alone && pad)
         action(r, "chat.say", cs("Say something", "Decir algo"), []() { chat_say_open(); }, can);
     if (!strip) {
@@ -443,7 +447,9 @@ void chat_page_rows(std::vector<Row> &r) {
                            "then Save. It is kept with the control profile.",
                            "Personalizar controles y HUD: arrastra el botón del chat adonde quieras, pellizca o usa - / + para su "
                            "tamaño, y Guardar. Queda guardado con el perfil de controles.");
-        // (1.0.2: the chat window, moved by its header and sized by its corner: the menu's place and size again)
+    }
+#endif
+    {  // (1.0.2: the chat window, a desktop's too - moved by its header and sized by its corner: the menu's place and size again)
         // (1.0.2, after tabarong's floating chat) how solid the window's background, its lines' strips and the field to type
         // in are: 0 to 100 %, in steps of 5; the text always solid. Kept in chat.txt at once
         const struct {
@@ -478,7 +484,6 @@ void chat_page_rows(std::vector<Row> &r) {
                            "El chat se abre en una ventana propia: arrastra su parte de arriba para moverla y su esquina de "
                            "abajo a la derecha para agrandarla o achicarla. Queda donde la dejes. Esto la deja como venía.");
     }
-#endif
     {
         Row row;
         row.id = "chat.name", row.title = cs("Your name in the chat", "Tu nombre en el chat");
